@@ -1,0 +1,17 @@
+[run]
+source = .
+omit =
+    venv/*
+    */migrations/*
+    */tests/*
+    manage.py
+    start.py
+    init_db.py
+    cloud.py
+
+[report]
+show_missing = True
+skip_empty = True
+
+[html]
+directory = coverage_report
