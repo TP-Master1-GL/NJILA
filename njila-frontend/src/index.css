@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #F8FAFC;
+    color: #0F172A;
+    margin: 0;
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #F1F5F9; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold
+           px-4 py-2.5 rounded-lg transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 text-gray-700 font-medium
+           px-4 py-2.5 rounded-lg border border-gray-200
+           transition-all duration-200 focus:outline-none
+           focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+  .input-field {
+    @apply w-full px-4 py-2.5 rounded-lg border border-njila-border
+           bg-white text-njila-text placeholder-njila-muted
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+           transition-all duration-200;
+  }
+  .card {
+    @apply bg-white rounded-xl shadow-card border border-njila-border p-6;
+  }
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg
+           text-slate-600 hover:bg-primary-50 hover:text-primary-600
+           transition-all duration-200 cursor-pointer font-medium;
+  }
+  .sidebar-item-active {
+    @apply bg-primary-600 text-white hover:bg-primary-700 hover:text-white;
+  }
+}
