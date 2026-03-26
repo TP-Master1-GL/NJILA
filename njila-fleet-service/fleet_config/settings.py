@@ -70,7 +70,7 @@ DATABASES = {
         'USER':     _get('db.user',     'DB_USER',     default='njila'),
         'PASSWORD': _get('db.password', 'DB_PASSWORD', default='njila2026'),
         'HOST':     _get('db.host',     'DB_HOST',     default='localhost'),
-        'PORT':     _get('db.port',     'DB_PORT',     cast=int, default=5432),
+        'PORT':     _get('db.port',     'DB_PORT',     cast=int, default=5433),
     }
 }
 
