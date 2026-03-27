@@ -49,7 +49,7 @@ class FilialeAdmin(admin.ModelAdmin):
 class BusAdmin(admin.ModelAdmin):
     list_display = ['immatriculation', 'modele', 'capacite', 'etat', 'Id_agence', 'created_at']
     list_filter = ['etat', 'Id_agence', 'created_at']
-    search_fields = ['immatriculation', 'modele', 'marque']
+    search_fields = ['immatriculation', 'modele']
     readonly_fields = ['IdBus', 'created_at', 'updated_at']
     autocomplete_fields = ['Id_agence']
     ordering = ['-created_at']
@@ -58,7 +58,7 @@ class BusAdmin(admin.ModelAdmin):
             'fields': ('IdBus', 'immatriculation')
         }),
         ('Caractéristiques', {
-            'fields': ('modele', 'marque', 'capacite', 'classe')
+            'fields': ('modele', 'capacite')  # Supprimé marque et classe
         }),
         ('Statut', {
             'fields': ('etat',)
@@ -104,7 +104,6 @@ class ChauffeurAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
-
 
 # ============ GUICHETIERS ============
 
@@ -167,7 +166,7 @@ class VoyageAdmin(admin.ModelAdmin):
             'fields': ('Id_voyage',)
         }),
         ('Trajet et horaires', {
-            'fields': ('Id_trajet', 'date_heure_depart', 'date_heure_arrive_prevue', 'date_heure_arrive_reelle')
+            'fields': ('Id_trajet', 'date_heure_depart', 'date_heure_arrive_prevue' )
         }),
         ('Tarifs et places', {
             'fields': ('prix', 'type_voyage', 'places_disponibles', 'places_total_reservees')

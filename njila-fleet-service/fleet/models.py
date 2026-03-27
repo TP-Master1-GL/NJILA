@@ -10,8 +10,7 @@ class ClasseBus(models.TextChoices):
     """Énumération pour les classes de bus"""
     STANDARD = 'standard', 'Standard'
     VIP = 'vip', 'VIP'
-    CONFORT = 'confort', 'Confort'
-    LUXE = 'luxe', 'Luxe'
+   
 
 class StatusBus(models.TextChoices):
     """Énumération pour les statuts de bus"""
@@ -24,8 +23,7 @@ class StatusBus(models.TextChoices):
 class TypeVoyage(models.TextChoices):
     STANDARD = 'standard', 'Standard'
     VIP = 'vip', 'VIP'
-    CONFORT = 'confort', 'Confort'
-    LUXE = 'luxe', 'Luxe'
+    
 
 class StatusVoyage(models.TextChoices):
     PROGRAMME = 'programme', 'Programmé'
@@ -51,10 +49,7 @@ class TypeAnnonce(models.TextChoices):
 # ============ MODÈLES ============
 
 class Agence(models.Model):
-    """
-    Agence mère - Respecte exactement le MCD
-    Attributs: Id_agence, name, adresse, telephone, email_officiel, statut_global, logo_image, date_inscription
-    """
+   
     id_agence = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     adresse = models.TextField()
@@ -100,6 +95,7 @@ class Filiale(models.Model):
         ('Kribi', 'Kribi'),
         ('Limbe', 'Limbe'),
         ('Ebolowa', 'Ebolowa'),
+        ('Dschang', 'Dschang'),
     ]
     
     id_filiale = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -129,10 +125,7 @@ class Filiale(models.Model):
 
 
 class Bus(models.Model):
-    """
-    Bus - Respecte exactement le MCD
-    Attributs: IdBus, modele, immatriculation, capacite, etat, Id_agence
-    """
+   
     IdBus = models.AutoField(primary_key=True)
     modele = models.CharField(max_length=50)
     immatriculation = models.CharField(
@@ -162,10 +155,7 @@ class Bus(models.Model):
 
 
 class Chauffeur(models.Model):
-    """
-    Chauffeur - Respecte exactement le MCD
-    Attributs: id_chauffeur, numero_permis, name, surname, email, phone, Adresse, photo_profil, Id_agence
-    """
+    
     id_chauffeur = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     numero_permis = models.CharField(max_length=50, unique=True)
     name = models.CharField(max_length=100)
@@ -173,7 +163,12 @@ class Chauffeur(models.Model):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20)
     Adresse = models.TextField()
-    photo_profil = models.URLField(blank=True)
+    photo_profil = models.ImageField(
+        upload_to='chauffeurs/photos/',
+        blank=True,
+        null=True,
+        help_text="Photo de profil du chauffeur (format: JPG, PNG, max 2MB)"
+    )    
     Id_agence = models.ForeignKey(Agence, on_delete=models.CASCADE, related_name='chauffeurs')
     
     est_disponible = models.BooleanField(default=True)
@@ -196,10 +191,7 @@ class Chauffeur(models.Model):
 
 
 class Guichetier(models.Model):
-    """
-    Guichetier - Respecte exactement le MCD
-    Attributs: Id_guichetier, name, surname, email, phone, derniere_connexion, adresse, photo_profil, password, _id_filiale
-    """
+   
     Id_guichetier = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     surname = models.CharField(max_length=100)
@@ -261,11 +253,7 @@ class Trajet(models.Model):
 
 
 class Voyage(models.Model):
-    """
-    Voyage - Respecte exactement le MCD
-    Attributs: Id_voyage, date_heure_depart, date_heure_arrive_prevue, prix, type_voyage, 
-               status, places_disponibles, places_total_reservees, id_chauffeur, IdBus, Id_trajet
-    """
+   
     Id_voyage = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     date_heure_depart = models.DateTimeField()
     date_heure_arrive_prevue = models.DateTimeField()
@@ -279,7 +267,6 @@ class Voyage(models.Model):
     IdBus = models.ForeignKey(Bus, on_delete=models.PROTECT, related_name='voyages')
     Id_trajet = models.ForeignKey(Trajet, on_delete=models.PROTECT, related_name='voyages')
     
-    date_heure_arrive_reelle = models.DateTimeField(null=True, blank=True)
     motif_annulation = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -305,10 +292,7 @@ class Voyage(models.Model):
 
 
 class Annonce(models.Model):
-    """
-    Annonce - Respecte exactement le MCD
-    Attributs: id_annonce, type, message, datePublication, Id_voyage
-    """
+   
     id_annonce = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = models.CharField(max_length=20, choices=TypeAnnonce.choices)
     message = models.TextField()
@@ -333,10 +317,7 @@ class Annonce(models.Model):
 
 
 class Avis(models.Model):
-    """
-    Avis - Respecte exactement le MCD
-    Attributs: id_avis, note, date_avis, commentaires, Id_voyage
-    """
+    
     id_avis = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     note = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
     date_avis = models.DateTimeField(auto_now_add=True)

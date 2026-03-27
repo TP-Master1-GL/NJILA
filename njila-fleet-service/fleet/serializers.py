@@ -194,6 +194,20 @@ class ChauffeurSerializer(serializers.ModelSerializer):
     
     def get_nom_complet(self, obj):
         return f"{obj.name} {obj.surname}"
+    
+    def validate_photo_profil(self, value):
+        """Validation de la photo de profil"""
+        if value:
+            # Vérifier la taille du fichier (max 2MB)
+            if value.size > 2 * 1024 * 1024:
+                raise serializers.ValidationError("La photo ne doit pas dépasser 2MB")
+            
+            # Vérifier le type de fichier
+            valid_types = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif']
+            if value.content_type not in valid_types:
+                raise serializers.ValidationError("Format d'image non supporté. Utilisez JPG, PNG ou GIF")
+        
+        return value
 
 
 class ChauffeurListSerializer(serializers.ModelSerializer):
@@ -203,7 +217,7 @@ class ChauffeurListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chauffeur
         fields = ['id_chauffeur', 'numero_permis', 'name', 'surname', 'email', 
-                  'phone', 'est_disponible', 'agence_name', 'nom_complet']
+                  'phone', 'est_disponible', 'agence_name', 'nom_complet', 'photo_profil']
     
     def get_nom_complet(self, obj):
         return f"{obj.name} {obj.surname}"
