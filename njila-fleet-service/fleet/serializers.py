@@ -92,6 +92,16 @@ class AgenceSerializer(serializers.ModelSerializer):
         if not value.isalnum():
             raise serializers.ValidationError("Le code ne doit contenir que des lettres et chiffres")
         return value
+    def validate_logo_image(self, value):
+        if value:
+            if value.size > 2 * 1024 * 1024:
+                raise serializers.ValidationError("L'image ne doit pas dépasser 2MB")
+            
+            valid_types = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif']
+            if value.content_type not in valid_types:
+                raise serializers.ValidationError("Format d'image non supporté. Utilisez JPG, PNG ou GIF")
+        
+        return value
 
 
 class AgenceListSerializer(serializers.ModelSerializer):
@@ -155,6 +165,20 @@ class GuichetierSerializer(serializers.ModelSerializer):
             from django.contrib.auth.hashers import make_password
             validated_data['password'] = make_password(validated_data['password'])
         return super().update(instance, validated_data)
+    
+    def validate_photo_profil(self, value):
+        """Validation de la photo de profil"""
+        if value:
+            # Vérifier la taille du fichier (max 2MB)
+            if value.size > 2 * 1024 * 1024:
+                raise serializers.ValidationError("La photo ne doit pas dépasser 2MB")
+            
+            # Vérifier le type de fichier
+            valid_types = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif']
+            if value.content_type not in valid_types:
+                raise serializers.ValidationError("Format d'image non supporté. Utilisez JPG, PNG ou GIF")
+        
+        return value
 
 
 # ============ CHAUFFEUR ============

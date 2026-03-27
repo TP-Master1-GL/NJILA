@@ -573,21 +573,19 @@ class AvisAPITest(TestCase):
             Id_trajet=self.trajet
         )
         
-        # CORRIGÉ: Passer l'objet voyage, pas l'UUID
         self.avis_data = {
             'note': 4,
             'commentaires': 'Très bon voyage',
-            'Id_voyage': self.voyage,  # ← Passe l'objet voyage
+            'Id_voyage': self.voyage,  
             'user_id': uuid.uuid4()
         }
     
     def test_create_avis(self):
         """Test création d'un avis via API"""
-        # Pour l'API, on doit passer l'UUID
         api_avis_data = {
             'note': 4,
             'commentaires': 'Très bon voyage',
-            'Id_voyage': self.voyage.Id_voyage,  # ← Pour l'API, passer l'UUID
+            'Id_voyage': self.voyage.Id_voyage,  
             'user_id': uuid.uuid4()
         }
         url = reverse('avis-list-create')
@@ -614,7 +612,7 @@ class AvisAPITest(TestCase):
         Avis.objects.create(
             note=5,
             commentaires='Excellent',
-            Id_voyage=self.voyage,  # ← Passe l'objet voyage
+            Id_voyage=self.voyage,  
             user_id=uuid.uuid4()
         )
         
@@ -805,7 +803,7 @@ class AssignationAPITest(TestCase):
             Id_agence=self.agence
         )
         
-        # Assigner un nouveau bus (devrait fonctionner et libérer l'ancien)
+        # Assigner un nouveau bus (
         response = self.client.post(url, {'bus_id': autre_bus.IdBus}, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)

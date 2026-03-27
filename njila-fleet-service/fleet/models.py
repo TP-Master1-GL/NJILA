@@ -4,7 +4,7 @@ from django.utils import timezone
 import uuid
 
 
-# ============ ÉNUMÉRATIONS (UNE SEULE FOIS) ============
+# ============ ÉNUMÉRATIONS ============
 
 class ClasseBus(models.TextChoices):
     """Énumération pour les classes de bus"""
@@ -61,7 +61,12 @@ class Agence(models.Model):
     telephone = models.CharField(max_length=20)
     email_officiel = models.EmailField(unique=True)
     statut_global = models.CharField(max_length=20, choices=StatutGlobalAgence.choices, default=StatutGlobalAgence.ACTIVE)
-    logo_image = models.URLField(blank=True)
+    logo_image = models.ImageField(
+        upload_to='agences/logos/',  
+        blank=True,
+        null=True,
+        help_text="Logo de l'agence (format: JPG, PNG, max 2MB)"
+    )    
     date_inscription = models.DateTimeField(auto_now_add=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -202,7 +207,12 @@ class Guichetier(models.Model):
     phone = models.CharField(max_length=20)
     derniere_connexion = models.DateTimeField(null=True, blank=True)
     adresse = models.TextField()
-    photo_profil = models.URLField(blank=True)
+    photo_profil = models.ImageField(
+        upload_to='guichetiers/photos/',
+        blank=True,
+        null=True,
+        help_text="Photo de profil (format: JPG, PNG, max 2MB)"
+    )    
     password = models.CharField(max_length=255)
     _id_filiale = models.ForeignKey(Filiale, on_delete=models.CASCADE, related_name='guichetiers', null=True, blank=True)
     

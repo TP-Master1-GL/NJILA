@@ -1,6 +1,7 @@
 from decouple import config as env
 from pathlib import Path
 from fleet_config.cloud import fetch_remote_config
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -96,3 +97,11 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = True
 DEFAULT_AUTO_FIELD     = 'django.db.models.BigAutoField'
 STATIC_URL             = '/static/'
+
+
+# ============ FICHIERS MÉDIAS ============
+# URL pour accéder aux fichiers médias
+MEDIA_URL = '/media/'
+
+# Chemin absolu où les fichiers seront stockés
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

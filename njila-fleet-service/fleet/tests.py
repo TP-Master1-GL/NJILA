@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Script de test pour le fleet-management-service NJILA
 """
