@@ -18,6 +18,10 @@ function initDatabase(config = {}) {
 }
 
 function getSequelize() {
+    // CRUCIAL : Si sequelize est vide, on l'initialise avant de le renvoyer
+    if (!sequelize) {
+        return initDatabase();
+    }
     return sequelize;
 }
 
