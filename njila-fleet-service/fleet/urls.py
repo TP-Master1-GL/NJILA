@@ -52,4 +52,6 @@ urlpatterns = [
     # ============ ASSIGNATION ============
 path('voyages/<uuid:Id_voyage>/assign-bus/', views.VoyageAssignBusView.as_view(), name='voyage-assign-bus'),
 path('voyages/<uuid:Id_voyage>/assign-chauffeur/', views.VoyageAssignChauffeurView.as_view(), name='voyage-assign-chauffeur'),
+
+path('health/', views.health_check, name='health-check'),
 ]
