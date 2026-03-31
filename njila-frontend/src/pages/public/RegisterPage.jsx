@@ -37,7 +37,7 @@ export default function RegisterPage() {
       <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden">
         <img src={IMAGES.BUS_REGISTER} alt="Bus NJILA"
           className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-br from-[#135bec]/85 via-blue-700/75 to-blue-900/90" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#135bec]/85 via-blue-700/65 to-blue-900/90" />
 
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
           <NjilaLogo size="lg" white />

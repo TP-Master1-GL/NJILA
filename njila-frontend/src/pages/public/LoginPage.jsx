@@ -11,7 +11,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { IMAGES } from "../../assets/images";
 
 const schema = z.object({
-  email:    z.string().min(1, "Email ou téléphone requis"),
+  email: z.string().min(1, "Email ou téléphone requis"),
   password: z.string().min(6, "Minimum 6 caractères"),
   remember: z.boolean().optional(),
 });
@@ -61,7 +61,7 @@ export default function LoginPage() {
 
           <div className="flex items-center gap-4">
             <div className="flex -space-x-2">
-              {["G","M","F","A"].map((l,i) => (
+              {["G", "M", "F", "A"].map((l, i) => (
                 <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-blue-600 flex items-center justify-center text-xs font-bold text-white">{l}</div>
               ))}
             </div>
@@ -91,9 +91,9 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit(login)} className="space-y-5">
             <Input
-              label="Email ou Numéro de téléphone"
+              label="Email"
               type="text"
-              placeholder="votre@email.com ou 6xx xxx xxx"
+              placeholder="votre@email.com"
               error={errors.email?.message}
               {...register("email")}
             />
@@ -126,8 +126,8 @@ export default function LoginPage() {
               className="w-full h-12 bg-[#135bec] hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#135bec]/25 flex items-center justify-center gap-2 text-sm">
               {isSubmitting ? (
                 <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4"/>
-                  <path className="opacity-75" fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4" />
+                  <path className="opacity-75" fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
               ) : (
                 <><span className="material-icons text-xl">login</span> Se connecter</>
@@ -142,10 +142,9 @@ export default function LoginPage() {
               <span className="mx-4 text-xs text-slate-400 uppercase tracking-wider">ou continuer avec</span>
               <div className="flex-1 border-t border-slate-200" />
             </div>
-            <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="grid grid-cols-1 gap-3 mt-4">
               {[
                 { icon: "https://www.google.com/favicon.ico", label: "Google" },
-                { icon: "https://www.facebook.com/favicon.ico", label: "Facebook" },
               ].map(({ icon, label }) => (
                 <button key={label} className="flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                   <img src={icon} alt={label} className="w-4 h-4" />
@@ -166,7 +165,7 @@ export default function LoginPage() {
             <span>·</span>
             <a href="#" className="hover:text-slate-600">Confidentialité</a>
             <span>·</span>
-            <span>🇨🇲 Français (Cameroun)</span>
+            <span>🇨🇲 Cameroun</span>
           </div>
         </div>
       </div>

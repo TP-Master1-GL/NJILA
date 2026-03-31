@@ -11,13 +11,19 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitMQConfig {
 
     // ─── Exchanges ────────────────────────────────────────────────────────────
-    public static final String BOOKING_EXCHANGE  = "njila.booking.exchange";
-    public static final String PAYMENT_EXCHANGE  = "njila.payment.exchange";
+    public static final String BOOKING_EXCHANGE = "njila.booking.exchange";
+    public static final String PAYMENT_EXCHANGE = "njila.payment.exchange";
 
     // ─── Routing keys publiées par ce service ─────────────────────────────────
-    public static final String BOOKING_CREATED_KEY   = "booking.created";
-    public static final String TICKET_GENERATED_KEY  = "ticket.generated";
-    public static final String FIDELITE_REWARD_KEY   = "booking.fidelite.reward";
+    public static final String BOOKING_CREATED_KEY          = "booking.created";
+    public static final String TICKET_GENERATED_KEY         = "ticket.generated";
+    public static final String FIDELITE_REWARD_KEY          = "booking.fidelite.reward";
+
+    // CORRECTION UC-B4 : remboursement après annulation
+    public static final String BOOKING_REFUND_REQUESTED_KEY = "booking.refund.requested";
+
+    // NOUVEAU UC-B7 : clôture départ
+    public static final String BOOKING_DEPART_KEY           = "booking.depart";
 
     // ─── Routing keys consommées par ce service ───────────────────────────────
     public static final String PAYMENT_CONFIRMED_KEY = "payment.confirmed";
@@ -45,13 +51,11 @@ public class RabbitMQConfig {
     // QUEUES consommées par ce service
     // ─────────────────────────────────────────────────────────────────────────
 
-    // payment.confirmed → confirmer réservation + générer billet
     @Bean
     public Queue paymentSuccessQueue() {
         return QueueBuilder.durable(PAYMENT_SUCCESS_QUEUE).build();
     }
 
-    // payment.failed → libérer verrou + annuler réservation
     @Bean
     public Queue paymentFailedQueue() {
         return QueueBuilder.durable(PAYMENT_FAILED_QUEUE).build();

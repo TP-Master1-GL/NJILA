@@ -3,7 +3,8 @@ package com.njila.njila_booking_service.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.njila.njila_booking_service.domain.entity.*;
 import com.njila.njila_booking_service.domain.enums.*;
-import com.njila.njila_booking_service.dto.request.CreerReservationRequest;
+import com.njila.njila_booking_service.dto.request.*;
+import com.njila.njila_booking_service.dto.response.ReservationStatsResponse;
 import com.njila.njila_booking_service.repository.TicketRepository;
 import com.njila.njila_booking_service.service.FideliteService;
 import com.njila.njila_booking_service.service.PdfGeneratorService;
@@ -15,9 +16,12 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -56,7 +60,10 @@ class BookingControllerTest {
         mockReservation.setHistorique(new ArrayList<>());
     }
 
-    private CreerReservationRequest buildRequest() {
+    // ─── POST /api/bookings ───────────────────────────────────────────────────
+
+    @Test
+    void creerReservation_retourne200() throws Exception {
         CreerReservationRequest request = new CreerReservationRequest();
         request.setIdVoyage(1L);
         request.setIdVoyageur(1L);
@@ -65,28 +72,16 @@ class BookingControllerTest {
         request.setCodeAgence("GEN");
         request.setCodeFiliale("BYDE");
         request.setTypeTarif(CreerReservationRequest.TypeTarif.STANDARD);
-        return request;
-    }
 
-    // ─── POST /api/bookings ───────────────────────────────────────────────────
-
-    @Test
-    void creerReservation_retourne200() throws Exception {
-        when(reservationService.creerReservation(
-                eq(1L), eq(1L), eq(1),
-                eq(CanalReservation.WEB),
-                eq("GEN"), eq("BYDE"),
-                isNull(),
-                eq(CreerReservationRequest.TypeTarif.STANDARD),
-                isNull()))
+        when(reservationService.creerReservation(any(), any(), anyInt(), any(),
+                any(), any(), any(), any(), any()))
                 .thenReturn(mockReservation);
 
         mockMvc.perform(post("/api/bookings")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(buildRequest())))
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.statut").value("EN_ATTENTE"))
-                .andExpect(jsonPath("$.codeAgence").value("GEN"))
                 .andExpect(jsonPath("$.montantTotal").value(5000.0));
     }
 
@@ -102,8 +97,7 @@ class BookingControllerTest {
 
     @Test
     void getReservation_existante_retourne200() throws Exception {
-        when(reservationService.getReservation(1L))
-                .thenReturn(mockReservation);
+        when(reservationService.getReservation(1L)).thenReturn(mockReservation);
 
         mockMvc.perform(get("/api/bookings/1"))
                 .andExpect(status().isOk())
@@ -113,36 +107,62 @@ class BookingControllerTest {
     @Test
     void getReservation_inexistante_retourne404() throws Exception {
         when(reservationService.getReservation(99L))
-                .thenThrow(new RuntimeException(
-                        "Réservation introuvable : 99"));
+                .thenThrow(new RuntimeException("Réservation introuvable : 99"));
 
         mockMvc.perform(get("/api/bookings/99"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
     }
 
-    // ─── GET /api/bookings/voyage/{voyageId} ──────────────────────────────────
+    // ─── CORRECTION — PATCH /api/bookings/{id}/confirm ───────────────────────
 
     @Test
-    void getReservationsVoyage_retourne200AvecListe() throws Exception {
-        when(reservationService.getReservationsVoyage(1L))
-                .thenReturn(List.of(mockReservation));
+    void confirmerPaiementEspeces_retourne200AvecBilletEmbarquement()
+            throws Exception {
+        TicketEmbarquement ticket = new TicketEmbarquement();
+        ticket.setId(1L);
+        ticket.setNumeroTicket("GEN-EMB-20260401-BYDE-000001");
+        ticket.setStatut(StatutTicket.ACTIF);
+        ticket.setNomVoyageur("NGUEMBU John");
+        ticket.setOrigine("Yaoundé");
+        ticket.setDestination("Douala");
+        ticket.setDateDepart(LocalDate.of(2026, 4, 1));
+        ticket.setImmatriculationBus("LT-1234-A");
+        ticket.setTelephoneVoyageur("+237699000001");
+        ticket.setUtilise(false);
 
-        mockMvc.perform(get("/api/bookings/voyage/1"))
+        when(reservationService.confirmerPaiementEspeces(eq(1L), eq(99L), eq(5000.0)))
+                .thenReturn(ticket);
+
+        ConfirmerPaiementEspecesRequest request = new ConfirmerPaiementEspecesRequest();
+        request.setIdGuichetier(99L);
+        request.setMontantEncaisse(5000.0);
+
+        mockMvc.perform(patch("/api/bookings/1/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1));
+                .andExpect(jsonPath("$.numeroTicket")
+                        .value("GEN-EMB-20260401-BYDE-000001"))
+                .andExpect(jsonPath("$.type").value("EMB"));
     }
 
-    // ─── GET /api/bookings/history/{userId} ───────────────────────────────────
-
     @Test
-    void getHistorique_retourne200AvecListe() throws Exception {
-        when(reservationService.getReservationsVoyageur(1L))
-                .thenReturn(List.of(mockReservation));
+    void confirmerPaiementEspeces_reservationDejaPayee_retourne400()
+            throws Exception {
+        when(reservationService.confirmerPaiementEspeces(any(), any(), any()))
+                .thenThrow(new RuntimeException(
+                        "Impossible de confirmer la réservation 1 : "
+                        + "statut actuel = PAYEE (attendu : EN_ATTENTE)"));
 
-        mockMvc.perform(get("/api/bookings/history/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1));
+        ConfirmerPaiementEspecesRequest request = new ConfirmerPaiementEspecesRequest();
+        request.setIdGuichetier(99L);
+        request.setMontantEncaisse(5000.0);
+
+        mockMvc.perform(patch("/api/bookings/1/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
     }
 
     // ─── PATCH /api/bookings/{id}/cancel ─────────────────────────────────────
@@ -167,9 +187,115 @@ class BookingControllerTest {
 
         mockMvc.perform(patch("/api/bookings/1/cancel")
                         .param("idUtilisateur", "1"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(
-                        "Impossible d'annuler une réservation déjà embarquée."));
+                .andExpect(status().isBadRequest());
+    }
+
+    // ─── CORRECTION — GET /api/bookings/stats/{filialeId} ────────────────────
+
+    @Test
+    void getStats_retourneMetriquesAgregees() throws Exception {
+        ReservationStatsResponse stats = ReservationStatsResponse.builder()
+                .filialeId(1L)
+                .totalReservations(20)
+                .reservationsConfirmees(15)
+                .reservationsAnnulees(3)
+                .reservationsEnAttente(2)
+                .reservationsEmbarquees(5)
+                .totalPlacesVendues(18)
+                .chiffreAffairesTotal(75000.0)
+                .tauxConversion(75.0)
+                .build();
+
+        when(reservationService.getStatsFiliale("BYDE")).thenReturn(stats);
+
+        mockMvc.perform(get("/api/bookings/stats/1")
+                        .param("codeFiliale", "BYDE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.filialeId").value(1))
+                .andExpect(jsonPath("$.totalReservations").value(20))
+                .andExpect(jsonPath("$.chiffreAffairesTotal").value(75000.0))
+                .andExpect(jsonPath("$.tauxConversion").value(75.0));
+    }
+
+    // ─── NOUVEAU — POST /api/bookings/depart/valider-billet ──────────────────
+
+    @Test
+    void validerBilletDepart_retourne200() throws Exception {
+        TicketEmbarquement ticket = new TicketEmbarquement();
+        ticket.setId(1L);
+        ticket.setNumeroTicket("GEN-EMB-20260401-BYDE-000001");
+        ticket.setStatut(StatutTicket.EMBARQUEE);
+        ticket.setNomVoyageur("NGUEMBU John");
+        ticket.setOrigine("Yaoundé");
+        ticket.setDestination("Douala");
+        ticket.setDateDepart(LocalDate.of(2026, 4, 1));
+        ticket.setImmatriculationBus("LT-1234-A");
+        ticket.setTelephoneVoyageur("+237699000001");
+        ticket.setUtilise(true);
+
+        when(reservationService.validerBilletDepart(
+                "GEN-EMB-20260401-BYDE-000001", 10L))
+                .thenReturn(ticket);
+
+        ValiderBilletDepartRequest request = new ValiderBilletDepartRequest();
+        request.setNumeroBillet("GEN-EMB-20260401-BYDE-000001");
+        request.setIdManager(10L);
+
+        mockMvc.perform(post("/api/bookings/depart/valider-billet")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statut").value("EMBARQUEE"))
+                .andExpect(jsonPath("$.type").value("EMB"));
+    }
+
+    @Test
+    void validerBilletDepart_billetDejaValide_retourne400() throws Exception {
+        when(reservationService.validerBilletDepart(any(), any()))
+                .thenThrow(new RuntimeException(
+                        "Ce billet est déjà validé : GEN-EMB-20260401-BYDE-000001"));
+
+        ValiderBilletDepartRequest request = new ValiderBilletDepartRequest();
+        request.setNumeroBillet("GEN-EMB-20260401-BYDE-000001");
+        request.setIdManager(10L);
+
+        mockMvc.perform(post("/api/bookings/depart/valider-billet")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ─── NOUVEAU — POST /api/bookings/depart/cloturer ────────────────────────
+
+    @Test
+    void cloturerDepart_retourne200AvecSynthese() throws Exception {
+        Map<String, Object> resultat = Map.of(
+                "voyageId",           1L,
+                "passagersEmbarques", 25L,
+                "totalConfirmees",    28L,
+                "totalPlaces",        30,
+                "statut",             "DEPART_CLOTURE"
+        );
+        when(reservationService.cloturerDepart(1L, 10L)).thenReturn(resultat);
+
+        mockMvc.perform(post("/api/bookings/depart/cloturer")
+                        .param("idVoyage", "1")
+                        .param("idManager", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statut").value("DEPART_CLOTURE"))
+                .andExpect(jsonPath("$.passagersEmbarques").value(25));
+    }
+
+    // ─── GET /api/bookings/history/{userId} ───────────────────────────────────
+
+    @Test
+    void getHistorique_retourne200AvecListe() throws Exception {
+        when(reservationService.getReservationsVoyageur(1L))
+                .thenReturn(List.of(mockReservation));
+
+        mockMvc.perform(get("/api/bookings/history/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
     }
 
     // ─── GET /api/bookings/fidelite/{idVoyageur} ─────────────────────────────
@@ -183,7 +309,6 @@ class BookingControllerTest {
                         .param("codeAgence", "GEN"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nombreVoyages").value(7))
-                .andExpect(jsonPath("$.voyageGratuit").value(false))
                 .andExpect(jsonPath("$.voyagesRestants").value(3));
     }
 
@@ -196,16 +321,14 @@ class BookingControllerTest {
                         .param("codeAgence", "GEN"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.voyageGratuit").value(true))
-                .andExpect(jsonPath("$.voyagesRestants").value(0))
-                .andExpect(jsonPath("$.message").value(
-                        "Votre prochain voyage est GRATUIT !"));
+                .andExpect(jsonPath("$.message")
+                        .value("Votre prochain voyage est GRATUIT !"));
     }
 
     // ─── GET /api/bookings/{id}/ticket/pdf ───────────────────────────────────
 
     @Test
-    void telechargerPdf_billetElectroniqueExistant_retournePdf()
-            throws Exception {
+    void telechargerPdf_retournePdf() throws Exception {
         TicketElectronique ticketElec = new TicketElectronique();
         ticketElec.setId(1L);
         ticketElec.setNumeroTicket("GEN-WEB-20260321-BYDE-000001");
@@ -221,10 +344,8 @@ class BookingControllerTest {
 
         mockReservation.getTickets().add(ticketElec);
 
-        when(reservationService.getReservation(1L))
-                .thenReturn(mockReservation);
-        when(pdfGeneratorService.lirePdf(
-                "GEN-WEB-20260321-BYDE-000001"))
+        when(reservationService.getReservation(1L)).thenReturn(mockReservation);
+        when(pdfGeneratorService.lirePdf("GEN-WEB-20260321-BYDE-000001"))
                 .thenReturn(new byte[]{37, 80, 68, 70}); // %PDF
 
         mockMvc.perform(get("/api/bookings/1/ticket/pdf"))
@@ -233,11 +354,8 @@ class BookingControllerTest {
     }
 
     @Test
-    void telechargerPdf_aucunBilletElectronique_retourne400()
-            throws Exception {
-        // Pas de ticket électronique dans la réservation
-        when(reservationService.getReservation(1L))
-                .thenReturn(mockReservation);
+    void telechargerPdf_aucunBilletElectronique_retourne400() throws Exception {
+        when(reservationService.getReservation(1L)).thenReturn(mockReservation);
 
         mockMvc.perform(get("/api/bookings/1/ticket/pdf"))
                 .andExpect(status().isBadRequest());

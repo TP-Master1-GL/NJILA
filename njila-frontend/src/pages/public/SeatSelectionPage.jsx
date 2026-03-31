@@ -6,7 +6,7 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import { formatMontant } from "../../utils/formatters";
 
-const generateSeats = (total = 40, occupied = [3, 7, 12, 15, 20]) =>
+const generateSeats = (total = 70, occupied = [3, 7, 12,34, 15, 20]) =>
   Array.from({ length: total }, (_, i) => ({
     id: i + 1,
     numero: i + 1,

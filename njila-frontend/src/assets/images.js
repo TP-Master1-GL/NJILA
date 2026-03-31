@@ -1,19 +1,16 @@
-// Images extraites directement des maquettes officielles NJILA
+// Image assets — using Unsplash for demo
 export const IMAGES = {
-  // Bus pour hero et filigranes
-  BUS_HIGHWAY:   "https://lh3.googleusercontent.com/aida-public/AB6AXuBEl35_u-23Qsk0wm-AtVSfllNNKunPXDMBvvUjLF7J9lz-DhpLvCR6IyX1Vl7KSPoRTsdkM56xMUo-AbCiaXvLwoJbnS7WI2aQ19GBLPbO08EYFo0Q_ZlNZ2QBgb2E9g4PY0Thzk48DXsYIDc5S_qNerEboeDb89HFMYaMnU8f5oRNEZLXNKZTDaGTu04N-7kgkxmg8keIdcukI_5zlDy9NvrjullJj7oj1SpM1KXcM11MIipNfR33zMKrY7YAObdIFv2YlJpjEDDs",
-  BUS_COMFORT:   "https://lh3.googleusercontent.com/aida-public/AB6AXuC4fyftVp9bhiceBnj58ceDEJdYSHnc3kUx2P7YrbyvkjwtIRCOIjdUEbRN0EXnsPSS4Nn_G1XmIVjBiYYd4g6IKBvZlnhiR0Vs5kVA8INS7teTmV2v6Bk-Hoe9CpWzvW-YkEErfVklZBG7ppwgrrHhKiAq1-wQ7uqmwV3qgKYXxl_X_nlkCY2IQTANvbvAjfEviLr1JY-1meg4kqFywfINxwB-y-B6kvpeoFjhl6bQ_3OunyD_L8bZWF74opPKODcjQvAGrSNcLM8l",
-  BUS_MODERN:    "https://lh3.googleusercontent.com/aida-public/AB6AXuDfuby4ZMDWzmg0nO6hZKH6BuHsuYuKwsUGf2Dr5SnDnxlmhR9bq_E_Y57RJw-pE8I3YJK4ZKKGdwCk1QOBfPGzAHb4ZSB3CQtF7SdlS0PB6O4BHRQ0hdKXMcIWzFI7oAHr3bGUf6YENZA432EuYFoK4LrM3UNkDDVi8XHbJ6js4KFa3TDkaDVUt_0xg7bSCjxuZAPod7FdhbZQoM-5-g1jlsKBDXct-afgoVL8jlMYGYP3ev_plmiJ54WH6OdruNO9_XNaCkona_rk",
-  BUS_LOGIN:     "https://lh3.googleusercontent.com/aida-public/AB6AXuB3ueUb2lAjzdliJPS0D5xrrp7ErE3FJGhh8iTnR0LPuEGgjJYGQ7S16e-3Cg9vcOSeTcuI-9DQGjylzy6GmVv2iat1jLxYggHT9hFOXuiVZYig8J374pMwgcqKzQA4pdmg_Mk27Tv_CvCVNtFihrUOVs3gaKQzhPKDq70_UckFTvT_OPziWUzsNas2_3HZBDp_HqdnPK-qqCSRdX3EPBMtR4ptD17ii4fuVoC64a6kGvomX_0ba1wkabqZVKvTKLqrmU3RUzIETO3s",
-  BUS_REGISTER:  "https://lh3.googleusercontent.com/aida-public/AB6AXuBNkXy-WBBR5an1snTUEEvtC33sbxB6SxdAbu8UI34i-sHyXKDZeMxO5aR2Py4eQYdA1pBEHGGlZ3g618N-M-MEOmbg0Tlw05FzqQeZ5iiM5dvx6LiifGB53--Ktd1fEL2Z0RLkqAWnOc38oZr8M5Ujd6F9Bxon0TSNxptsEUc5SCMO3uCMCh85rySj3PTF_V9kjlle_HwzydjQQKUzCsUJiAfuS7eDWvYf4nkI2Ked2C0ONMwpL93qPBPBbAqLL86IWEevPNr6fs60",
-  // Villes camerounaises
-  DOUALA:        "https://lh3.googleusercontent.com/aida-public/AB6AXuAGdLtr3bMWnz0YUjQZRXfEfuB8MwgvL7D4VLm--OGybNlAtqfb9kylXgM-A6Zzgyj6g2oJj-K6FX3Zv5vOKwmM8vW4cRDHv2E1shcO4XQjD6nO4N0i6sOKFMhYQ-04T-1MophPJtxUr4onhKk1e_OP2AvpEup5RPbT-ut56QC98SaBkYf1GY8R2KQOrUQZ0ZXkiKmmlibcI_OWsXxt1wKLrgnBZiEILwQimmOGu31dcXlpR2DuCSyDRSQHiaJ-hGjH5iQb6WEp7TXX",
-  YAOUNDE:       "https://lh3.googleusercontent.com/aida-public/AB6AXuAb_hm4g0R_-TxzbNhq2iDRi_pKqimOvOYv8Qxkn8BarEPg0cXtHrumyuMr4FKeYDYSJN_auNsM_pkPdUBpU0tZiq3jyd0hfw3y_B3KKdARUlJqR1ewkuVPDWqFyCF1fsDoJvtuBr_1CxZwagmJJe2Ydlh9wboI1kALt_9YYQJGJ6akUg4JNmViBnmuFwfbF7elk4qQSdJ4n64BQoavTM6BtFU-NQYEJl1tYiDjNG6KXZQjaoInwBM2b9nZ1nu1F_d2997Izh5O-sj6",
-  BAFOUSSAM:     "https://lh3.googleusercontent.com/aida-public/AB6AXuAeSXoal0IfHjnF0QB-7Nsi4sr819V2tidrryZd0PfumeJSOMHkD9R4Ki0mLA9k83jqBbenHHQuWrnLNif9sjf6lUIKIZBbANX8MV0RxaB2hPJZ65YMgwy11dvj56Fq82JXasYhRtDjfzXGbS7mnHPhJfxsQFoJXjMQezb40MX0v9ae3786a4UttVa4LpBzKfLOQFVK_y8RX15RmPzY5isRazw7xawuHcYnTkrgTNZ0MeupgAozphItt8RSAg4ut_deYZGAcSEHcHsB",
-  GAROUA:        "https://lh3.googleusercontent.com/aida-public/AB6AXuAzrGr9UDCEbskBFQKlyOyqTbyRyShIr3OhdiNte6yqosBoj4cE-7Gt5NPUZyEjlXs5px7BboRGYAWfJzNEcHktkDu6bMavdyy21PXQGWAH1g02Kn1FkYPZD9uxkMnXok7yBu1Ktknr8VfiATIGgRWDifdyHs32LroVnyaw_ZFzRaguUcdF-th6WU-zc9laL1FITBdK62gmwe1KQRV0BeQ-zPO1lkrzo5cQQMwNAzbDAm8b0T7YjCK-ctpPvrWhDuwU_Oa9UPIM70O0",
-  NGAOUNDERE:    "https://lh3.googleusercontent.com/aida-public/AB6AXuBv2bKsMgea3X_mkgTL9pyNeTrffoZo2RhI6GmZXYoa_0yY4HnoHhGuaXEKw3s4Tfdp2Fwy1OWrVk1CJFwAtBn4utZGMhNJURI1Mkec5um-hZhxGGxu4LrUQFwv5fJvdvtVHSoUWZ-cJuj0poC3rlAkrakQpOV2V4utqdC57XtgvOzCHIj-i699Anhx3EcgwqYfqjq_GgYPhVOk-x-kMjZ8HlD6NqRP1ozpITJc1vgY6Pdh1gbud1utorTlh0kX7XA_e-TJ-sDVp_R8",
-  // Agences
-  AGENCY_1:      "https://lh3.googleusercontent.com/aida-public/AB6AXuBwClKkDQNozBmctMpQ5hFpjp532m69SIQ9tAInRyPrfDbiQL17bwZKQCEF5GUn4PofxUQO3RzDiOgMFcIcgyi6txW35TXmpaA_kOCObV_p1XzpT3BORuMLvCNdpwb-fZOS2S9OEf_A3MjuKrFDBuHVV2kiRIg3skB_xlKbP4_4gsTwdjLbpvuaZyDUYaRcwpsn37KEaWQruSwcBqZCN9pC2ncN04YIp_52-rdi0PsVDnaiwSv_A-R-YBGEjcnxa5S4qUoh73Gcmxvf",
-  AGENCY_2:      "https://lh3.googleusercontent.com/aida-public/AB6AXuBdQr_bLFmvycuy0fIw_AujXZzjhu0gf9YLGk9RZFOLEBAU2voTTIcdlWUi_CjmzvyAcoMFs6UxgY4c2l-TN_VlUVKDRcdmXP_YKMqE92_txFxb5zmXnF9-nZO0PdTisecW2iTdb_QssP2rXhWLkByIbd7TOKaHxujBzSuS8qgNpcbFOOSHXUb3TJySBOTdoyGHILCfhDY6brdwlVlBWJa881KEPpu8N9IIEqOVBDdybURULCjh-uxDIkCQutzuIuL03SEb6Bw5f3UB",
-  AGENCY_3:      "https://lh3.googleusercontent.com/aida-public/AB6AXuC83ug3bN4zB_Fk-CVqjEvXb2STVEUStxC1pvQImDE9TrFB2R7Pseli3WElzH1z1PsYMbgE0zMuogA5jfwNnAftpU1ST1T85W0G2dUR-MwKiemaVvKHgUZGhF0NTqk3dKx4qkSRJMsKQ-yVROj8WMzb_BnQuCEl_puhGmtbj8hPiHGmT28gxoSmD2bm2k7vdmXMqaCPNVvKN7eRd765_isCkoAUqh6573I11mfkBILeQDH8wPgLzkTPk2Co8qxQ9hr3IlG5RdQ88571",
+  DOUALA:     "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+  YAOUNDE:    "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=400&q=80",
+  BAFOUSSAM:  "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=80",
+  GAROUA:     "https://images.unsplash.com/photo-1504214208698-ea1916a2195a?w=400&q=80",
+  NGAOUNDERE: "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=400&q=80",
+  BUS_MODERN:  "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&q=80",
+  BUS_HIGHWAY: "https://images.unsplash.com/photo-1464219789935-c2d9d9aba644?w=800&q=80",
+  BUS_LOGIN:   "https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=900&q=80",
+  BUS_REGISTER:"https://plus.unsplash.com/premium_photo-1664302152991-d013ff125f3f?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+  BUS_COMPORT: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&q=80",
+  AGENCY_1:    "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&q=80",
+  AGENCY_2:    "https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=600&q=80",
+  AGENCY_3:    "https://images.unsplash.com/photo-1464219789935-c2d9d9aba644?w=600&q=80",
 };

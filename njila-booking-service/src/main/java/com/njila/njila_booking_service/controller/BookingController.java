@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 import java.util.Map;
 
@@ -23,10 +24,10 @@ import java.util.Map;
 @Slf4j
 public class BookingController {
 
-    private final ReservationService reservationService;
-    private final FideliteService    fideliteService;
+    private final ReservationService  reservationService;
+    private final FideliteService     fideliteService;
     private final PdfGeneratorService pdfGeneratorService;
-    private final TicketRepository   ticketRepository;
+    private final TicketRepository    ticketRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
     // POST /api/bookings — Créer une réservation
@@ -92,22 +93,44 @@ public class BookingController {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // GET /api/bookings/stats/{filialeId} — Statistiques d'une filiale
+    // CORRECTION S6 — GET /api/bookings/stats/{filialeId}
+    //
+    // Ancienne implémentation : appelait getReservationsVoyage(filialeId)
+    // → confusion voyage/filiale, pas de métriques agrégées.
+    //
+    // Nouvelle implémentation : stats réelles via codeFiliale
+    // (le codeFiliale est fourni en query param car filialeId numérique
+    //  doit être résolu en code métier pour requêter la table reservations).
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/stats/{filialeId}")
-    public ResponseEntity<List<ReservationResponse>> getStats(
-            @PathVariable Long filialeId) {
-        return ResponseEntity.ok(
-                reservationService.getReservationsVoyage(filialeId)
-                        .stream()
-                        .map(this::toResponse)
-                        .toList()
-        );
+    public ResponseEntity<ReservationStatsResponse> getStats(
+            @PathVariable Long filialeId,
+            @RequestParam String codeFiliale) {
+
+        ReservationStatsResponse stats =
+                reservationService.getStatsFiliale(codeFiliale);
+
+        // Enrichir avec l'ID numérique passé en path
+        ReservationStatsResponse enrichi = ReservationStatsResponse.builder()
+                .filialeId(filialeId)
+                .totalReservations(stats.getTotalReservations())
+                .reservationsConfirmees(stats.getReservationsConfirmees())
+                .reservationsAnnulees(stats.getReservationsAnnulees())
+                .reservationsEnAttente(stats.getReservationsEnAttente())
+                .reservationsEmbarquees(stats.getReservationsEmbarquees())
+                .totalPlacesVendues(stats.getTotalPlacesVendues())
+                .chiffreAffairesTotal(stats.getChiffreAffairesTotal())
+                .tauxConversion(stats.getTauxConversion())
+                .build();
+
+        return ResponseEntity.ok(enrichi);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // PATCH /api/bookings/{id}/cancel — Annuler une réservation
+    // UC-B4 : la postcondition "Remboursement initié" est maintenant assurée
+    // par ReservationService qui publie booking.refund.requested si PAYEE.
     // ─────────────────────────────────────────────────────────────────────────
 
     @PatchMapping("/{id}/cancel")
@@ -120,13 +143,41 @@ public class BookingController {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PATCH /api/bookings/{id}/confirm
-    // Guichetier saisit le numéro unique du billet électronique
-    // → génère et imprime le billet d'embarquement
+    // CORRECTION S6 — PATCH /api/bookings/{id}/confirm
+    //
+    // Ancienne sémantique : conversion billet électronique → embarquement
+    // (confusionnait deux opérations distinctes).
+    //
+    // Nouvelle sémantique conforme au document S6 :
+    //   "Confirmer une réservation (paiement en espèces sur site)"
+    //   Acteurs : Guichetier / Manager
+    //   Précondition : Réservation en statut EN_ATTENTE
+    //   Postcondition : Réservation confirmée. Billet d'embarquement généré.
+    //
+    // La conversion billet électronique reste disponible via /convert-ticket.
     // ─────────────────────────────────────────────────────────────────────────
 
     @PatchMapping("/{id}/confirm")
-    public ResponseEntity<TicketResponse> confirmer(
+    public ResponseEntity<TicketResponse> confirmerPaiementEspeces(
+            @PathVariable Long id,
+            @Valid @RequestBody ConfirmerPaiementEspecesRequest request) {
+
+        TicketEmbarquement ticket = reservationService.confirmerPaiementEspeces(
+                id,
+                request.getIdGuichetier(),
+                request.getMontantEncaisse()
+        );
+        return ResponseEntity.ok(toTicketResponse(ticket, "EMB"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PATCH /api/bookings/{id}/convert-ticket
+    // Conversion billet électronique → billet d'embarquement au guichet
+    // (déplacé depuis /confirm pour clarifier la sémantique)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @PatchMapping("/{id}/convert-ticket")
+    public ResponseEntity<TicketResponse> convertirBilletElectronique(
             @PathVariable Long id,
             @Valid @RequestBody ConfirmerReservationRequest request) {
 
@@ -161,16 +212,13 @@ public class BookingController {
 
     // ─────────────────────────────────────────────────────────────────────────
     // GET /api/bookings/{id}/ticket/pdf — Télécharger le billet PDF
-    // Uniquement pour les billets électroniques (réservation WEB)
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/{id}/ticket/pdf")
     public ResponseEntity<byte[]> telechargerBilletPdf(@PathVariable Long id) {
 
-        // 1. Récupérer la réservation
         Reservation reservation = reservationService.getReservation(id);
 
-        // 2. Trouver le billet électronique
         TicketElectronique ticketElec = reservation.getTickets()
                 .stream()
                 .filter(t -> t instanceof TicketElectronique)
@@ -180,7 +228,6 @@ public class BookingController {
                         "Aucun billet électronique trouvé pour la réservation "
                         + id + ". Ce billet est peut-être un billet guichet."));
 
-        // 3. Lire le PDF depuis le disque
         try {
             byte[] pdf = pdfGeneratorService.lirePdf(ticketElec.getNumeroTicket());
 
@@ -206,6 +253,41 @@ public class BookingController {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // NOUVEAU UC-B7 — POST /api/bookings/depart/valider-billet
+    // Valider un billet au moment de l'embarquement
+    // Acteur : Manager local
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @PostMapping("/depart/valider-billet")
+    public ResponseEntity<TicketResponse> validerBilletDepart(
+            @Valid @RequestBody ValiderBilletDepartRequest request) {
+
+        Ticket ticket = reservationService.validerBilletDepart(
+                request.getNumeroBillet(),
+                request.getIdManager()
+        );
+        String type = (ticket instanceof TicketElectronique) ? "WEB" : "EMB";
+        return ResponseEntity.ok(toTicketResponse(ticket, type));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // NOUVEAU UC-B7 — POST /api/bookings/depart/cloturer
+    // Clôturer le départ d'un voyage (après validation de tous les billets)
+    // Acteur : Manager local
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @PostMapping("/depart/cloturer")
+    public ResponseEntity<Map<String, Object>> cloturerDepart(
+            @RequestParam Long idVoyage,
+            @RequestParam Long idManager) {
+
+        Map<String, Object> resultat =
+                reservationService.cloturerDepart(idVoyage, idManager);
+
+        return ResponseEntity.ok(resultat);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // GET /api/bookings/fidelite/{idVoyageur} — Compteur fidélité
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -214,12 +296,9 @@ public class BookingController {
             @PathVariable Long idVoyageur,
             @RequestParam String codeAgence) {
 
-        int     nombreVoyages   = fideliteService.getNombreVoyages(
-                idVoyageur, codeAgence);
-        boolean voyageGratuit   = fideliteService.estVoyageGratuit(
-                idVoyageur, codeAgence);
-        int     voyagesRestants = voyageGratuit ? 0
-                : 10 - (nombreVoyages % 10);
+        int nombreVoyages   = fideliteService.getNombreVoyages(idVoyageur, codeAgence);
+        boolean voyageGratuit = fideliteService.estVoyageGratuit(idVoyageur, codeAgence);
+        int voyagesRestants = voyageGratuit ? 0 : 10 - (nombreVoyages % 10);
 
         return ResponseEntity.ok(Map.of(
                 "idVoyageur",      idVoyageur,
@@ -227,7 +306,7 @@ public class BookingController {
                 "nombreVoyages",   nombreVoyages,
                 "voyageGratuit",   voyageGratuit,
                 "voyagesRestants", voyagesRestants,
-                "message",         voyageGratuit
+                "message", voyageGratuit
                         ? "Votre prochain voyage est GRATUIT !"
                         : "Encore " + voyagesRestants
                           + " voyage(s) pour obtenir un voyage gratuit."
