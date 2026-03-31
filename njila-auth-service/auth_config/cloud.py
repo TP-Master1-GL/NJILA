@@ -13,7 +13,7 @@ def fetch_remote_config() -> dict:
     url = f"{CONFIG_SERVER_URL}/{APP_NAME}/{PROFILE}"
     sys.stderr.write(f"[CONFIG] Connexion a njila-conf-service : {url}\n")
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=50)
         response.raise_for_status()
         properties = {}
         for source in response.json().get("propertySources", []):

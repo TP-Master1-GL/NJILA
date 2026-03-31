@@ -11,8 +11,6 @@ PROFILE           = "default"
 
 def fetch_remote_config() -> dict:
     """
-    Appelle njila-conf-service (Spring Cloud Config) et retourne
-    toutes les properties sous forme de dict plat.
 
     URL appelée : http://localhost:8080/njila-auth-service/default
     """
@@ -21,12 +19,10 @@ def fetch_remote_config() -> dict:
     print(f"[CONFIG] Connexion à njila-conf-service - {url}")
 
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=20)
         response.raise_for_status()
         data = response.json()
 
-        # Spring Cloud Config retourne :
-        # { "propertySources": [ { "source": { "key": "value" } } ] }
         properties = {}
         for source in data.get("propertySources", []):
             properties.update(source.get("source", {}))
