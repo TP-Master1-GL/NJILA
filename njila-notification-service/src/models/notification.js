@@ -1,9 +1,9 @@
 const { DataTypes } = require('sequelize');
 const { getSequelize } = require('../config/database');
 
-const sequelize = getSequelize(); // Récupère l'instance
+const sequelize = getSequelize(); 
 
-// L'erreur venait du fait que sequelize était vide ici
+
 const Notification = sequelize.define('Notification', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     userId: { type: DataTypes.STRING, allowNull: false },

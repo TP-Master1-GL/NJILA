@@ -46,7 +46,7 @@ class PushStrategy extends NotificationStrategy {
                 console.warn('[STRATEGY-PUSH] L\'abonnement n\'est plus valide.');
             }
             
-            throw error; // On relance l'erreur pour que le Service la gère (statut FAILED)
+            throw error; 
         }
     }
 }

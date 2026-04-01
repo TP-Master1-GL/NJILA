@@ -1,15 +1,15 @@
 const { Notification } = require('../models/notification');
-const db = require('../config/db'); // Ton instance Sequelize
+const db = require('../config/database'); // Ton instance Sequelize
 
 class NotificationController {
     
     // GET /api/notifications/health
     async healthCheck(req, res) {
         try {
-            // 1. Vérifier la base de données
+            // Vérifier la base de données
             await db.authenticate();
             
-            // 2. Récupérer des stats rapides
+            //  Récupérer des stats rapides
             const totalSent = await Notification.count({ where: { status: 'SENT' } });
             const totalFailed = await Notification.count({ where: { status: 'FAILED' } });
 

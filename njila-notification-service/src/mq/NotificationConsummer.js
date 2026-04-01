@@ -1,10 +1,10 @@
 const amqp = require('amqplib');
-const handlers = require('./NotificationHandlers');
+const handlers = require('./NotificationHandler');
 
 class NotificationConsumer {
     constructor() {
         this.rabbitUrl = process.env.RABBITMQ_URL || 'amqp://localhost';
-        this.exchange = 'njila.notification.exchange';// [cite: 36]
+        this.exchange = 'njila.notification.exchange';
         this.queueName = 'njila.notification.main.queue';
     }
 
@@ -13,8 +13,8 @@ class NotificationConsumer {
             const connection = await amqp.connect(this.rabbitUrl);
             const channel = await connection.createChannel();
 
-            await channel.assertExchange(this.exchange, 'topic', { durable: true });// [cite: 33, 36]
-            await channel.assertQueue(this.queueName, { durable: true }); //[cite: 34]
+            await channel.assertExchange(this.exchange, 'topic', { durable: true });
+            await channel.assertQueue(this.queueName, { durable: true }); 
 
             // On s'abonne aux clés définies dans la doc 
             const keys = ['auth.user.welcome', 'auth.password.reset', 'user.profile.updated', 'avis.submitted'];
@@ -31,7 +31,7 @@ class NotificationConsumer {
                     const payload = JSON.parse(msg.content.toString());
 
                     try {
-                        // Dispatching vers le bon handler [cite: 52]
+                        // Dispatching vers le  handler
                         if (routingKey === 'auth.user.welcome') await handlers.handleWelcome(payload);
                         if (routingKey === 'auth.password.reset') await handlers.handlePasswordReset(payload);
                         if (routingKey === 'avis.submitted') await handlers.handleAvisSubmitted(payload);

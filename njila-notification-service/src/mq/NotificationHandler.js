@@ -2,7 +2,7 @@ const NotificationService = require('../services/NotificationService');
 
 class NotificationHandlers {
     
-    // Traitement de : auth.user.welcome [cite: 38, 52]
+    // Traitement de : auth.user.welcome 
     async handleWelcome(payload) {
         const { email, name, surname } = payload;
         
@@ -33,7 +33,7 @@ class NotificationHandlers {
         });
     }
 
-    // Traitement de : auth.password.reset [cite: 38, 14]
+    // Traitement de : auth.password.reset 
     async handlePasswordReset(payload) {
         const { email, name, resetLink } = payload;
 
@@ -63,7 +63,7 @@ class NotificationHandlers {
         });
     }
 
-    // Traitement de : avis.submitted [cite: 42]
+    // Traitement de : avis.submitted 
     async handleAvisSubmitted(payload) {
         const { agenceNom, note, commentaire } = payload;
         
@@ -89,7 +89,7 @@ class NotificationHandlers {
     }
 
     async handleTicketReady(payload) {
-        // C'est ici qu'on envoie le précieux QR Code
+        
         return await NotificationService.sendNotification({
             userId: payload.userId,
             type: 'PUSH',
@@ -126,7 +126,7 @@ class NotificationHandlers {
             userId: payload.userId,
             type: 'PUSH',
             recipient: payload.pushToken,
-            subject: "⚠️Information sur votre voyage",
+            subject: "Information sur votre voyage",
             content: `Le départ de votre bus vers ${payload.destination} est retardé de ${payload.delayMinutes} min suite à ${payload.reason}. Nous nous excusons pour le désagrément.`
         });
     }
