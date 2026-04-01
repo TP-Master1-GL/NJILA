@@ -1,109 +1,56 @@
 require('dotenv').config();
 const express               = require('express');
 const { fetchRemoteConfig } = require('./cloud/configClient');
-const { registerToEureka }  = require('./cloud/eurekaClient');
-const notificationRoutes    = require('./routes/notifications');
-
-// --- AJOUTS POUR LA DB ---
+const notificationRoutes    = require('./routes/NotificationRoutes');
 const { initDatabase }      = require('./config/database');
-// ------------------------------------
+const NotificationConsumer  = require('./mq/NotificationConsumer'); // Import du Consumer
 
 async function bootstrap() {
-    console.log('');
-    console.log('=================================================');
+    console.log('\n=================================================');
     console.log('  NJILA - njila-notification-service');
-    console.log('=================================================');
+    console.log('=================================================\n');
 
     try {
-        // Etape 1 : Fetch config
+        // --- Étape 1 : Lecture de la Configuration ---
         console.log('[START] Etape 1 - Lecture config sur njila-conf-service (8080)...');
         const remoteConfig = await fetchRemoteConfig();
         const PORT = parseInt(remoteConfig['server.port'] || process.env.PORT || 8085);
-        console.log(`[START] Port resolu : ${PORT}`);
+        console.log(`[START] Port résolu : ${PORT}`);
 
-        // Etape 2 : Initialisation de la Base de Données (PostgreSQL)
+        // --- Étape 2 : Initialisation de la Base de Données ---
         console.log('[START] Etape 2 - Initialisation de la base de données...');
         const dbInstance = initDatabase(); 
-
-        // !!! IMPORTANT !!! 
-        // On charge le modèle explicitement ici pour que Sequelize le connaisse 
-        // avant de lancer la synchronisation.
+        
+        // Chargement du modèle pour Sequelize
         require('./models/notification'); 
 
         try {
-            // On force la création de la table
             await dbInstance.sync({ alter: true }); 
-            console.log('✅ Base de données synchronisée (Table créée proprement).');
-
-            // VERIFICATION REELLE DANS POSTGRES
-            const [results] = await dbInstance.query(
-                "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
-            );
-            console.log('Tables réellement présentes dans Postgres :', results.map(r => r.tablename));
-            
+            console.log('✅ Base de données synchronisée.');
         } catch (error) {
             console.error('❌ Erreur de synchro DB :', error.message);
         }
 
-        // Etape 3 : Enregistrement Eureka
-        // console.log('[START] Etape 3 - Enregistrement sur njila-registry-service (8761)...');
-        // registerToEureka(PORT);
+        // --- Étape 3 : Lancement de RabbitMQ (Le "Worker") ---
+        console.log('[START] Etape 3 - Connexion au Broker RabbitMQ...');
+        // On lance l'écoute des queues (Welcome, Reset, Booking, Fleet, etc.)
+        NotificationConsumer.start().catch(err => {
+            console.error('❌ Impossible de démarrer le Consumer RabbitMQ :', err.message);
+        });
 
-        // Etape 4 : Serveur Express
+        // --- Étape 4 : Serveur Express (API Rest) ---
         const app = express();
         app.use(express.json());
+
+        // Branchement des routes : /api/notifications/health et /api/notifications/history/:userId
         app.use('/api/notifications', notificationRoutes);
 
-        app.listen(PORT, async () => {
-            console.log(`[START] njila-notification-service démarré sur le port ${PORT}`);
-            console.log(`[START] Health : http://localhost:${PORT}/api/notifications/health`);
-
-            // --- TEST AUTOMATIQUE AU DÉMARRAGE ---
-           setTimeout(async () => {
-    console.log('\n--- 🧪 DÉBUT DU TEST GLOBAL ---');
-    const NotificationService = require('./services/NotificationService');
-
-    // 1. Test de l'Email
-    try {
-        console.log('[TEST] Envoi Email...');
-        await NotificationService.sendNotification({
-            userId: "USER_001",
-            type: "EMAIL",
-            recipient: "maffo.ngaleu@gmail.com",
-            subject: "Test Architecture NJILA",
-            content: "L'héritage des stratégies fonctionne !"
-        });
-        console.log('✅ Email traité avec succès.');
-    } catch (e) {
-        console.error('❌ Échec du test Email :', e.message);
-    }
-
-    // 2. Test du Push
-    try {
-        console.log('\n[TEST] Envoi Push (Simulation)...');
-        // Note: Le recipient doit être un JSON de souscription valide pour web-push
-        // Ici on met un faux JSON pour tester si la stratégie PUSH est bien appelée
-        const fakeSubscription = JSON.stringify({
-            endpoint: "https://fcm.googleapis.com/fcm/send/fake-token",
-            keys: { p256dh: "abc", auth: "123" }
-        });
-
-        await NotificationService.sendNotification({
-            userId: "USER_001",
-            type: "PUSH",
-            recipient: fakeSubscription,
-            subject: "Alerte NJILA",
-            content: "Ceci est un test de notification Push."
-        });
-        console.log('✅ Push traité avec succès.');
-    } catch (e) {
-        // C'est normal si ça échoue ici (car le token est faux), 
-        // mais on veut voir si le statut passe bien en "FAILED" en base de données !
-        console.log('ℹ️ Le Push a échoué comme prévu (Token invalide), vérifions la DB.');
-    }
-
-    console.log('--- 🧪 FIN DU TEST GLOBAL ---\n');
-}, 5000);// On laisse 5 secondes pour être large
+        app.listen(PORT, () => {
+            console.log(`\n🚀 SERVICE OPÉRATIONNEL`);
+            console.log(`📡 Port      : ${PORT}`);
+            console.log(`🏥 Health    : http://localhost:${PORT}/api/notifications/health`);
+            console.log(`📜 Historique: http://localhost:${PORT}/api/notifications/history/ID_USER`);
+            console.log(`\n[*] En attente d'événements sur njila.notification.exchange...\n`);
         });
 
     } catch (err) {

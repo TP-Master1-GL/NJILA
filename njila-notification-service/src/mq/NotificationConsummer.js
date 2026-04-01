@@ -1,18 +1,11 @@
 const amqp = require('amqplib');
-const NotificationService = require('../services/NotificationService');
+const handlers = require('./NotificationHandlers');
 
 class NotificationConsumer {
     constructor() {
         this.rabbitUrl = process.env.RABBITMQ_URL || 'amqp://localhost';
-        this.exchange = 'njila.notification.exchange'; // Défini dans la doc 
-        
-        // Les routing keys que nous devons intercepter
-        this.routingKeys = [
-            'auth.user.welcome',
-            'auth.password.reset',
-            'user.profile.updated',
-            'avis.submitted'
-        ];
+        this.exchange = 'njila.notification.exchange';// [cite: 36]
+        this.queueName = 'njila.notification.main.queue';
     }
 
     async start() {
@@ -20,61 +13,48 @@ class NotificationConsumer {
             const connection = await amqp.connect(this.rabbitUrl);
             const channel = await connection.createChannel();
 
-            // Déclaration de l'exchange (Topic comme spécifié) [cite: 33, 36]
-            await channel.assertExchange(this.exchange, 'topic', { durable: true });
+            await channel.assertExchange(this.exchange, 'topic', { durable: true });// [cite: 33, 36]
+            await channel.assertQueue(this.queueName, { durable: true }); //[cite: 34]
 
-            // Création d'une queue unique pour ce service
-            const queueName = 'njila.notification.main.queue';
-            await channel.assertQueue(queueName, { durable: true });
-
-            console.log(`[*] Connexion RabbitMQ NJILA établie.`);
-
-            // On lie la queue à chaque routing key
-            for (const key of this.routingKeys) {
-                await channel.bindQueue(queueName, this.exchange, key);
-                console.log(`   -> Lié à la clé : ${key}`);
+            // On s'abonne aux clés définies dans la doc 
+            const keys = ['auth.user.welcome', 'auth.password.reset', 'user.profile.updated', 'avis.submitted'];
+            
+            for (const key of keys) {
+                await channel.bindQueue(this.queueName, this.exchange, key);
             }
 
-            channel.consume(queueName, async (msg) => {
+            console.log(`[*] Worker NJILA prêt. Écoute sur ${this.exchange}`);
+
+            channel.consume(this.queueName, async (msg) => {
                 if (msg !== null) {
                     const routingKey = msg.fields.routingKey;
                     const payload = JSON.parse(msg.content.toString());
-                    
-                    console.log(`[MQ] Nouveau message [${routingKey}]`);
-
-                    // On adapte le payload pour notre NotificationService
-                    const notificationData = {
-                        userId: payload.userId || 'SYSTEM',
-                        type: payload.type === 'sms' ? 'SMS' : 'EMAIL', // La doc mentionne surtout des emails
-                        recipient: payload.email,
-                        subject: this.getSubjectByKey(routingKey, payload),
-                        content: payload.message || payload.resetLink || `Notification NJILA: ${routingKey}`
-                    };
 
                     try {
-                        await NotificationService.sendNotification(notificationData);
+                        // Dispatching vers le bon handler [cite: 52]
+                        if (routingKey === 'auth.user.welcome') await handlers.handleWelcome(payload);
+                        if (routingKey === 'auth.password.reset') await handlers.handlePasswordReset(payload);
+                        if (routingKey === 'avis.submitted') await handlers.handleAvisSubmitted(payload);
+                        if (routingKey === 'booking.confirmed') await handlers.handleBookingConfirmed(payload);
+                        if (routingKey === 'booking.ticket.ready') await handlers.handleTicketReady(payload);
+                        if (routingKey === 'payment.success') await handlers.handlePaymentSuccess(payload);
+                        if (routingKey === 'trip.departure.reminder') {
+                            await handlers.handleTripReminder(payload);
+                        }
+                        if (routingKey === 'trip.delay.alert') {
+                            await handlers.handleTripDelay(payload);
+                        }
                         channel.ack(msg);
-                    } catch (error) {
-                        console.error(`[MQ] Erreur de traitement :`, error.message);
+                    } catch (err) {
+                        console.error(`[MQ] Erreur : ${err.message}`);
                         channel.nack(msg, false, false); 
                     }
                 }
             });
         } catch (error) {
-            console.error("[MQ] Erreur RabbitMQ :", error.message);
+            console.error("[MQ] Connexion échouée", error);
             setTimeout(() => this.start(), 5000);
         }
-    }
-
-    // Utilitaire pour générer un sujet en fonction de la provenance [cite: 38, 42]
-    getSubjectByKey(key, payload) {
-        const subjects = {
-            'auth.user.welcome': `Bienvenue chez NJILA, ${payload.name} !`,
-            'auth.password.reset': "Réinitialisation de votre mot de passe",
-            'user.profile.updated': "Votre profil a été mis à jour",
-            'avis.submitted': `Nouvel avis sur l'agence ${payload.agenceNom}`
-        };
-        return subjects[key] || "Notification NJILA";
     }
 }
 
