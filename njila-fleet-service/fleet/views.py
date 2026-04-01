@@ -235,12 +235,17 @@ class BusListCreateView(generics.ListCreateAPIView):
     GET: Liste des bus (Manager Local ou supérieur)
     POST: Ajouter un bus (Manager Local ou supérieur)
     """
-    permission_classes = [IsManagerLocal]
+    # permission_classes = [IsManagerLocal]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['etat', 'Id_agence']
     search_fields = ['immatriculation', 'modele']
     ordering_fields = ['created_at', 'immatriculation', 'capacite']
     
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsManagerLocal()]
+        return [AllowAny()]
+
     def get_queryset(self):
         queryset = Bus.objects.all()
         agence_id = self.request.query_params.get('agence_id')
@@ -280,8 +285,13 @@ class BusRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = Bus.objects.all()
     lookup_field = 'IdBus'
-    permission_classes = [IsManagerLocal]
+    # permission_classes = [IsManagerLocal]
     
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsManagerLocal()]
+
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return BusCreateUpdateSerializer
@@ -330,8 +340,7 @@ class BusStatusUpdateView(APIView):
 
 
 class BusStatsView(APIView):
-    """GET: Statistiques sur les bus (Manager Local ou supérieur)"""
-    permission_classes = [IsManagerLocal]
+    permission_classes = [AllowAny]
     
     def get(self, request):
         agence_id = request.query_params.get('agence_id')
@@ -357,9 +366,9 @@ class BusStatsView(APIView):
 
 
 class BusDisponiblesListView(generics.ListAPIView):
-    """GET: Liste des bus disponibles (Manager Local ou supérieur)"""
+
     serializer_class = BusListSerializer
-    permission_classes = [IsManagerLocal]
+    permission_classes = [AllowAny]
     
     def get_queryset(self):
         queryset = Bus.objects.filter(etat=StatusBus.DISPONIBLE)
@@ -372,13 +381,16 @@ class BusDisponiblesListView(generics.ListAPIView):
 # ============ CHAUFFEURS ============
 
 class ChauffeurListCreateView(generics.ListCreateAPIView):
-    """GET: Liste des chauffeurs | POST: Ajouter un chauffeur (Manager Local ou supérieur)"""
-    permission_classes = [IsManagerLocal]
+    # permission_classes = [IsManagerLocal]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['est_disponible', 'Id_agence']
     search_fields = ['name', 'surname', 'email', 'numero_permis']
     ordering_fields = ['name', 'date_embauche']
     
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsManagerLocal()]
+        return [AllowAny()]
     def get_queryset(self):
         queryset = Chauffeur.objects.all()
         agence_id = self.request.query_params.get('agence_id')
@@ -417,8 +429,12 @@ class ChauffeurDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Chauffeur.objects.all()
     lookup_field = 'id_chauffeur'
     serializer_class = ChauffeurSerializer
-    permission_classes = [IsManagerLocal]
+    # permission_classes = [IsManagerLocal]
     
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsManagerLocal()]
     def perform_destroy(self, instance):
         if instance.voyages.filter(status__in=[StatusVoyage.PROGRAMME, StatusVoyage.EN_COURS]).exists():
             from rest_framework.exceptions import ValidationError

@@ -19,27 +19,33 @@ class JWTAuthenticationMiddleware:
             r'^/api/health/?$',
             r'^/api/swagger/?.*$',
             r'^/api/redoc/?.*$',
-            r'^/api/agences/?$',           # GET seulement
-            r'^/api/agences/[^/]+/?$',      # GET seulement
-            r'^/api/filiales/?$',           # GET seulement
-            r'^/api/filiales/[^/]+/?$',     # GET seulement
+            r'^/api/agences/?$',           
+            r'^/api/agences/[^/]+/?$',     
+            r'^/api/filiales/?$',           
+            r'^/api/filiales/[^/]+/?$',     
             r'^/api/filiales/[^/]+/stats/?$',
-            r'^/api/trajets/?$',            # GET seulement
-            r'^/api/trajets/[^/]+/?$',      # GET seulement
-            r'^/api/voyages/?$',            # GET seulement
+            r'^/api/trajets/?$',            
+            r'^/api/trajets/[^/]+/?$',      
+            r'^/api/voyages/?$',            
             r'^/api/voyages/recherche/?$',
-            r'^/api/voyages/[^/]+/?$',      # GET seulement
-            r'^/api/annonces/?$',           # GET seulement
-            r'^/api/annonces/[^/]+/?$',     # GET seulement
-            r'^/api/avis/?$',               # GET seulement
-            r'^/api/avis/[^/]+/?$',         # GET seulement
+            r'^/api/voyages/[^/]+/?$',      
+            r'^/api/annonces/?$',           
+            r'^/api/annonces/[^/]+/?$',     
+            r'^/api/avis/?$',              
+            r'^/api/avis/[^/]+/?$',         
             r'^/api/avis/voyage/[^/]+/stats/?$',
+            r'^/api/bus/?$',                # GET public
+            r'^/api/bus/[^/]+/?$',          # GET public
+            r'^/api/bus/[^/]+/etat/?$',     # GET public
+            r'^/api/bus/disponibles/?$',    # GET public
+            r'^/api/stats/?$',              # GET public
         ]
-        
         # Vérifier si le chemin est public
         is_public = False
         current_path = request.path
         
+        # print(f"DEBUG: Path={current_path}, Method={request.method}")
+
         for pattern in public_paths:
             if re.match(pattern, current_path):
                 # Pour les endpoints qui sont publics uniquement en GET

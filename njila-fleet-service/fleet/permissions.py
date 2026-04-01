@@ -1,4 +1,3 @@
-# fleet/permissions.py
 from rest_framework.permissions import BasePermission
 import requests
 from django.conf import settings
