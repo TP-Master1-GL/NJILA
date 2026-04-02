@@ -2,6 +2,7 @@ package com.njila.njila_user_service.service.impl;
 
 import com.njila.njila_user_service.dto.request.AvisRequest;
 import com.njila.njila_user_service.dto.request.CreateStaffRequest;
+import com.njila.njila_user_service.dto.request.UpdatePhotoRequest;
 import com.njila.njila_user_service.dto.request.UpdateProfileRequest;
 import com.njila.njila_user_service.dto.response.AvisResponse;
 import com.njila.njila_user_service.dto.response.UserProfileResponse;
@@ -157,6 +158,43 @@ public class UserServiceImpl implements UserService, IUserSubject {
         return toResponse(profile);
     }
 
+    // ── UPDATE PHOTO ────────────────────────────────────────────────────────
+
+    @Override
+    @CacheEvict(value = "profiles", key = "#userId.toString()")
+    @Transactional
+    public UserProfileResponse updatePhoto(
+        UUID userId, UpdatePhotoRequest request, JwtClaims caller
+    ) {
+        roleManager.assertCanUpdateProfile(caller, userId);
+
+        UserProfile profile = userRepository.findById(userId)
+            .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
+
+        String oldPhoto = profile.getPhotoProfil();
+        String newPhoto = request.getPhotoProfil();
+
+        if (newPhoto != null && !newPhoto.equals(oldPhoto)) {
+            profile.setPhotoProfil(newPhoto);
+            userRepository.save(profile);
+
+            // Notifier les observateurs
+            notifyObservers(UserEvent.of(
+                UserEventType.PHOTO_MISE_A_JOUR,
+                caller != null ? caller.getUserId() : null,
+                userId,
+                Map.of("userId", userId.toString(), "photoUrl", newPhoto)
+            ));
+
+            // Publier l'événement spécifique pour auth-service
+            eventPublisher.publishPhotoUpdated(userId.toString(), newPhoto);
+
+            log.info("[SERVICE] Photo mise à jour | userId={}", userId);
+        }
+
+        return toResponse(profile);
+    }
+
     // ── DELETE PROFILE ──────────────────────────────────────────────────────
 
     /**
@@ -200,8 +238,9 @@ public class UserServiceImpl implements UserService, IUserSubject {
      * Diagramme activité creer_compte_staff :
      * 1. Vérifier token Manager
      * 2. Vérifier email (→ 409 si existant)
-     * 3. Publier staff.created sur njila.user.exchange
-     * 4. Retourner 201 (création profil asynchrone via consumer)
+     * 3. Vérifier existence agence et filiale
+     * 4. Publier staff.created sur njila.user.exchange
+     * 5. Retourner 201 (création profil asynchrone via consumer)
      */
     @Override
     @Transactional

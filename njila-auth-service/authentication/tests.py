@@ -1,10 +1,10 @@
 """
-Tests unitaires — njila-auth-service v1.2
+Tests unitaires — njila-auth-service v1.3
 ==========================================
-20 cas de tests. Placez ce fichier dans authentication/tests_auth_service_v2.py
+30+ cas de tests. Placez ce fichier dans authentication/tests_auth_service_v2.py
 
 Exécution :
-  python manage.py test authentication.tests_auth_service_v2 --verbosity=2
+  python manage.py test authentication.tests --verbosity=2
 """
 
 import uuid
@@ -36,7 +36,29 @@ from authentication.services.auth_service import (
     TokenInvalidError,
 )
 from authentication.services.jwt_service import JwtTokenService
-
+from authentication.middleware.auth_middleware import (
+    NjilaJWTAuthentication,
+    IsAdministrateur,
+    IsManagerGlobal,
+    IsManagerLocal,
+    IsGuichetier,
+    IsInternalService,
+    require_roles,
+    AuthenticatedUser,
+)
+from authentication.serializers.auth_serializers import (
+    RegisterSerializer,
+    LoginSerializer,
+    RefreshSerializer,
+    ForgotPasswordSerializer,
+    ResetPasswordSerializer,
+    ValidateTokenSerializer,
+    AccountStatusSerializer,
+    PhotoUpdateSerializer,
+    ProfileUpdateSerializer,
+    UserMeSerializer,
+)
+from authentication.services.jwt_service import TokenPayload
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -799,3 +821,777 @@ class TC20_ResetPasswordSingleUse(TestCase):
     def test_refresh_token_supprime(self):
         self.svc.confirm_password_reset(self.token.token, "NewPass456!")
         self.svc._cache.delete_refresh_token.assert_called_once()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-21 — Register : validation des champs name et surname
+# ══════════════════════════════════════════════════════════════════════════════
+class TC21_RegisterNameSurnameValidation(TestCase):
+    """
+    Cas    : Vérification que name et surname sont obligatoires et non vides.
+    Entrée : name vide ou absent, surname vide ou absent.
+    Sortie : ValidationError avec messages appropriés.
+    """
+    def test_name_obligatoire(self):
+        serializer = RegisterSerializer(data={
+            "email": "test@njila.cm",
+            "password": "Pass1234!",
+            "surname": "Dupont",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("name", serializer.errors)
+
+    def test_surname_obligatoire(self):
+        serializer = RegisterSerializer(data={
+            "email": "test@njila.cm",
+            "password": "Pass1234!",
+            "name": "Jean",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("surname", serializer.errors)
+
+    def test_name_vide_invalide(self):
+        serializer = RegisterSerializer(data={
+            "email": "test@njila.cm",
+            "password": "Pass1234!",
+            "name": "   ",
+            "surname": "Dupont",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("name", serializer.errors)
+
+    def test_surname_vide_invalide(self):
+        serializer = RegisterSerializer(data={
+            "email": "test@njila.cm",
+            "password": "Pass1234!",
+            "name": "Jean",
+            "surname": "   ",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("surname", serializer.errors)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-22 — Register : validation du mot de passe (longueur min 8)
+# ══════════════════════════════════════════════════════════════════════════════
+class TC22_RegisterPasswordValidation(TestCase):
+    """
+    Cas    : Le mot de passe doit avoir au moins 8 caractères.
+    Entrée : password avec moins de 8 caractères.
+    Sortie : ValidationError.
+    """
+    def test_password_trop_court(self):
+        serializer = RegisterSerializer(data={
+            "email": "test@njila.cm",
+            "password": "short",
+            "name": "Jean",
+            "surname": "Dupont",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("password", serializer.errors)
+
+    def test_password_8_caracteres_valide(self):
+        serializer = RegisterSerializer(data={
+            "email": "test@njila.cm",
+            "password": "12345678",
+            "name": "Jean",
+            "surname": "Dupont",
+        })
+        self.assertTrue(serializer.is_valid())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-23 — ProfileUpdateSerializer : validation des champs optionnels
+# ══════════════════════════════════════════════════════════════════════════════
+class TC23_ProfileUpdateSerializerTest(TestCase):
+    """
+    Cas    : Test du sérialiseur de mise à jour de profil.
+    """
+    def test_update_partiel_valide(self):
+        serializer = ProfileUpdateSerializer(data={
+            "name": "NouveauPrenom",
+        })
+        self.assertTrue(serializer.is_valid())
+
+    def test_name_vide_invalide(self):
+        serializer = ProfileUpdateSerializer(data={
+            "name": "   ",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("name", serializer.errors)
+
+    def test_surname_vide_invalide(self):
+        serializer = ProfileUpdateSerializer(data={
+            "surname": "   ",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("surname", serializer.errors)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-24 — PhotoUpdateSerializer : validation URL HTTPS
+# ══════════════════════════════════════════════════════════════════════════════
+class TC24_PhotoUpdateSerializerTest(TestCase):
+    """
+    Cas    : L'URL de la photo doit utiliser HTTPS.
+    """
+    def test_url_https_valide(self):
+        serializer = PhotoUpdateSerializer(data={
+            "photo_url": "https://cdn.njila.cm/photo.jpg"
+        })
+        self.assertTrue(serializer.is_valid())
+
+    def test_url_http_invalide(self):
+        serializer = PhotoUpdateSerializer(data={
+            "photo_url": "http://cdn.njila.cm/photo.jpg"
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("photo_url", serializer.errors)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-25 — ResetPasswordSerializer : validation mot de passe
+# ══════════════════════════════════════════════════════════════════════════════
+class TC25_ResetPasswordSerializerTest(TestCase):
+    """
+    Cas    : Le nouveau mot de passe doit avoir au moins 8 caractères.
+    """
+    def test_new_password_trop_court(self):
+        serializer = ResetPasswordSerializer(data={
+            "token": "valid_token",
+            "new_password": "short",
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("new_password", serializer.errors)
+
+    def test_new_password_valide(self):
+        serializer = ResetPasswordSerializer(data={
+            "token": "valid_token",
+            "new_password": "LongPassword123!",
+        })
+        self.assertTrue(serializer.is_valid())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-26 — AuthenticatedUser : méthodes et propriétés
+# ══════════════════════════════════════════════════════════════════════════════
+class TC26_AuthenticatedUserTest(TestCase):
+    """
+    Cas    : Test de la classe AuthenticatedUser (auth_middleware).
+    """
+    def test_authenticated_user_creation(self):
+        from authentication.services.jwt_service import TokenPayload
+        payload = TokenPayload(
+            user_id="123",
+            role=Role.ADMINISTRATEUR,
+            session_id="session_123",
+            filiale_id="filiale_1",
+            agence_id="agence_1",
+        )
+        user = AuthenticatedUser(payload)
+        self.assertEqual(user.id, "123")
+        self.assertEqual(user.role, Role.ADMINISTRATEUR)
+        self.assertEqual(user.session_id, "session_123")
+        self.assertEqual(user.filiale_id, "filiale_1")
+        self.assertEqual(user.agence_id, "agence_1")
+        self.assertTrue(user.is_authenticated)
+        self.assertFalse(user.is_anonymous)
+
+    def test_has_role_method(self):
+        from authentication.services.jwt_service import TokenPayload
+        payload = TokenPayload(
+            user_id="123",
+            role=Role.MANAGER_GLOBAL,
+            session_id="session_123",
+        )
+        user = AuthenticatedUser(payload)
+        self.assertTrue(user.has_role(Role.MANAGER_GLOBAL))
+        self.assertTrue(user.has_role(Role.MANAGER_GLOBAL, Role.ADMINISTRATEUR))
+        self.assertFalse(user.has_role(Role.ADMINISTRATEUR))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-27 — Permission classes RBAC
+# ══════════════════════════════════════════════════════════════════════════════
+class TC27_PermissionClassesTest(TestCase):
+    """
+    Cas    : Test des classes de permission RBAC.
+    """
+    def test_is_administrateur(self):
+        from authentication.middleware.auth_middleware import IsAdministrateur
+        from authentication.services.jwt_service import TokenPayload
+
+        admin_user = AuthenticatedUser(TokenPayload(
+            user_id="1", role=Role.ADMINISTRATEUR, session_id="s1"
+        ))
+        manager_user = AuthenticatedUser(TokenPayload(
+            user_id="2", role=Role.MANAGER_GLOBAL, session_id="s2"
+        ))
+
+        request_admin = MagicMock()
+        request_admin.user = admin_user
+        request_manager = MagicMock()
+        request_manager.user = manager_user
+
+        perm = IsAdministrateur()
+        self.assertTrue(perm.has_permission(request_admin, None))
+        self.assertFalse(perm.has_permission(request_manager, None))
+
+    def test_is_manager_global(self):
+        from authentication.middleware.auth_middleware import IsManagerGlobal
+
+        admin_user = AuthenticatedUser(TokenPayload(
+            user_id="1", role=Role.ADMINISTRATEUR, session_id="s1"
+        ))
+        manager_user = AuthenticatedUser(TokenPayload(
+            user_id="2", role=Role.MANAGER_GLOBAL, session_id="s2"
+        ))
+        local_user = AuthenticatedUser(TokenPayload(
+            user_id="3", role=Role.MANAGER_LOCAL, session_id="s3"
+        ))
+
+        request_admin = MagicMock()
+        request_admin.user = admin_user
+        request_manager = MagicMock()
+        request_manager.user = manager_user
+        request_local = MagicMock()
+        request_local.user = local_user
+
+        perm = IsManagerGlobal()
+        self.assertTrue(perm.has_permission(request_admin, None))
+        self.assertTrue(perm.has_permission(request_manager, None))
+        self.assertFalse(perm.has_permission(request_local, None))
+
+    def test_is_manager_local(self):
+        from authentication.middleware.auth_middleware import IsManagerLocal
+
+        admin_user = AuthenticatedUser(TokenPayload(
+            user_id="1", role=Role.ADMINISTRATEUR, session_id="s1"
+        ))
+        manager_global = AuthenticatedUser(TokenPayload(
+            user_id="2", role=Role.MANAGER_GLOBAL, session_id="s2"
+        ))
+        manager_local = AuthenticatedUser(TokenPayload(
+            user_id="3", role=Role.MANAGER_LOCAL, session_id="s3"
+        ))
+        guichetier = AuthenticatedUser(TokenPayload(
+            user_id="4", role=Role.GUICHETIER, session_id="s4"
+        ))
+
+        perm = IsManagerLocal()
+        request = MagicMock()
+        for user in [admin_user, manager_global, manager_local]:
+            request.user = user
+            self.assertTrue(perm.has_permission(request, None))
+        request.user = guichetier
+        self.assertFalse(perm.has_permission(request, None))
+
+    def test_is_guichetier(self):
+        from authentication.middleware.auth_middleware import IsGuichetier
+
+        guichetier = AuthenticatedUser(TokenPayload(
+            user_id="1", role=Role.GUICHETIER, session_id="s1"
+        ))
+        manager = AuthenticatedUser(TokenPayload(
+            user_id="2", role=Role.MANAGER_LOCAL, session_id="s2"
+        ))
+
+        request_guichetier = MagicMock()
+        request_guichetier.user = guichetier
+        request_manager = MagicMock()
+        request_manager.user = manager
+
+        perm = IsGuichetier()
+        self.assertTrue(perm.has_permission(request_guichetier, None))
+        self.assertFalse(perm.has_permission(request_manager, None))
+
+    def test_is_internal_service(self):
+        from authentication.middleware.auth_middleware import IsInternalService
+        from django.conf import settings
+
+        request_valid = MagicMock()
+        request_valid.META = {"HTTP_X_INTERNAL_TOKEN": getattr(settings, "INTERNAL_SERVICE_TOKEN", "")}
+        request_invalid = MagicMock()
+        request_invalid.META = {"HTTP_X_INTERNAL_TOKEN": "wrong_token"}
+
+        perm = IsInternalService()
+        if getattr(settings, "INTERNAL_SERVICE_TOKEN", ""):
+            self.assertTrue(perm.has_permission(request_valid, None))
+        self.assertFalse(perm.has_permission(request_invalid, None))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-28 — NjilaJWTAuthentication : extraction et validation
+# ══════════════════════════════════════════════════════════════════════════════
+class TC28_NjilaJWTAuthenticationTest(TestCase):
+    """
+    Cas    : Test de l'authentification JWT.
+    """
+    def setUp(self):
+        self.auth = NjilaJWTAuthentication()
+        self.auth._cache = MagicMock()
+        self.auth._cache.is_blacklisted.return_value = False
+        self.auth._cache.session_exists.return_value = True
+
+    def test_extract_token_from_header(self):
+        request = MagicMock()
+        request.META = {"HTTP_AUTHORIZATION": "Bearer valid_token_123"}
+        token = self.auth.extract_token(request)
+        self.assertEqual(token, "valid_token_123")
+
+    def test_extract_token_no_header(self):
+        request = MagicMock()
+        request.META = {}
+        token = self.auth.extract_token(request)
+        self.assertIsNone(token)
+
+    def test_extract_token_invalid_format(self):
+        request = MagicMock()
+        request.META = {"HTTP_AUTHORIZATION": "Basic token"}
+        token = self.auth.extract_token(request)
+        self.assertIsNone(token)
+
+    def test_authenticate_header(self):
+        header = self.auth.authenticate_header(None)
+        self.assertEqual(header, 'Bearer realm="NJILA"')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-29 — JwtTokenService : méthodes utilitaires
+# ══════════════════════════════════════════════════════════════════════════════
+class TC29_JwtTokenServiceUtilsTest(TestCase):
+    """
+    Cas    : Test des méthodes utilitaires du JWT service.
+    """
+    def setUp(self):
+        self.jwt = JwtTokenService()
+        self.payload = JwtTokenService().decode.__self__.__class__
+
+    def test_decode_unverified(self):
+        from authentication.services.jwt_service import TokenPayload
+        payload = TokenPayload(
+            user_id="test_user",
+            role=Role.VOYAGEUR,
+            session_id="session_123",
+        )
+        token = self.jwt.generate(payload)
+        decoded = self.jwt.decode_unverified(token)
+        self.assertIsNotNone(decoded)
+        self.assertEqual(decoded.get("sub"), "test_user")
+
+    def test_get_jti(self):
+        from authentication.services.jwt_service import TokenPayload
+        payload = TokenPayload(
+            user_id="test_user",
+            role=Role.VOYAGEUR,
+            session_id="session_123",
+        )
+        token = self.jwt.generate(payload)
+        jti = self.jwt.get_jti(token)
+        self.assertIsNotNone(jti)
+        self.assertIsInstance(jti, str)
+
+    def test_get_expiry_timestamp(self):
+        from authentication.services.jwt_service import TokenPayload
+        payload = TokenPayload(
+            user_id="test_user",
+            role=Role.VOYAGEUR,
+            session_id="session_123",
+        )
+        token = self.jwt.generate(payload)
+        exp = self.jwt.get_expiry_timestamp(token)
+        self.assertIsNotNone(exp)
+        self.assertIsInstance(exp, int)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-30 — AuthRepository : méthodes CRUD utilisateurs
+# ══════════════════════════════════════════════════════════════════════════════
+class TC30_AuthRepositoryUserMethods(TestCase):
+    """
+    Cas    : Test des méthodes de repository pour les utilisateurs.
+    """
+    def setUp(self):
+        self.repo = AuthRepository()
+        self.user = make_voyageur("repo@njila.cm")
+
+    def test_find_user_by_email(self):
+        found = self.repo.find_user_by_email("repo@njila.cm")
+        self.assertIsNotNone(found)
+        self.assertEqual(found.email, "repo@njila.cm")
+
+    def test_find_user_by_email_not_exists(self):
+        found = self.repo.find_user_by_email("notexists@njila.cm")
+        self.assertIsNone(found)
+
+    def test_find_user_by_id(self):
+        found = self.repo.find_user_by_id(str(self.user.id))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.id, self.user.id)
+
+    def test_find_user_by_id_not_exists(self):
+        found = self.repo.find_user_by_id(str(uuid.uuid4()))
+        self.assertIsNone(found)
+
+    def test_exists_by_email(self):
+        self.assertTrue(self.repo.exists_by_email("repo@njila.cm"))
+        self.assertFalse(self.repo.exists_by_email("notexists@njila.cm"))
+
+    def test_update_last_login(self):
+        old_date = self.user.last_login_at
+        self.repo.update_last_login(self.user)
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.last_login_at)
+        if old_date:
+            self.assertGreater(self.user.last_login_at, old_date)
+
+    def test_delete_user(self):
+        user_id = self.user.id
+        self.repo.delete_user(str(user_id))
+        self.assertFalse(NjilaUser.objects.filter(id=user_id).exists())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-31 — AuthRepository : gestion des sessions
+# ══════════════════════════════════════════════════════════════════════════════
+class TC31_AuthRepositorySessionMethods(TestCase):
+    """
+    Cas    : Test des méthodes de repository pour les sessions.
+    """
+    def setUp(self):
+        self.repo = AuthRepository()
+        self.user = make_voyageur("session@njila.cm")
+        self.session = AuthSession.objects.create(
+            session_id=uuid.uuid4(),
+            user=self.user,
+            access_token="acc_token",
+            refresh_token="ref_token",
+            expires_at=timezone.now() + timedelta(days=7),
+            is_active=True,
+        )
+
+    def test_save_session(self):
+        new_session = AuthSession(
+            session_id=uuid.uuid4(),
+            user=self.user,
+            access_token="new_acc",
+            refresh_token="new_ref",
+            expires_at=timezone.now() + timedelta(days=7),
+            is_active=True,
+        )
+        self.repo.save_session(new_session)
+        self.assertTrue(AuthSession.objects.filter(session_id=new_session.session_id).exists())
+
+    def test_find_session_active(self):
+        found = self.repo.find_session(str(self.session.session_id))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.session_id, self.session.session_id)
+
+    def test_find_session_inactive(self):
+        self.session.is_active = False
+        self.session.save()
+        found = self.repo.find_session(str(self.session.session_id))
+        self.assertIsNone(found)
+
+    def test_invalidate_session(self):
+        self.repo.invalidate_session(str(self.session.session_id))
+        self.session.refresh_from_db()
+        self.assertFalse(self.session.is_active)
+
+    def test_invalidate_all_user_sessions(self):
+        session2 = AuthSession.objects.create(
+            session_id=uuid.uuid4(),
+            user=self.user,
+            access_token="acc2",
+            refresh_token="ref2",
+            expires_at=timezone.now() + timedelta(days=7),
+            is_active=True,
+        )
+        self.repo.invalidate_all(str(self.user.id))
+        self.session.refresh_from_db()
+        session2.refresh_from_db()
+        self.assertFalse(self.session.is_active)
+        self.assertFalse(session2.is_active)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-32 — NjilaUser : méthodes métier
+# ══════════════════════════════════════════════════════════════════════════════
+class TC32_NjilaUserModelMethods(TestCase):
+    """
+    Cas    : Test des méthodes métier du modèle NjilaUser.
+    """
+    def setUp(self):
+        self.user = make_voyageur("model@njila.cm")
+
+    def test_full_name(self):
+        self.user.name = "Jean"
+        self.user.surname = "Dupont"
+        self.assertEqual(self.user.full_name, "Jean Dupont")
+
+    def test_full_name_only_name(self):
+        self.user.name = "Jean"
+        self.user.surname = ""
+        self.assertEqual(self.user.full_name, "Jean")
+
+    def test_full_name_only_surname(self):
+        self.user.name = ""
+        self.user.surname = "Dupont"
+        self.assertEqual(self.user.full_name, "Dupont")
+
+    def test_full_name_fallback_email(self):
+        self.user.name = ""
+        self.user.surname = ""
+        self.assertEqual(self.user.full_name, self.user.email)
+
+    def test_activate(self):
+        self.user.is_active = False
+        self.user.is_verified = False
+        self.user.deactivation_reason = "SOME_REASON"
+        self.user.activate()
+        self.assertTrue(self.user.is_active)
+        self.assertTrue(self.user.is_verified)
+        self.assertIsNone(self.user.deactivation_reason)
+
+    def test_deactivate(self):
+        self.user.deactivate(DeactivationReason.ADMIN_SUSPENDED)
+        self.assertFalse(self.user.is_active)
+        self.assertEqual(self.user.deactivation_reason, DeactivationReason.ADMIN_SUSPENDED)
+
+    def test_is_locked(self):
+        self.user.locked_until = timezone.now() + timedelta(minutes=15)
+        self.assertTrue(self.user.is_locked())
+
+    def test_is_not_locked(self):
+        self.user.locked_until = None
+        self.assertFalse(self.user.is_locked())
+        self.user.locked_until = timezone.now() - timedelta(minutes=15)
+        self.assertFalse(self.user.is_locked())
+
+    def test_increment_failed_attempts(self):
+        self.user.increment_failed_attempts()
+        self.assertEqual(self.user.failed_attempts, 1)
+
+    def test_increment_failed_attempts_locks_after_5(self):
+        for _ in range(5):
+            self.user.increment_failed_attempts()
+        self.assertEqual(self.user.failed_attempts, 5)
+        self.assertIsNotNone(self.user.locked_until)
+
+    def test_reset_failed_attempts(self):
+        self.user.failed_attempts = 5
+        self.user.locked_until = timezone.now() + timedelta(minutes=15)
+        self.user.reset_failed_attempts()
+        self.assertEqual(self.user.failed_attempts, 0)
+        self.assertIsNone(self.user.locked_until)
+
+    def test_is_linked_to_agence(self):
+        self.user.role = Role.GUICHETIER
+        self.assertTrue(self.user.is_linked_to_agence())
+        self.user.role = Role.VOYAGEUR
+        self.assertFalse(self.user.is_linked_to_agence())
+
+    def test_get_inactive_message_subscription_expired(self):
+        self.user.deactivation_reason = DeactivationReason.SUBSCRIPTION_EXPIRED
+        msg = self.user.get_inactive_message()
+        self.assertIn("abonnement", msg.lower())
+        self.assertIn("manager", msg.lower())
+
+    def test_get_inactive_message_admin_suspended(self):
+        self.user.deactivation_reason = DeactivationReason.ADMIN_SUSPENDED
+        msg = self.user.get_inactive_message()
+        self.assertIn("désactivé", msg.lower())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-33 — AuthSession : méthodes
+# ══════════════════════════════════════════════════════════════════════════════
+class TC33_AuthSessionModelMethods(TestCase):
+    """
+    Cas    : Test des méthodes du modèle AuthSession.
+    """
+    def setUp(self):
+        self.user = make_voyageur("session_model@njila.cm")
+        self.session = AuthSession.objects.create(
+            session_id=uuid.uuid4(),
+            user=self.user,
+            access_token="acc",
+            refresh_token="ref",
+            expires_at=timezone.now() + timedelta(days=7),
+            is_active=True,
+        )
+
+    def test_is_expired_future(self):
+        self.assertFalse(self.session.is_expired())
+
+    def test_is_expired_past(self):
+        self.session.expires_at = timezone.now() - timedelta(days=1)
+        self.assertTrue(self.session.is_expired())
+
+    def test_invalidate(self):
+        self.session.invalidate()
+        self.assertFalse(self.session.is_active)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-34 — PasswordResetToken : validation
+# ══════════════════════════════════════════════════════════════════════════════
+class TC34_PasswordResetTokenModelTest(TestCase):
+    """
+    Cas    : Test du modèle PasswordResetToken.
+    """
+    def setUp(self):
+        self.user = make_voyageur("reset_model@njila.cm")
+        self.token = PasswordResetToken.objects.create(
+            user=self.user,
+            token="valid_token_123",
+            expires_at=timezone.now() + timedelta(hours=1),
+            used=False,
+        )
+
+    def test_is_valid_true(self):
+        self.assertTrue(self.token.is_valid())
+
+    def test_is_valid_used_false(self):
+        self.token.used = True
+        self.assertFalse(self.token.is_valid())
+
+    def test_is_valid_expired_false(self):
+        self.token.expires_at = timezone.now() - timedelta(hours=1)
+        self.assertFalse(self.token.is_valid())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-35 — set_account_status : gestion des erreurs
+# ══════════════════════════════════════════════════════════════════════════════
+class TC35_SetAccountStatusErrorHandling(TestCase):
+    """
+    Cas    : Gestion des erreurs pour set_account_status.
+    """
+    def setUp(self):
+        self.svc = make_service()
+
+    def test_set_account_status_user_not_found(self):
+        with self.assertRaises(ValueError):
+            self.svc.set_account_status(str(uuid.uuid4()), False)
+
+    def test_set_account_status_reactivate(self):
+        user = make_staff(
+            email="status@njila.cm",
+            role=Role.GUICHETIER,
+            is_active=False,
+            deactivation_reason=DeactivationReason.ADMIN_SUSPENDED,
+        )
+        self.svc.set_account_status(str(user.id), True)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertIsNone(user.deactivation_reason)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-36 — get_me : utilisateur inexistant
+# ══════════════════════════════════════════════════════════════════════════════
+class TC36_GetMeUserNotFound(TestCase):
+    """
+    Cas    : Récupération d'un utilisateur inexistant.
+    """
+    def setUp(self):
+        self.svc = make_service()
+
+    def test_get_me_not_found(self):
+        user = self.svc.get_me(str(uuid.uuid4()))
+        self.assertIsNone(user)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-38 — Consumer : routing keys inconnues
+# ══════════════════════════════════════════════════════════════════════════════
+class TC38_ConsumerUnknownRoutingKey(TestCase):
+    """
+    Cas    : Message avec routing key non gérée.
+    """
+    @patch("authentication.events.consumer.RedisSessionCache")
+    def test_unknown_routing_key_logged(self, MockCache):
+        MockCache.return_value = MagicMock()
+        consumer = EventConsumer()
+        ch = MagicMock()
+        method = MagicMock()
+        method.routing_key = "unknown.key"
+        properties = MagicMock()
+        properties.headers = {}
+        body = b'{"test": "data"}'
+        
+        consumer._dispatch(ch, method, properties, body)
+        # Vérifier que basic_ack a été appelé malgré la clé inconnue
+        ch.basic_ack.assert_called_once()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-39 — Login : email inexistant
+# ══════════════════════════════════════════════════════════════════════════════
+class TC39_LoginEmailNotFound(TestCase):
+    """
+    Cas    : Login avec email non existant.
+    """
+    def setUp(self):
+        self.svc = make_service()
+
+    def test_login_email_not_found(self):
+        with self.assertRaises(InvalidCredentialsError):
+            self.svc.login(LoginCommand("notexists@njila.cm", "Pass1234!"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TC-40 — Consumer : création compte auth depuis événement staff.created
+# ══════════════════════════════════════════════════════════════════════════════
+class TC40_ConsumerCreateAuthAccount(TestCase):
+    """
+    Cas    : Création d'un compte auth depuis un événement staff.created.
+    """
+    def setUp(self):
+        self.consumer = EventConsumer()
+        self.agence_id = str(uuid.uuid4())
+        self.filiale_id = str(uuid.uuid4())
+
+    @patch("authentication.events.consumer.RedisSessionCache")
+    def test_create_auth_account_from_event(self, MockCache):
+        MockCache.return_value = MagicMock()
+        data = {
+            "userId": str(uuid.uuid4()),
+            "email": "staff_created@njila.cm",
+            "role": Role.GUICHETIER,
+            "passwordTemp": "TempPass123!",
+            "name": "Staff",
+            "surname": "Created",
+            "phone": "691234567",
+            "adresse": "Yaoundé",
+            "photoUrl": "https://cdn.njila.cm/staff.jpg",
+            "filialeId": self.filiale_id,
+            "agenceId": self.agence_id,
+        }
+        self.consumer._create_auth_account(data)
+        user = NjilaUser.objects.filter(email="staff_created@njila.cm").first()
+        self.assertIsNotNone(user)
+        self.assertEqual(user.role, Role.GUICHETIER)
+        self.assertEqual(user.name, "Staff")
+        self.assertEqual(user.surname, "Created")
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.is_verified)
+        self.assertEqual(user.created_by, "SYSTEM")
+
+    @patch("authentication.events.consumer.RedisSessionCache")
+    def test_create_auth_account_duplicate_ignored(self, MockCache):
+        MockCache.return_value = MagicMock()
+        data = {
+            "userId": str(uuid.uuid4()),
+            "email": "staff_created_dup@njila.cm",
+            "role": Role.GUICHETIER,
+            "passwordTemp": "TempPass123!",
+            "name": "Staff",
+            "surname": "Created",
+        }
+        self.consumer._create_auth_account(data)
+        self.consumer._create_auth_account(data)
+        count = NjilaUser.objects.filter(email="staff_created_dup@njila.cm").count()
+        self.assertEqual(count, 1)

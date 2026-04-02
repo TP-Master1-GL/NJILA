@@ -2,6 +2,7 @@ package com.njila.njila_user_service.service;
 
 import com.njila.njila_user_service.dto.request.AvisRequest;
 import com.njila.njila_user_service.dto.request.CreateStaffRequest;
+import com.njila.njila_user_service.dto.request.UpdatePhotoRequest;
 import com.njila.njila_user_service.dto.request.UpdateProfileRequest;
 import com.njila.njila_user_service.dto.response.AvisResponse;
 import com.njila.njila_user_service.dto.response.UserProfileResponse;
@@ -22,6 +23,8 @@ public interface UserService {
     UserProfileResponse getProfile(UUID userId, JwtClaims caller);
 
     UserProfileResponse updateProfile(UUID userId, UpdateProfileRequest request, JwtClaims caller);
+
+    UserProfileResponse updatePhoto(UUID userId, UpdatePhotoRequest request, JwtClaims caller);
 
     void deleteProfile(UUID userId, JwtClaims caller);
 

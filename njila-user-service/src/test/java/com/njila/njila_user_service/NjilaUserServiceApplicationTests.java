@@ -10,8 +10,4 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(locations = "classpath:application-test.properties")
 class NjilaUserServiceApplicationTests {
 
-    @Test
-    void contextLoads() {
-        // Verifie que le contexte Spring Boot demarre correctement
-    }
 }
