@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Test d'intégration pour vérifier les communications inter-services
 """
@@ -19,7 +20,11 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'fleet_config.settings')
 import django
 django.setup()
 
-from fleet.models import Agence, Filiale, Bus, Chauffeur, Trajet, Voyage, Annonce, StatusBus, StatusVoyage
+from django.db import transaction
+from fleet.models import (
+    Agence, Filiale, Bus, Chauffeur, Trajet, Voyage, Annonce, 
+    StatusBus, StatusVoyage, StatutGlobalAgence
+)
 from fleet.rabbitmq import (
     publish_agence_created, publish_filiale_created, publish_staff_created,
     publish_annonce_published, publish_voyage_cancelled, publish_voyage_delayed,
@@ -44,82 +49,6 @@ def print_info(msg):
 
 def print_warning(msg):
     print(f"{YELLOW}⚠️ {msg}{NC}")
-
-
-class MessageCollector:
-    """Collecteur de messages RabbitMQ pour les tests"""
-    
-    def __init__(self):
-        self.messages = []
-        self.stop_flag = False
-        self.thread = None
-    
-    def callback(self, ch, method, properties, body):
-        """Callback pour les messages reçus"""
-        try:
-            message = json.loads(body)
-            self.messages.append({
-                'routing_key': method.routing_key,
-                'exchange': method.exchange,
-                'body': message,
-                'timestamp': datetime.now()
-            })
-            print_info(f"Message reçu: {method.routing_key}")
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-        except Exception as e:
-            print_error(f"Erreur traitement message: {e}")
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-    
-    def start(self, exchanges):
-        """Démarrer la collecte des messages"""
-        self.stop_flag = False
-        
-        def run():
-            connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-            channel = connection.channel()
-            
-            # Déclarer une queue temporaire
-            result = channel.queue_declare(queue='', exclusive=True)
-            queue_name = result.method.queue
-            
-            # Lier la queue aux exchanges
-            for exchange, routing_key in exchanges:
-                channel.queue_bind(
-                    exchange=exchange,
-                    queue=queue_name,
-                    routing_key=routing_key
-                )
-                print_info(f"Queue liée à {exchange}:{routing_key}")
-            
-            channel.basic_consume(
-                queue=queue_name,
-                on_message_callback=self.callback,
-                auto_ack=False
-            )
-            
-            while not self.stop_flag:
-                try:
-                    channel.start_consuming()
-                except Exception:
-                    time.sleep(0.1)
-            
-            connection.close()
-        
-        self.thread = threading.Thread(target=run, daemon=True)
-        self.thread.start()
-    
-    def stop(self):
-        """Arrêter la collecte"""
-        self.stop_flag = True
-        if self.thread:
-            self.thread.join(timeout=2)
-    
-    def get_messages_by_routing_key(self, routing_key):
-        """Récupérer les messages par routing key"""
-        return [m for m in self.messages if m['routing_key'] == routing_key]
-    
-    def clear(self):
-        self.messages = []
 
 
 def test_auth_service_communication():
@@ -213,7 +142,7 @@ def test_publish_events():
     result4 = publish_staff_created(chauffeur_id, 'CHAUFFEUR', agence_id=agence.id_agence)
     print_success(f"staff.created (chauffeur): {'Publié' if result4 else 'Échec'}")
     
-    # Créer un voyage pour tester
+    # Créer un bus pour le voyage
     bus = Bus.objects.create(
         modele='Coaster',
         immatriculation=f"LT{uuid.uuid4().hex[:6]}",
@@ -221,12 +150,14 @@ def test_publish_events():
         Id_agence=agence
     )
     
+    # Créer un trajet
     trajet = Trajet.objects.create(
         filiale_depart=filiale,
         filiale_arrive=filiale,
         distance=100
     )
     
+    # Créer un voyage
     voyage = Voyage.objects.create(
         date_heure_depart=datetime.now() + timedelta(days=1),
         date_heure_arrive_prevue=datetime.now() + timedelta(days=1, hours=4),
@@ -249,7 +180,13 @@ def test_publish_events():
     result6 = publish_annonce_published(annonce)
     print_success(f"annonce.published: {'Publié' if result6 else 'Échec'}")
     
-    # Nettoyer
+    # Nettoyer dans le bon ordre (du plus dépendant au moins dépendant)
+    print_info("Nettoyage des données de test...")
+    annonce.delete()
+    voyage.delete()
+    trajet.delete()
+    bus.delete()
+    filiale.delete()
     agence.delete()
     
     return all([result1, result2, result3, result4, result5, result6])
@@ -359,25 +296,22 @@ def test_exchanges_creation():
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
         
-        # Récupérer la liste des exchanges
-        exchanges = []
-        for exchange in channel.queue_declare('', passive=False).method.queue:
-            pass
-        
-        # Pour vérifier, on essaye de déclarer avec passive=True
-        for exchange_name in expected_exchanges:
+        all_exchanges = []
+        for exchange in expected_exchanges:
             try:
                 channel.exchange_declare(
-                    exchange=exchange_name,
+                    exchange=exchange,
                     exchange_type='topic',
                     passive=True
                 )
-                print_success(f"Exchange {exchange_name} existe")
+                print_success(f"Exchange {exchange} existe")
+                all_exchanges.append(True)
             except Exception:
-                print_error(f"Exchange {exchange_name} n'existe pas")
+                print_error(f"Exchange {exchange} n'existe pas")
+                all_exchanges.append(False)
         
         connection.close()
-        return True
+        return all(all_exchanges)
         
     except Exception as e:
         print_error(f"Erreur: {e}")
@@ -400,6 +334,7 @@ def test_queues_creation():
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
         
+        all_queues = []
         for queue_name in expected_queues:
             try:
                 result = channel.queue_declare(
@@ -407,11 +342,13 @@ def test_queues_creation():
                     passive=True
                 )
                 print_success(f"Queue {queue_name} existe (messages: {result.method.message_count})")
+                all_queues.append(True)
             except Exception:
                 print_error(f"Queue {queue_name} n'existe pas")
+                all_queues.append(False)
         
         connection.close()
-        return True
+        return all(all_queues)
         
     except Exception as e:
         print_error(f"Erreur: {e}")
@@ -434,23 +371,6 @@ def test_health_check():
             return False
     except Exception as e:
         print_error(f"Health check: {e}")
-        return False
-
-
-def test_endpoint_with_token():
-    """Test un endpoint protégé avec token mocké"""
-    print("\n" + "="*60)
-    print("🔑 TEST ENDPOINT PROTÉGÉ")
-    print("="*60)
-    
-    try:
-        # Le test d'endpoint protégé nécessite un vrai token
-        # Dans l'environnement de test, on peut utiliser le mock
-        print_info("Note: Les endpoints protégés nécessitent un token JWT valide")
-        print_info("Les tests d'intégration complets nécessitent auth-service en cours d'exécution")
-        return True
-    except Exception as e:
-        print_error(f"Erreur: {e}")
         return False
 
 
@@ -481,9 +401,6 @@ def main():
     
     # 3. Test health
     results['health'] = test_health_check()
-    
-    # 4. Test endpoints
-    results['endpoints'] = test_endpoint_with_token()
     
     # Résumé
     print("\n" + "="*60)

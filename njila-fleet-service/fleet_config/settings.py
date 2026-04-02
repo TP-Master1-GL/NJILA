@@ -4,6 +4,9 @@ from fleet_config.cloud import fetch_remote_config
 import os
 from datetime import timedelta
 
+import sys
+
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -134,3 +137,6 @@ AUTH_SERVICE_TOKEN_VALIDATION_URL = f"{AUTH_SERVICE_URL}/api/auth/validate-token
 
 # Clé secrète partagée avec auth-service (à mettre dans .env)
 AUTH_SERVICE_SHARED_SECRET = os.getenv('AUTH_SERVICE_SHARED_SECRET', 'njila-shared-secret-2026')
+
+if 'test' in sys.argv:
+    AUTH_SERVICE_TOKEN_VALIDATION_URL = 'http://testserver/api/auth/validate-token'
