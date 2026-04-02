@@ -7,18 +7,18 @@ class NotificationService {
        
         this.strategies = {
             EMAIL: new EmailStrategy(),
-            PUSH:  new PushStrategy()  // <-- Ajouté ici
+            PUSH:  new PushStrategy()  
         };
     }
 
     async sendNotification(data) {
-        //  Sauvegarde initiale (Statut PENDING par défaut)
+        //  Sauvegarde initiale 
         
         const notification = await Notification.create({
             userId: data.userId,
             type: data.type,
             recipient: data.recipient,
-            sujet: data.subject || data.sujet, // Supporte les deux noms
+            sujet: data.subject || data.sujet, 
             content: data.content || data.contenu,
             status: 'PENDING'
         });
@@ -43,7 +43,7 @@ class NotificationService {
             console.log(` [SUCCESS] Notification ${notification.id_notification || notification.id} envoyée.`);
 
         } catch (error) {
-            console.error(`❌ [ERROR] ID: ${notification.id_notification || notification.id} - ${error.message}`);
+            console.error(` [ERROR] ID: ${notification.id_notification || notification.id} - ${error.message}`);
             
             //  Échec : Planification de la prochaine tentative (+5 min)
             const retryDate = new Date();

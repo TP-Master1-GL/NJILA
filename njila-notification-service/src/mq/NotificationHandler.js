@@ -95,7 +95,7 @@ class NotificationHandlers {
             type: 'PUSH',
             recipient: payload.pushToken,
             subject: " Votre billet est disponible !",
-            content: `Le ticket pour votre voyage vers ${payload.destination} est prêt. Présentez le QR Code au guichet.`
+            content: `Le ticket pour votre voyage vers ${payload.destination} est prêt. Présentez l'identifiant unique pour votre voyage.`
         });
     }
 
@@ -120,7 +120,7 @@ class NotificationHandlers {
         });
     }
 
-    // Message 9 : Alerte Retard ou Incident
+    
     async handleTripDelay(payload) {
         return await NotificationService.sendNotification({
             userId: payload.userId,
