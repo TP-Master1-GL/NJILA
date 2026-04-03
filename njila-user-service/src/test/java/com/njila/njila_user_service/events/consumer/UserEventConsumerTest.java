@@ -17,7 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("UserEventConsumer — Handlers RabbitMQ")
+@DisplayName("UserEventConsumer — Handlers RabbitMQ v2.0")
 class UserEventConsumerTest {
 
     @Mock UserRepository userRepository;
@@ -166,48 +166,39 @@ class UserEventConsumerTest {
         verify(userRepository, never()).save(any());
     }
 
-    // ── handleStaffCreated ────────────────────────────────────────────────────
+    // ── handleAgenceCreated ───────────────────────────────────────────────────
 
-    @Test @DisplayName("staff.created: cree profil guichetier")
-    void handleStaffCreated_createsGuichetier() {
-        UUID userId    = UUID.randomUUID();
-        UUID filialeId = UUID.randomUUID();
-        UUID agenceId  = UUID.randomUUID();
-
-        when(userRepository.existsById(userId)).thenReturn(false);
-        when(userRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("userId",    userId.toString());
-        payload.put("email",     "agent@njila.cm");
-        payload.put("name",      "Paul");
-        payload.put("surname",   "Biya");
-        payload.put("role",      "GUICHETIER");
-        payload.put("filialeId", filialeId.toString());
-        payload.put("agenceId",  agenceId.toString());
-
-        consumer.handleStaffCreated(payload);
-
-        ArgumentCaptor<UserProfile> cap = ArgumentCaptor.forClass(UserProfile.class);
-        verify(userRepository).save(cap.capture());
-        assertThat(cap.getValue().getRole()).isEqualTo(Role.GUICHETIER);
-        assertThat(cap.getValue().getFilialeId()).isEqualTo(filialeId);
-        assertThat(cap.getValue().isActive()).isTrue();
-    }
-
-    @Test @DisplayName("staff.created: idempotent si profil existant")
-    void handleStaffCreated_idempotent() {
-        UUID userId = UUID.randomUUID();
-        when(userRepository.existsById(userId)).thenReturn(true);
-        consumer.handleStaffCreated(Map.of(
-            "userId", userId.toString(), "email", "agent@njila.cm"
-        ));
+    @Test @DisplayName("agence.created: ne fait rien pour l'instant (log seulement)")
+    void handleAgenceCreated_logsOnly() {
+        // Cette méthode est vide pour l'instant, on vérifie juste qu'elle ne lance pas d'exception
+        assertThatNoException().isThrownBy(() -> 
+            consumer.handleAgenceCreated(Map.of("agenceId", AGENCE_ID.toString(), "nom", "Agence Test"))
+        );
         verify(userRepository, never()).save(any());
     }
 
-    @Test @DisplayName("staff.created: ignore si userId manquant")
-    void handleStaffCreated_missingUserId() {
-        consumer.handleStaffCreated(Map.of("email", "agent@njila.cm"));
+    // ── handleFilialeCreated ──────────────────────────────────────────────────
+
+    @Test @DisplayName("filiale.created: ne fait rien pour l'instant (log seulement)")
+    void handleFilialeCreated_logsOnly() {
+        assertThatNoException().isThrownBy(() -> 
+            consumer.handleFilialeCreated(Map.of("filialeId", FILIALE_ID.toString(), "nom", "Filiale Test"))
+        );
         verify(userRepository, never()).save(any());
     }
+
+    // ── handleReservationCreated ──────────────────────────────────────────────
+
+    @Test @DisplayName("reservation.created: ne fait rien pour l'instant (log seulement)")
+    void handleReservationCreated_logsOnly() {
+        assertThatNoException().isThrownBy(() -> 
+            consumer.handleReservationCreated(Map.of("reservationId", UUID.randomUUID().toString()))
+        );
+        verify(userRepository, never()).save(any());
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static final UUID AGENCE_ID  = UUID.fromString("a0000000-0000-0000-0000-000000000001");
+    private static final UUID FILIALE_ID = UUID.fromString("f0000000-0000-0000-0000-000000000001");
 }

@@ -1,5 +1,5 @@
 """
-EventConsumer — consommateur RabbitMQ de l'auth-service.
+EventConsumer — consommateur RabbitMQ de l'auth-service v2.0.
 
 Exchanges et queues écoutés :
   ┌───────────────────────────────────────────────────────────────────────────┐
@@ -7,7 +7,7 @@ Exchanges et queues écoutés :
   ├───────────────────────────────────────────────────────────────────────────┤
   │  njila.auth.user.registered.queue   njila.user.exchange   user.registered  │
   │  njila.auth.user.updated.queue      njila.user.exchange   user.updated     │
-  │  njila.auth.staff.created.queue     njila.user.exchange   staff.created    │
+  │  njila.auth.staff.to.auth.queue     njila.user.exchange   staff.to.auth    │  ← NOUVEAU
   ├───────────────────────────────────────────────────────────────────────────┤
   │  njila.auth.subscription.expired.queue                                     │
   │                            njila.subscribe.exchange  subscription.expired  │
@@ -29,9 +29,6 @@ import logging
 import threading
 from typing import List
 
-# Imports au niveau du module pour permettre le patch dans les tests unitaires.
-# @patch("authentication.events.consumer.RedisSessionCache") requiert que
-# RedisSessionCache soit un attribut du module consumer, pas un import local.
 from authentication.repositories.auth_repository import AuthRepository
 from authentication.services.redis_cache import RedisSessionCache
 
@@ -45,11 +42,13 @@ EXCHANGE_DEAD_LETTER = "njila.dead.letter.exchange"
 # ── Queues consommées par l'auth-service ──────────────────────────────────────
 QUEUE_USER_REGISTERED       = "njila.auth.user.registered.queue"
 QUEUE_USER_UPDATED          = "njila.auth.user.updated.queue"
-QUEUE_STAFF_CREATED         = "njila.auth.staff.created.queue"
+QUEUE_STAFF_TO_AUTH         = "njila.auth.staff.to.auth.queue"
 QUEUE_SUBSCRIPTION_EXPIRED  = "njila.auth.subscription.expired.queue"
 QUEUE_SUBSCRIPTION_RENEWED  = "njila.auth.subscription.renewed.queue"
 
-MAX_RETRIES = 3
+# ── Anciennes queues (conservées pour compatibilité, mais plus utilisées) ─────
+
+MAX_RETRIES = 100
 
 
 class EventConsumer:
@@ -100,10 +99,10 @@ class EventConsumer:
 
             # ── Déclarer et lier les queues ───────────────────────────────────
             queues = [
-                # Messages du user-service / fleet-service → auth
-                (QUEUE_USER_REGISTERED,      EXCHANGE_USER,      "user.registered"),
-                (QUEUE_USER_UPDATED,         EXCHANGE_USER,      "user.updated"),
-                (QUEUE_STAFF_CREATED,        EXCHANGE_USER,      "staff.created"),
+                # Messages du user-service → auth
+                (QUEUE_USER_REGISTERED, EXCHANGE_USER, "user.registered"),
+                (QUEUE_USER_UPDATED,    EXCHANGE_USER, "user.updated"),
+                (QUEUE_STAFF_TO_AUTH,   EXCHANGE_USER, "staff.to.auth"),
                 # Messages du subscribe-service → auth
                 (QUEUE_SUBSCRIPTION_EXPIRED, EXCHANGE_SUBSCRIBE, "subscription.expired"),
                 (QUEUE_SUBSCRIPTION_RENEWED, EXCHANGE_SUBSCRIBE, "subscription.renewed"),
@@ -156,8 +155,8 @@ class EventConsumer:
                 self._handle_user_registered(data)
             elif routing_key == "user.updated":
                 self._handle_user_updated(data)
-            elif routing_key == "staff.created":
-                self._handle_staff_created(data)
+            elif routing_key == "staff.to.auth":      
+                self._handle_staff_to_auth(data)
             elif routing_key == "subscription.expired":
                 self._handle_subscription_expired(data)
             elif routing_key == "subscription.renewed":
@@ -177,10 +176,13 @@ class EventConsumer:
     # ── Handlers user / staff ─────────────────────────────────────────────────
 
     def _handle_user_registered(self, data: dict):
+        """Création d'un compte voyageur (inscription classique)."""
         role = data.get("role", "VOYAGEUR")
         if role == "VOYAGEUR":
-            return
-        self._create_auth_account(data)
+            self._create_auth_account(data)
+        else:
+            # Pour les autres rôles, le user-service les crée via staff.to.auth
+            logger.debug("[CONSUMER] user.registered ignoré pour rôle=%s", role)
 
     def _handle_user_updated(self, data: dict):
         """Invalider les tokens si l'email a changé."""
@@ -196,7 +198,28 @@ class EventConsumer:
         cache.delete_refresh_token(user_id)
         logger.info("[CONSUMER] Tokens invalidés (email changé) — user=%s", user_id)
 
-    def _handle_staff_created(self, data: dict):
+    def _handle_staff_to_auth(self, data: dict):
+        """
+        staff.to.auth — NOUVEAU HANDLER
+        
+        Payload reçu du user-service :
+        {
+            "userId":        "uuid",
+            "email":         "user@njila.com",
+            "passwordTemp":  "0000",
+            "role":          "GUICHETIER|CHAUFFEUR|MANAGER_LOCAL|MANAGER_GLOBAL",
+            "name":          "Prénom",
+            "surname":       "Nom",
+            "phone":         "+237XXXXXXXX",
+            "filialeId":     "uuid",
+            "agenceId":      "uuid",
+            "poste":         "Agent",           // optionnel (guichetier)
+            "numeroPermis":  "SN-2025-001234"   // optionnel (chauffeur)
+        }
+        
+        Le user-service a déjà créé le profil en base.
+        L'auth-service doit créer le compte authentifiable avec le même UUID.
+        """
         self._create_auth_account(data)
 
     # ── Handlers abonnement ───────────────────────────────────────────────────
@@ -288,47 +311,93 @@ class EventConsumer:
     def _create_auth_account(self, data: dict):
         """
         Crée un compte auth depuis un événement externe.
-        Payload : { userId, email, role, passwordTemp, name, surname, phone, adresse, photoUrl, filialeId, agenceId }
+        
+        Payload complet :
+        {
+            "userId":        "uuid",           // optionnel, peut être généré
+            "email":         "user@njila.com",
+            "passwordTemp":  "0000",           // mot de passe temporaire
+            "role":          "VOYAGEUR|GUICHETIER|CHAUFFEUR|MANAGER_LOCAL|MANAGER_GLOBAL",
+            "name":          "Prénom",
+            "surname":       "Nom",
+            "phone":         "+237XXXXXXXX",   // optionnel
+            "adresse":       "Adresse",        // optionnel
+            "photoUrl":      "https://...",    // optionnel
+            "filialeId":     "uuid",           // optionnel
+            "agenceId":      "uuid",           // optionnel
+            "poste":         "Agent",          // optionnel (guichetier)
+            "numeroPermis":  "SN-2025-001234"  // optionnel (chauffeur)
+        }
         """
         from authentication.models import NjilaUser
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
 
         repo       = AuthRepository()
         email      = data.get("email", "").lower().strip()
         role       = data.get("role", "GUICHETIER")
         user_id    = data.get("userId")
-        password   = data.get("passwordTemp", "NjilaChange2026!")
+        password   = data.get("passwordTemp", "0000")
         # Données d'identité — alignées avec UserProfile (user-service)
-        name       = data.get("name",    "")   # prénom
-        surname    = data.get("surname", "")   # nom de famille
+        name       = data.get("name",    "")
+        surname    = data.get("surname", "")
         phone      = data.get("phone")
         adresse    = data.get("adresse")
         photo_url  = data.get("photoUrl")
         filiale_id = data.get("filialeId")
         agence_id  = data.get("agenceId")
+        
+        # Champs spécifiques stockés dans meta_data
+        poste        = data.get("poste")
+        numero_permis = data.get("numeroPermis")
 
         if not email:
             logger.error("[CONSUMER] Création compte impossible : email manquant")
             return
 
+        # Validation email
+        try:
+            validate_email(email)
+        except ValidationError:
+            logger.error("[CONSUMER] Email invalide : %s", email)
+            return
+
+        # Vérifier si le compte existe déjà
         if repo.exists_by_email(email):
             logger.warning("[CONSUMER] Compte déjà existant pour %s — ignoré", email)
             return
 
+        # Si user_id n'est pas fourni, en générer un
+        import uuid
+        final_user_id = user_id or str(uuid.uuid4())
+
+        # Construction des meta_data pour les champs spécifiques
+        meta_data = {}
+        if poste:
+            meta_data["poste"] = poste
+        if numero_permis:
+            meta_data["numeroPermis"] = numero_permis
+
         user = NjilaUser(
-            id          = user_id or None,
+            id          = final_user_id,
             email       = email,
             name        = name,
             surname     = surname,
             phone       = phone,
             adresse     = adresse,
-            role        = role,
+            role        = role.upper(),
             photo_url   = photo_url,
             filiale_id  = filiale_id,
             agence_id   = agence_id,
-            is_active   = True,    # agence créée = abonnement valide
+            is_active   = True,
             is_verified = True,
             created_by  = "SYSTEM",
+            meta_data   = meta_data if meta_data else None,
         )
         user.set_password(password)
         repo.save_user(user)
-        logger.info("[CONSUMER] Compte auth créé | email=%s role=%s", email, role)
+        
+        logger.info(
+            "[CONSUMER] Compte auth créé | userId=%s email=%s role=%s passwordTemp=%s",
+            final_user_id, email, role, password
+        )

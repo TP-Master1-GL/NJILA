@@ -1,5 +1,6 @@
 package com.njila.njila_user_service.service.impl;
 
+import com.njila.njila_user_service.config.RabbitMQConfig;
 import com.njila.njila_user_service.dto.request.*;
 import com.njila.njila_user_service.dto.response.*;
 import com.njila.njila_user_service.entity.*;
@@ -18,6 +19,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.*;
 
 import java.util.*;
@@ -27,7 +30,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("UserServiceImpl — Tests unitaires v1.4")
+@DisplayName("UserServiceImpl — Tests unitaires v2.0")
 class UserServiceImplTest {
 
     @Mock UserRepository        userRepository;
@@ -38,6 +41,8 @@ class UserServiceImplTest {
     @Mock EventPublisher        eventPublisher;
     @Mock RedisCacheInvalidator cacheInvalidator;
     @Mock RabbitTemplate        rabbitTemplate;
+    @Mock CacheManager          cacheManager;
+    @Mock Cache                 mockCache;
 
     @InjectMocks UserServiceImpl service;
 
@@ -64,6 +69,9 @@ class UserServiceImplTest {
             .role(Role.VOYAGEUR).isActive(true).build();
         service.subscribe(eventPublisher);
         service.subscribe(cacheInvalidator);
+        
+        lenient().when(cacheManager.getCache("userLists")).thenReturn(mockCache);
+        lenient().doNothing().when(mockCache).clear();
     }
 
     // ── getProfile ──────────────────────────────────────────────────────────
@@ -228,38 +236,205 @@ class UserServiceImplTest {
         verify(userRepository, never()).findAll();
     }
 
-    // ── createStaff ──────────────────────────────────────────────────────────
-    // Note: Les tests createStaff sont commentés car ils causent des problèmes
-    // de compilation avec l'ambiguïté de convertAndSend
-    // À décommenter et corriger quand la configuration RabbitMQ sera stable
+    // ── createStaff (NOUVEAUX TESTS v2.0) ─────────────────────────────────────
 
-    /*
-    private CreateStaffRequest staffReq(String email, Role role) {
+    private CreateStaffRequest createStaffRequest(String email, Role role) {
         CreateStaffRequest r = new CreateStaffRequest();
-        r.setName("Paul"); r.setSurname("Biya"); r.setEmail(email);
-        r.setPhone("+237677000001"); r.setRole(role);
-        r.setAgenceId(AGENCE_ID.toString()); r.setFilialeId(FILIALE_ID.toString());
+        r.setName("Paul");
+        r.setSurname("Biya");
+        r.setEmail(email);
+        r.setPhone("+237677000001");
+        r.setRole(role);
+        r.setAgenceId(AGENCE_ID.toString());
+        r.setFilialeId(FILIALE_ID.toString());
         r.setPoste("Agent");
+        r.setNumeroPermis("SN-2025-001234");
+        r.setDateEmbauche("2025-01-15T00:00:00");
         return r;
     }
 
-    @Test @DisplayName("createStaff: succes guichetier cree en BD et event publie")
-    void createStaff_success() {
-        when(userRepository.existsByEmail("paul@njila.cm")).thenReturn(false);
-        when(agenceRepository.existsById(AGENCE_ID)).thenReturn(true);
-        when(filialeRepository.existsById(FILIALE_ID)).thenReturn(true);
+    @Test @DisplayName("createStaff: succes creation guichetier en base + event vers auth")
+    void createStaff_guichetier_success() {
+        CreateStaffRequest request = createStaffRequest("paul@njila.cm", Role.GUICHETIER);
         
+        when(userRepository.existsByEmail("paul@njila.cm")).thenReturn(false);
+        when(agenceRepository.existsByIdAgence(AGENCE_ID)).thenReturn(true);
+        when(filialeRepository.existsByIdFiliale(FILIALE_ID)).thenReturn(true);
+        when(userRepository.save(any(UserProfile.class))).thenAnswer(i -> i.getArgument(0));
+        
+        // Utilisation de Mockito.any() avec le type générique explicite
+        doNothing().when(rabbitTemplate).convertAndSend(
+            anyString(),
+            anyString(),
+            ArgumentMatchers.<Map<String, Object>>any()
+        );
+
         assertThatNoException().isThrownBy(() -> 
-            service.createStaff(staffReq("paul@njila.cm", Role.GUICHETIER), callerManager)
+            service.createStaff(request, callerManager)
+        );
+
+        // Vérifier la sauvegarde en base
+        ArgumentCaptor<UserProfile> profileCaptor = ArgumentCaptor.forClass(UserProfile.class);
+        verify(userRepository).save(profileCaptor.capture());
+        UserProfile savedProfile = profileCaptor.getValue();
+        assertThat(savedProfile.getRole()).isEqualTo(Role.GUICHETIER);
+        assertThat(savedProfile.getEmail()).isEqualTo("paul@njila.cm");
+        assertThat(savedProfile.getPoste()).isEqualTo("Agent");
+        assertThat(savedProfile.isActive()).isTrue();
+
+        // Vérifier l'événement vers auth-service avec mot de passe "0000"
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(rabbitTemplate).convertAndSend(
+            eq(RabbitMQConfig.EXCHANGE_USER),
+            eq(RabbitMQConfig.KEY_STAFF_TO_AUTH),
+            payloadCaptor.capture()
         );
         
-        verify(rabbitTemplate, times(1)).convertAndSend(
-            eq("njila.user.exchange"), 
-            eq("staff.created"), 
-            any(Map.class)
+        Map<String, Object> payload = payloadCaptor.getValue();
+        assertThat(payload.get("passwordTemp")).isEqualTo("0000");
+        assertThat(payload.get("role")).isEqualTo("GUICHETIER");
+        assertThat(payload.get("email")).isEqualTo("paul@njila.cm");
+        assertThat(payload.get("userId")).isNotNull();
+        
+        // Vérifier notification des observateurs
+        verify(eventPublisher).onUserEvent(argThat(e -> e.getEventType() == UserEventType.COMPTE_CREE));
+        verify(cacheInvalidator).onUserEvent(any(UserEvent.class));
+    }
+
+    @Test @DisplayName("createStaff: succes creation chauffeur avec champs specifiques")
+    void createStaff_chauffeur_success() {
+        CreateStaffRequest request = createStaffRequest("chauffeur@njila.cm", Role.CHAUFFEUR);
+        
+        when(userRepository.existsByEmail("chauffeur@njila.cm")).thenReturn(false);
+        when(agenceRepository.existsByIdAgence(AGENCE_ID)).thenReturn(true);
+        when(filialeRepository.existsByIdFiliale(FILIALE_ID)).thenReturn(true);
+        when(userRepository.save(any(UserProfile.class))).thenAnswer(i -> i.getArgument(0));
+        doNothing().when(rabbitTemplate).convertAndSend(
+            anyString(),
+            anyString(),
+            ArgumentMatchers.<Map<String, Object>>any()
+        );
+
+        service.createStaff(request, callerManager);
+
+        ArgumentCaptor<UserProfile> profileCaptor = ArgumentCaptor.forClass(UserProfile.class);
+        verify(userRepository).save(profileCaptor.capture());
+        UserProfile savedProfile = profileCaptor.getValue();
+        
+        assertThat(savedProfile.getRole()).isEqualTo(Role.CHAUFFEUR);
+        assertThat(savedProfile.getNumeroPermis()).isEqualTo("SN-2025-001234");
+        assertThat(savedProfile.getDateEmbauche()).isNotNull();
+        assertThat(savedProfile.getDisponible()).isTrue();
+    }
+
+    @Test @DisplayName("createStaff: succes creation manager global avec idAgenceManager")
+    void createStaff_managerGlobal_success() {
+        CreateStaffRequest request = createStaffRequest("manager.global@njila.cm", Role.MANAGER_GLOBAL);
+        
+        when(userRepository.existsByEmail("manager.global@njila.cm")).thenReturn(false);
+        when(agenceRepository.existsByIdAgence(AGENCE_ID)).thenReturn(true);
+        when(filialeRepository.existsByIdFiliale(FILIALE_ID)).thenReturn(true);
+        when(userRepository.save(any(UserProfile.class))).thenAnswer(i -> i.getArgument(0));
+        doNothing().when(rabbitTemplate).convertAndSend(
+            anyString(),
+            anyString(),
+            ArgumentMatchers.<Map<String, Object>>any()
+        );
+
+        service.createStaff(request, callerAdmin);
+
+        ArgumentCaptor<UserProfile> profileCaptor = ArgumentCaptor.forClass(UserProfile.class);
+        verify(userRepository).save(profileCaptor.capture());
+        UserProfile savedProfile = profileCaptor.getValue();
+        
+        assertThat(savedProfile.getRole()).isEqualTo(Role.MANAGER_GLOBAL);
+        assertThat(savedProfile.getIdAgenceManager()).isEqualTo(AGENCE_ID);
+    }
+
+    @Test @DisplayName("createStaff: email deja existant -> 409")
+    void createStaff_emailAlreadyExists() {
+        CreateStaffRequest request = createStaffRequest("existing@njila.cm", Role.GUICHETIER);
+        when(userRepository.existsByEmail("existing@njila.cm")).thenReturn(true);
+        
+        assertThatThrownBy(() -> service.createStaff(request, callerManager))
+            .isInstanceOf(EmailAlreadyExistsException.class);
+        
+        verify(userRepository, never()).save(any());
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), ArgumentMatchers.<Map<String, Object>>any());
+    }
+
+    @Test @DisplayName("createStaff: agence inexistante -> 404")
+    void createStaff_agenceNotFound() {
+        CreateStaffRequest request = createStaffRequest("agent@njila.cm", Role.GUICHETIER);
+        when(userRepository.existsByEmail("agent@njila.cm")).thenReturn(false);
+        when(agenceRepository.existsByIdAgence(AGENCE_ID)).thenReturn(false);
+        
+        assertThatThrownBy(() -> service.createStaff(request, callerManager))
+            .isInstanceOf(AgenceNotFoundException.class);
+        
+        verify(userRepository, never()).save(any());
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), ArgumentMatchers.<Map<String, Object>>any());
+    }
+
+    @Test @DisplayName("createStaff: filiale inexistante -> 404")
+    void createStaff_filialeNotFound() {
+        CreateStaffRequest request = createStaffRequest("agent@njila.cm", Role.GUICHETIER);
+        when(userRepository.existsByEmail("agent@njila.cm")).thenReturn(false);
+        when(agenceRepository.existsByIdAgence(AGENCE_ID)).thenReturn(true);
+        when(filialeRepository.existsByIdFiliale(FILIALE_ID)).thenReturn(false);
+        
+        assertThatThrownBy(() -> service.createStaff(request, callerManager))
+            .isInstanceOf(FilialeNotFoundException.class);
+        
+        verify(userRepository, never()).save(any());
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), ArgumentMatchers.<Map<String, Object>>any());
+    }
+
+    @Test @DisplayName("createStaff: 403 non manager")
+    void createStaff_forbidden() {
+        CreateStaffRequest request = createStaffRequest("agent@njila.cm", Role.GUICHETIER);
+        doThrow(new ForbiddenException("Seuls les managers peuvent creer du staff"))
+            .when(roleManager).assertCanCreateStaff(callerVoyageur);
+        
+        assertThatThrownBy(() -> service.createStaff(request, callerVoyageur))
+            .isInstanceOf(ForbiddenException.class);
+        
+        verify(userRepository, never()).save(any());
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), ArgumentMatchers.<Map<String, Object>>any());
+    }
+
+    @Test @DisplayName("createStaff: erreur RabbitMQ n empeche pas la sauvegarde en base")
+    void createStaff_rabbitMqError_stillSavesToDatabase() {
+        CreateStaffRequest request = createStaffRequest("agent@njila.cm", Role.GUICHETIER);
+        
+        when(userRepository.existsByEmail("agent@njila.cm")).thenReturn(false);
+        when(agenceRepository.existsByIdAgence(AGENCE_ID)).thenReturn(true);
+        when(filialeRepository.existsByIdFiliale(FILIALE_ID)).thenReturn(true);
+        when(userRepository.save(any(UserProfile.class))).thenAnswer(i -> i.getArgument(0));
+        
+        // Simuler une erreur RabbitMQ
+        doThrow(new RuntimeException("RabbitMQ connection failed"))
+            .when(rabbitTemplate).convertAndSend(
+                anyString(), 
+                anyString(), 
+                ArgumentMatchers.<Map<String, Object>>any()
+            );
+
+        // La méthode ne doit pas lancer d'exception car la base est déjà sauvegardée
+        assertThatNoException().isThrownBy(() -> 
+            service.createStaff(request, callerManager)
+        );
+
+        // Vérifier que la sauvegarde en base a bien eu lieu
+        verify(userRepository).save(any(UserProfile.class));
+        // Vérifier que l'événement a été tenté
+        verify(rabbitTemplate).convertAndSend(
+            anyString(), 
+            anyString(), 
+            ArgumentMatchers.<Map<String, Object>>any()
         );
     }
-    */
 
     // ── submitAvis ───────────────────────────────────────────────────────────
 
@@ -307,9 +482,6 @@ class UserServiceImplTest {
     @Test @DisplayName("submitAvis: 403 mauvais userId")
     void submitAvis_wrongUser() {
         JwtClaims other = JwtClaims.builder().userId(UUID.randomUUID()).role(Role.VOYAGEUR).build();
-        // Ne pas stuber userRepository.findById ici car le test échoue avant
-        // La méthode submitAvis vérifie d'abord les permissions puis appelle userRepository.findById
-        // Comme other n'est pas égal à USER_ID, la vérification échoue avant l'appel à findById
         assertThatThrownBy(() -> service.submitAvis(USER_ID, avisReq(3), other))
             .isInstanceOf(ForbiddenException.class);
     }

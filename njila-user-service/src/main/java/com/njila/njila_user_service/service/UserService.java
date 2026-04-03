@@ -14,8 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Interface métier du user-service.
- * Méthodes issues du diagramme UML + diagrammes de séquence.
+ * Interface métier du user-service v2.0.
  */
 public interface UserService {
 

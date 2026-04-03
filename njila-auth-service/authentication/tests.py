@@ -1,7 +1,4 @@
 """
-Tests unitaires — njila-auth-service v1.3
-==========================================
-30+ cas de tests. Placez ce fichier dans authentication/tests_auth_service_v2.py
 
 Exécution :
   python manage.py test authentication.tests --verbosity=2
@@ -1540,58 +1537,3 @@ class TC39_LoginEmailNotFound(TestCase):
     def test_login_email_not_found(self):
         with self.assertRaises(InvalidCredentialsError):
             self.svc.login(LoginCommand("notexists@njila.cm", "Pass1234!"))
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TC-40 — Consumer : création compte auth depuis événement staff.created
-# ══════════════════════════════════════════════════════════════════════════════
-class TC40_ConsumerCreateAuthAccount(TestCase):
-    """
-    Cas    : Création d'un compte auth depuis un événement staff.created.
-    """
-    def setUp(self):
-        self.consumer = EventConsumer()
-        self.agence_id = str(uuid.uuid4())
-        self.filiale_id = str(uuid.uuid4())
-
-    @patch("authentication.events.consumer.RedisSessionCache")
-    def test_create_auth_account_from_event(self, MockCache):
-        MockCache.return_value = MagicMock()
-        data = {
-            "userId": str(uuid.uuid4()),
-            "email": "staff_created@njila.cm",
-            "role": Role.GUICHETIER,
-            "passwordTemp": "TempPass123!",
-            "name": "Staff",
-            "surname": "Created",
-            "phone": "691234567",
-            "adresse": "Yaoundé",
-            "photoUrl": "https://cdn.njila.cm/staff.jpg",
-            "filialeId": self.filiale_id,
-            "agenceId": self.agence_id,
-        }
-        self.consumer._create_auth_account(data)
-        user = NjilaUser.objects.filter(email="staff_created@njila.cm").first()
-        self.assertIsNotNone(user)
-        self.assertEqual(user.role, Role.GUICHETIER)
-        self.assertEqual(user.name, "Staff")
-        self.assertEqual(user.surname, "Created")
-        self.assertTrue(user.is_active)
-        self.assertTrue(user.is_verified)
-        self.assertEqual(user.created_by, "SYSTEM")
-
-    @patch("authentication.events.consumer.RedisSessionCache")
-    def test_create_auth_account_duplicate_ignored(self, MockCache):
-        MockCache.return_value = MagicMock()
-        data = {
-            "userId": str(uuid.uuid4()),
-            "email": "staff_created_dup@njila.cm",
-            "role": Role.GUICHETIER,
-            "passwordTemp": "TempPass123!",
-            "name": "Staff",
-            "surname": "Created",
-        }
-        self.consumer._create_auth_account(data)
-        self.consumer._create_auth_account(data)
-        count = NjilaUser.objects.filter(email="staff_created_dup@njila.cm").count()
-        self.assertEqual(count, 1)
