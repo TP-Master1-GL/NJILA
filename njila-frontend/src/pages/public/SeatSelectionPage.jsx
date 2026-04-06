@@ -6,7 +6,7 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import { formatMontant } from "../../utils/formatters";
 
-const generateSeats = (total = 70, occupied = [3, 7, 12,34, 15, 20]) =>
+const generateSeats = (total = 70, occupied = [3, 7, 12, 34, 15, 20]) =>
   Array.from({ length: total }, (_, i) => ({
     id: i + 1,
     numero: i + 1,
@@ -57,9 +57,8 @@ export default function SeatSelectionPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-center gap-4">
           {[["1", "Sélection", true], ["2", "Passagers", true], ["3", "Paiement", false]].map(([n, l, active]) => (
             <div key={n} className="flex items-center gap-2">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                active ? "bg-primary-600 text-white" : "bg-gray-200 text-gray-500"
-              }`}>{n}</div>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${active ? "bg-primary-600 text-white" : "bg-gray-200 text-gray-500"
+                }`}>{n}</div>
               <span className={`text-sm font-medium ${active ? "text-gray-900" : "text-gray-400"}`}>{l}</span>
               {n !== "3" && <div className="w-16 h-px bg-gray-200" />}
             </div>
@@ -107,11 +106,10 @@ export default function SeatSelectionPage() {
                           key={seat.id}
                           disabled={seat.occupe}
                           onClick={() => !seat.occupe && togglePlace(seat)}
-                          className={`w-10 h-10 rounded-lg text-xs font-bold transition-all ${
-                            seat.occupe   ? "bg-gray-200 text-gray-400 cursor-not-allowed" :
-                            selected      ? "bg-primary-600 text-white shadow-lg scale-105" :
-                            "border-2 border-gray-200 text-gray-600 hover:border-primary-400"
-                          }`}
+                          className={`w-10 h-10 rounded-lg text-xs font-bold transition-all ${seat.occupe ? "bg-gray-200 text-gray-400 cursor-not-allowed" :
+                            selected ? "bg-primary-600 text-white shadow-lg scale-105" :
+                              "border-2 border-gray-200 text-gray-600 hover:border-primary-400"
+                            }`}
                         >
                           {seat.numero}
                         </button>
@@ -129,11 +127,10 @@ export default function SeatSelectionPage() {
                           key={seat.id}
                           disabled={seat.occupe}
                           onClick={() => !seat.occupe && togglePlace(seat)}
-                          className={`w-10 h-10 rounded-lg text-xs font-bold transition-all ${
-                            seat.occupe   ? "bg-gray-200 text-gray-400 cursor-not-allowed" :
-                            selected      ? "bg-primary-600 text-white shadow-lg scale-105" :
-                            "border-2 border-gray-200 text-gray-600 hover:border-primary-400"
-                          }`}
+                          className={`w-10 h-10 rounded-lg text-xs font-bold transition-all ${seat.occupe ? "bg-gray-200 text-gray-400 cursor-not-allowed" :
+                            selected ? "bg-primary-600 text-white shadow-lg scale-105" :
+                              "border-2 border-gray-200 text-gray-600 hover:border-primary-400"
+                            }`}
                         >
                           {seat.numero}
                         </button>
