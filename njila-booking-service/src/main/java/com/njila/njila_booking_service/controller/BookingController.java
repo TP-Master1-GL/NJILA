@@ -15,6 +15,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +25,7 @@ import java.util.Map;
 @RequestMapping("/api/bookings")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Réservations", description = "API de gestion des réservations et billets d'embarquement")
 public class BookingController {
 
     private final ReservationService  reservationService;
@@ -34,6 +38,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @PostMapping
+    @Operation(summary = "Créer une réservation", description = "Permet de créer une nouvelle réservation pour un voyage.")
     public ResponseEntity<ReservationResponse> creerReservation(
             @Valid @RequestBody CreerReservationRequest request) {
 
@@ -46,7 +51,8 @@ public class BookingController {
                 request.getCodeFiliale(),
                 request.getIdGuichetier(),
                 request.getTypeTarif(),
-                request.getMembresGroupe()
+                request.getMembresGroupe(),
+                request.getDevise()
         );
         return ResponseEntity.ok(toResponse(reservation));
     }
@@ -56,6 +62,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/{id}")
+    @Operation(summary = "Détail d'une réservation", description = "Retourne les détails d'une réservation à partir de son ID.")
     public ResponseEntity<ReservationResponse> getReservation(
             @PathVariable Long id) {
         return ResponseEntity.ok(
@@ -67,6 +74,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/voyage/{voyageId}")
+    @Operation(summary = "Réservations d'un voyage", description = "Liste toutes les réservations associées à un voyage spécifique.")
     public ResponseEntity<List<ReservationResponse>> getReservationsVoyage(
             @PathVariable Long voyageId) {
         return ResponseEntity.ok(
@@ -82,6 +90,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/history/{userId}")
+    @Operation(summary = "Historique d'un voyageur", description = "Liste l'historique des réservations pour un utilisateur donné.")
     public ResponseEntity<List<ReservationResponse>> getHistorique(
             @PathVariable Long userId) {
         return ResponseEntity.ok(
@@ -104,6 +113,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/stats/{filialeId}")
+    @Operation(summary = "Statistiques des réservations", description = "Retourne les métriques agrégées des réservations pour une filiale.")
     public ResponseEntity<ReservationStatsResponse> getStats(
             @PathVariable Long filialeId,
             @RequestParam String codeFiliale) {
@@ -134,6 +144,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @PatchMapping("/{id}/cancel")
+    @Operation(summary = "Annuler une réservation", description = "Annule une réservation existante en respectant les conditions (délai, statut).")
     public ResponseEntity<ReservationResponse> annuler(
             @PathVariable Long id,
             @RequestParam Long idUtilisateur) {
@@ -158,6 +169,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @PatchMapping("/{id}/confirm")
+    @Operation(summary = "Confirmer un paiement en espèces", description = "Confirme le paiement en espèces au guichet et génère le billet d'embarquement.")
     public ResponseEntity<TicketResponse> confirmerPaiementEspeces(
             @PathVariable Long id,
             @Valid @RequestBody ConfirmerPaiementEspecesRequest request) {
@@ -177,6 +189,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @PatchMapping("/{id}/convert-ticket")
+    @Operation(summary = "Convertir billet électronique", description = "Convertit un billet électronique en billet d'embarquement au guichet.")
     public ResponseEntity<TicketResponse> convertirBilletElectronique(
             @PathVariable Long id,
             @Valid @RequestBody ConfirmerReservationRequest request) {
@@ -193,6 +206,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/{id}/ticket")
+    @Operation(summary = "Informations du billet", description = "Récupère les informations JSON du billet (électronique ou embarquement).")
     public ResponseEntity<TicketResponse> getTicket(@PathVariable Long id) {
         Reservation reservation = reservationService.getReservation(id);
 
@@ -215,6 +229,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/{id}/ticket/pdf")
+    @Operation(summary = "Télécharger le billet PDF", description = "Télécharge le fichier PDF du billet électronique.")
     public ResponseEntity<byte[]> telechargerBilletPdf(@PathVariable Long id) {
 
         Reservation reservation = reservationService.getReservation(id);
@@ -259,6 +274,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @PostMapping("/depart/valider-billet")
+    @Operation(summary = "Valider un billet au départ", description = "Valide un billet au moment de l'embarquement.")
     public ResponseEntity<TicketResponse> validerBilletDepart(
             @Valid @RequestBody ValiderBilletDepartRequest request) {
 
@@ -277,6 +293,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @PostMapping("/depart/cloturer")
+    @Operation(summary = "Clôturer le départ", description = "Clôture le départ d'un voyage après validation de tous les billets.")
     public ResponseEntity<Map<String, Object>> cloturerDepart(
             @RequestParam Long idVoyage,
             @RequestParam Long idManager) {
@@ -292,6 +309,7 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @GetMapping("/fidelite/{idVoyageur}")
+    @Operation(summary = "Compteur de fidélité", description = "Récupère le statut de fidélité et le nombre de voyages d'un client.")
     public ResponseEntity<Map<String, Object>> getFidelite(
             @PathVariable Long idVoyageur,
             @RequestParam String codeAgence) {
@@ -324,6 +342,7 @@ public class BookingController {
                 .nombrePlaces(r.getNombrePlaces())
                 .montantTotal(r.getMontantTotal())
                 .canal(r.getCanal())
+                .devise(r.getDevise())
                 .idVoyage(r.getIdVoyage())
                 .idVoyageur(r.getIdVoyageur())
                 .dateReservation(r.getDateReservation())

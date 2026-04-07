@@ -74,7 +74,7 @@ class BookingControllerTest {
         request.setTypeTarif(CreerReservationRequest.TypeTarif.STANDARD);
 
         when(reservationService.creerReservation(any(), any(), anyInt(), any(),
-                any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any()))
                 .thenReturn(mockReservation);
 
         mockMvc.perform(post("/api/bookings")

@@ -17,11 +17,12 @@ public class BookingEventPublisher {
 
     // ─── Déclenche le paiement après création réservation ─────────────────────
 
-    public void publierBookingCreated(Long bookingId, Double montant,
+    public void publierBookingCreated(Long bookingId, Double montant, String devise,
             Long voyageurId, Long voyageId) {
         Map<String, Object> payload = Map.of(
                 "bookingId",  bookingId,
                 "montant",    montant,
+                "devise",     devise != null ? devise : "XAF",
                 "voyageurId", voyageurId,
                 "voyageId",   voyageId
         );
@@ -36,13 +37,13 @@ public class BookingEventPublisher {
     // ─── Notifie notification-service après génération du billet ──────────────
 
     public void publierTicketGenerated(Long userId, String email,
-                                       String billetPdfUrl, String numeroTicket,
+                                       String billetPdfBase64, String numeroTicket,
                                        String origine, String destination,
                                        String dateDepart) {
         Map<String, Object> payload = Map.of(
                 "userId",       userId,
                 "email",        email,
-                "billetPdfUrl", billetPdfUrl,
+                "billetPdfBase64", billetPdfBase64,
                 "numeroTicket", numeroTicket,
                 "origine",      origine,
                 "destination",  destination,
@@ -64,15 +65,16 @@ public class BookingEventPublisher {
     // le remboursement via l'opérateur (MTN Money, Orange Money…).
 
     public void publierRemboursementDemande(Long bookingId, Long voyageurId,
-                                            Double montant, String motif) {
+                                            Double montant, String devise, String motif) {
         Map<String, Object> payload = Map.of(
                 "bookingId",  bookingId,
                 "voyageurId", voyageurId,
                 "montant",    montant,
+                "devise",     devise != null ? devise : "XAF",
                 "motif",      motif
         );
         rabbitTemplate.convertAndSend(
-                RabbitMQConfig.BOOKING_EXCHANGE,
+                RabbitMQConfig.PAYMENT_EXCHANGE,
                 RabbitMQConfig.BOOKING_REFUND_REQUESTED_KEY,
                 payload
         );

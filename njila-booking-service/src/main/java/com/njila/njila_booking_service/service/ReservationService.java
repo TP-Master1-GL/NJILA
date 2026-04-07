@@ -11,7 +11,7 @@ import com.njila.njila_booking_service.repository.*;
 import com.njila.njila_booking_service.service.factory.TicketElectroniqueFactory;
 import com.njila.njila_booking_service.service.factory.TicketEmbarquementFactory;
 import com.njila.njila_booking_service.service.pricing.*;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,7 +56,8 @@ public class ReservationService {
             String codeFiliale,
             Long idGuichetier,
             CreerReservationRequest.TypeTarif typeTarif,
-            List<CreerReservationRequest.MembreGroupeRequest> membres) {
+            List<CreerReservationRequest.MembreGroupeRequest> membres,
+            String devise) {
 
         if (!fleetClient.verifierDisponibilite(idVoyage, nombrePlaces)) {
             throw new RuntimeException(
@@ -74,6 +75,7 @@ public class ReservationService {
                         .idGuichetier(idGuichetier)
                         .statut(StatutReservation.EN_ATTENTE)
                         .montantTotal(0.0)
+                        .devise(devise != null ? devise : "XAF")
                         .build()
         );
 
@@ -139,7 +141,7 @@ public class ReservationService {
         }
 
         eventPublisher.publierBookingCreated(
-                saved.getId(), montantTotal, idVoyageur, idVoyage);
+                saved.getId(), montantTotal, saved.getDevise(), idVoyageur, idVoyage);
 
         return saved;
     }
@@ -323,7 +325,7 @@ public class ReservationService {
                 );
 
         byte[] pdf = pdfGeneratorService.genererBilletElectronique(ticket);
-        ticket.setCheminPdf("/billets/" + numeroTicket + ".pdf");
+        ticket.setCheminPdf("");
         ticketRepository.save(ticket);
 
         historiqueRepository.save(HistoriqueReservation.creer(
@@ -338,10 +340,12 @@ public class ReservationService {
         lockManager.libererVerrou(
                 reservation.getIdVoyage(), reservation.getIdVoyageur());
 
+        String pdfBase64 = java.util.Base64.getEncoder().encodeToString(pdf);
+
         eventPublisher.publierTicketGenerated(
                 reservation.getIdVoyageur(),
                 voyageur.get("email").toString(),
-                ticket.getCheminPdf(),
+                pdfBase64,
                 numeroTicket,
                 voyage.get("origine").toString(),
                 voyage.get("destination").toString(),
@@ -429,6 +433,7 @@ public class ReservationService {
                     bookingId,
                     reservation.getIdVoyageur(),
                     reservation.getMontantTotal(),
+                    reservation.getDevise(),
                     "Annulation par l'utilisateur id=" + idUtilisateur
             );
             log.info("[BOOKING] Remboursement initié pour réservation annulée id={}",

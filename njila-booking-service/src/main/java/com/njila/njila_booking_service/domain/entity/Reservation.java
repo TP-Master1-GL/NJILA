@@ -30,9 +30,12 @@ public class Reservation {
     @Column(nullable = false)
     private Double montantTotal;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private CanalReservation canal;
+
+    @Column(nullable = false, length = 3)
+    @Builder.Default
+    private String devise = "XAF";
 
     // ─── Références externes (IDs des autres services) ────────────────────────
     @Column(nullable = false)

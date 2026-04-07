@@ -80,10 +80,7 @@ public class PdfGeneratorService {
 
             byte[] pdfBytes = baos.toByteArray();
 
-            // Sauvegarder sur disque
-            sauvegarderSurDisque(ticket.getNumeroTicket(), pdfBytes);
-
-            log.info("[PDF] Billet généré et sauvegardé : {}",
+            log.info("[PDF] Billet généré en mémoire : {}",
                     ticket.getNumeroTicket());
             return pdfBytes;
 
@@ -107,17 +104,7 @@ public class PdfGeneratorService {
         return Paths.get(repertoireBillets, numeroTicket + ".pdf").toString();
     }
 
-    private void sauvegarderSurDisque(String numeroTicket, byte[] pdfBytes)
-            throws IOException {
-        Path repertoire = Paths.get(repertoireBillets);
-        if (!Files.exists(repertoire)) {
-            Files.createDirectories(repertoire);
-            log.info("[PDF] Répertoire créé : {}", repertoire);
-        }
-        Path fichier = repertoire.resolve(numeroTicket + ".pdf");
-        Files.write(fichier, pdfBytes);
-        log.info("[PDF] Fichier sauvegardé : {}", fichier);
-    }
+
 
     private void ajouterLigne(Table table, String label, String valeur) {
         table.addCell(new Cell().add(new Paragraph(label).setBold()));
