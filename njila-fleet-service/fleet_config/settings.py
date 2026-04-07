@@ -77,7 +77,7 @@ DATABASES = {
         'USER':     _get('db.user',     'DB_USER',     default='njila'),
         'PASSWORD': _get('db.password', 'DB_PASSWORD', default='njila2026'),
         'HOST':     _get('db.host',     'DB_HOST',     default='localhost'),
-        'PORT':     _get('db.port',     'DB_PORT',     cast=int, default=5432),
+        'PORT':     _get('db.port',     'DB_PORT',     cast=int, default=5433),
     }
 }
 
@@ -136,7 +136,7 @@ AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:8081')
 AUTH_SERVICE_TOKEN_VALIDATION_URL = f"{AUTH_SERVICE_URL}/api/auth/validate-token"
 
 # Clé secrète partagée avec auth-service (à mettre dans .env)
-AUTH_SERVICE_SHARED_SECRET = os.getenv('AUTH_SERVICE_SHARED_SECRET', 'njila-shared-secret-2026')
-
+# AUTH_SERVICE_SHARED_SECRET = os.getenv('AUTH_SERVICE_SHARED_SECRET', 'njila-shared-secret-2026')
+INTERNAL_SERVICE_TOKEN = os.getenv('INTERNAL_SERVICE_TOKEN', 'njila-shared-secret-2026')
 if 'test' in sys.argv:
     AUTH_SERVICE_TOKEN_VALIDATION_URL = 'http://testserver/api/auth/validate-token'
