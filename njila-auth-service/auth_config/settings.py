@@ -2,6 +2,7 @@
 from decouple import config as env
 from datetime import timedelta
 from pathlib import Path
+import os
 
 from auth_config.cloud import fetch_remote_config
 _remote = fetch_remote_config()
@@ -115,7 +116,10 @@ RABBITMQ_EXCHANGE_NOTIFICATION = "njila.notification.exchange"   # → njila-not
 RABBITMQ_EXCHANGE_SUBSCRIBE    = "njila.subscribe.exchange"      # ← depuis subscribe-service
 RABBITMQ_EXCHANGE_DEAD_LETTER  = "njila.dead.letter.exchange"    # dead letter
 
-INTERNAL_SERVICE_TOKEN = env("INTERNAL_SERVICE_TOKEN", default="njila-internal-2026")
+# INTERNAL_SERVICE_TOKEN = env("INTERNAL_SERVICE_TOKEN", default="njila-internal-2026")
+# AUTH_SERVICE_SHARED_SECRET = os.getenv('AUTH_SERVICE_SHARED_SECRET', 'njila-shared-secret-2026')
+INTERNAL_SERVICE_TOKEN = os.getenv('INTERNAL_SERVICE_TOKEN', 'njila-shared-secret-2026')
+
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
