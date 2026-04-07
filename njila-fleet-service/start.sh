@@ -6,7 +6,7 @@ echo "  NJILA - njila-fleet-service"
 echo "================================================="
 echo ""
 
-source venv/bin/activate
+
 
 echo "[START] Etape 1 - Lecture config sur njila-conf-service (8080)..."
 

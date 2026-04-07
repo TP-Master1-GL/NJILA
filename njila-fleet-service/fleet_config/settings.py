@@ -1,6 +1,12 @@
 from decouple import config as env
 from pathlib import Path
 from fleet_config.cloud import fetch_remote_config
+import os
+from datetime import timedelta
+
+import sys
+
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -44,6 +50,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'fleet.middleware.JWTAuthenticationMiddleware',
 ]
 
 ROOT_URLCONF     = 'fleet_config.urls'
@@ -96,3 +103,40 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = True
 DEFAULT_AUTO_FIELD     = 'django.db.models.BigAutoField'
 STATIC_URL             = '/static/'
+
+
+# ============ FICHIERS MÉDIAS ============
+# URL pour accéder aux fichiers médias
+MEDIA_URL = '/media/'
+
+# Chemin absolu où les fichiers seront stockés
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# ============ JWT CONFIGURATION ============
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti',
+}
+
+# ============ AUTH SERVICE CONFIGURATION ============
+# URL du auth-service pour la validation des tokens
+AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:8081')
+AUTH_SERVICE_TOKEN_VALIDATION_URL = f"{AUTH_SERVICE_URL}/api/auth/validate-token"
+
+# Clé secrète partagée avec auth-service (à mettre dans .env)
+AUTH_SERVICE_SHARED_SECRET = os.getenv('AUTH_SERVICE_SHARED_SECRET', 'njila-shared-secret-2026')
+
+if 'test' in sys.argv:
+    AUTH_SERVICE_TOKEN_VALIDATION_URL = 'http://testserver/api/auth/validate-token'
