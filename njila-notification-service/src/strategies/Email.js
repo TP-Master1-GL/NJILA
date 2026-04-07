@@ -21,13 +21,24 @@ class Email extends NotificationStrategy {
         const mailOptions = {
             from: `"NJILA Platform" <${process.env.SMTP_USER}>`,
             to: notification.recipient,
-            subject: notification.subject,
-            text: notification.content,
-            // Si une pièce jointe est présente dans la base de données
+            subject: notification.sujet || notification.subject, // Supporte les deux noms de colonnes
+            
+            // --- LA MODIFICATION EST ICI ---
+            html: notification.content, // On utilise 'html' pour interpréter le design du MailDecorator
+            // On peut garder 'text' en backup pour les vieux téléphones (optionnel)
+            text: "Veuillez utiliser un client mail compatible HTML pour voir ce message.", 
+            
+            // Si une pièce jointe est présente
             attachments: notification.pieceJointe ? [{ path: notification.pieceJointe }] : []
         };
 
-        return await this.transporter.sendMail(mailOptions);
+        try {
+            const info = await this.transporter.sendMail(mailOptions);
+            return info;
+        } catch (error) {
+            console.error(`[SMTP ERROR] Erreur lors de l'envoi à ${notification.recipient}:`, error.message);
+            throw error; // On relance l'erreur pour que le NotificationService passe en status 'FAILED'
+        }
     }
 }
 

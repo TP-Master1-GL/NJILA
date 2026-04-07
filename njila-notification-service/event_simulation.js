@@ -2,44 +2,46 @@ const amqp = require('amqplib');
 
 async function simulate() {
     try {
-        const connection = await amqp.connect('amqp://localhost'); // Ajuste si ton RabbitMQ est ailleurs
+        // 1. Connexion à RabbitMQ (local ou URL Render)
+        const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost'); 
         const channel = await connection.createChannel();
         const exchange = 'njila.notification.exchange';
 
-        console.log("🚀 Lancement de la simulation d'événements NJILA...");
+        console.log("🚀 Simulation : Envoi d'email de Réinitialisation (Password Reset)...");
 
-        // --- SIMULATION 1 : INSCRIPTION (Bienvenue) ---
-        const welcomePayload = {
-            userId: "USR-99",
+        // --- PAYLOAD EXACT DU SERVICE AUTH (PYTHON) ---
+        const resetPayload = {
             email: "maffo.ngaleu@gmail.com",
             name: "Laetitia",
-            surname: "Maffo"
+            resetLink: "https://njila-app.com/reset-password/token_test_abc123",
+            type: "password_reset"
         };
-        channel.publish(exchange, 'auth.user.welcome', Buffer.from(JSON.stringify(welcomePayload)));
-        console.log(" [AUTH] Message 'Bienvenue' envoyé !");
 
-        // --- SIMULATION 2 : RETARD DE BUS (Fleet Service) ---
-        const delayPayload = {
-            userId: "USR-99",
-            pushToken: "fake_token_123",
-            destination: "Douala",
-            delayMinutes: 45,
-            reason: "une panne technique sur le moteur"
-        };
-        setTimeout(() => {
-            channel.publish(exchange, 'trip.delay.alert', Buffer.from(JSON.stringify(delayPayload)));
-            console.log(" [FLEET] Message 'Alerte Retard' envoyé !");
-        }, 2000); // On attend 2 sec pour le deuxième message
+        // 2. Publication sur l'exchange avec la clé spécifique
+        const sent = channel.publish(
+            exchange, 
+            'auth.password.reset', 
+            Buffer.from(JSON.stringify(resetPayload)),
+            { persistent: true }
+        );
 
-        // Fermeture propre après les envois
+        if (sent) {
+            console.log("✅ [SUCCESS] Message 'auth.password.reset' posté !");
+            console.log(`🔗 Lien envoyé : ${resetPayload.resetLink}`);
+        } else {
+            console.log("❌ [ERROR] Échec de l'envoi.");
+        }
+
+        // 3. Fermeture propre
         setTimeout(() => {
             connection.close();
-            console.log("\n🏁 Simulation terminée.");
+            console.log("\n🏁 Simulation terminée. Vérifie ton email.");
             process.exit(0);
-        }, 5000);
+        }, 2000);
 
     } catch (error) {
-        console.error("❌ Erreur simulation :", error.message);
+        console.error("❌ Erreur :", error.message);
+        process.exit(1);
     }
 }
 

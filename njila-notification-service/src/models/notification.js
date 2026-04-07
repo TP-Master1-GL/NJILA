@@ -14,7 +14,7 @@ const Notification = sequelize.define('Notification', {
 }, {
     tableName: 'Notifications',
     schema: 'public',
-    timestamps: false
+    timestamps: true
 });
 
 module.exports = Notification;
