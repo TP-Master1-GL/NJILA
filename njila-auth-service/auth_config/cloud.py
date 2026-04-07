@@ -1,14 +1,12 @@
 import requests
 import sys
 
-# ─── Configuration ────────────────────────────────────────────────────────────
 CONFIG_SERVER_URL = "http://localhost:8080"
 EUREKA_URL        = "http://localhost:8761/eureka/"
 APP_NAME          = "njila-auth-service"
 PROFILE           = "default"
 
 
-# ─── 1. Fetch config depuis njila-conf-service ────────────────────────────────
 def fetch_remote_config() -> dict:
     url = f"{CONFIG_SERVER_URL}/{APP_NAME}/{PROFILE}"
     sys.stderr.write(f"[CONFIG] Connexion a njila-conf-service : {url}\n")
@@ -28,7 +26,7 @@ def fetch_remote_config() -> dict:
         return {}
 
 
-# ─── 2. Enregistrement sur njila-registry-service (Eureka) ───────────────────
+
 def register_to_eureka(port: int):
     import socket
     import py_eureka_client.eureka_client as eureka_client

@@ -15,22 +15,19 @@ import java.util.UUID;
 /**
  * UserEventConsumer — consommateur RabbitMQ du user-service v2.0.
  * 
- * NOTE IMPORTANTE : La méthode handleStaffCreated a été SUPPRIMÉE
- * car le user-service ne consomme plus l'événement staff.created.
- * 
- * Désormais, le user-service crée directement le profil en base
- * et publie un événement vers auth-service.
+ * CORRECTION : Les noms des queues ont été modifiés pour correspondre
+ * à ce que l'auth-service publie.
  *
  * Queues écoutées :
- * ┌──────────────────────────────────────┬─────────────────────┬────────────────────┐
- * │ Queue                                │ Exchange            │ Routing key        │
- * ├──────────────────────────────────────┼─────────────────────┼────────────────────┤
- * │ njila.user.registered.queue          │ njila.user.exchange │ user.registered    │
- * │ njila.user.updated.queue             │ njila.user.exchange │ user.updated       │
- * │ njila.user.agence-created.queue      │ njila.fleet.exchange│ agence.created     │
- * │ njila.user.filiale-created.queue     │ njila.fleet.exchange│ filiale.created    │
- * │ njila.user.reservation-created.queue │ njila.booking.exchange│ reservation.created│
- * └──────────────────────────────────────┴─────────────────────┴────────────────────┘
+ * ┌──────────────────────────────────────────────────┬─────────────────────┬────────────────────────┐
+ * │ Queue                                            │ Exchange            │ Routing key            │
+ * ├──────────────────────────────────────────────────┼─────────────────────┼────────────────────────┤
+ * │ njila.auth.user.registered.queue                 │ njila.user.exchange │ user.registered        │
+ * │ njila.auth.user.updated.queue                    │ njila.user.exchange │ user.updated           │
+ * │ njila.user.agence-created.queue                  │ njila.fleet.exchange│ agence.created         │
+ * │ njila.user.filiale-created.queue                 │ njila.fleet.exchange│ filiale.created        │
+ * │ njila.user.reservation-created.queue             │ njila.booking.exchange│ reservation.created   │
+ * └──────────────────────────────────────────────────┴─────────────────────┴────────────────────────┘
  */
 @Component
 @RequiredArgsConstructor
@@ -41,8 +38,8 @@ public class UserEventConsumer {
     private final CacheManager   cacheManager;
 
     // ── user.registered (Voyageur) ─────────────────────────────────────────
-
-    @RabbitListener(queues = "njila.user.registered.queue")
+    // CORRECTION : Queue modifiée pour correspondre à ce que l'auth-service publie
+    @RabbitListener(queues = "njila.auth.user.registered.queue")
     public void handleUserRegistered(Map<String, Object> payload) {
         log.info("[CONSUMER] user.registered reçu");
         try {
@@ -92,8 +89,8 @@ public class UserEventConsumer {
     }
 
     // ── user.updated ────────────────────────────────────────────────────────
-
-    @RabbitListener(queues = "njila.user.updated.queue")
+    // CORRECTION : Queue modifiée pour correspondre à ce que l'auth-service publie
+    @RabbitListener(queues = "njila.auth.user.updated.queue")
     public void handleUserUpdated(Map<String, Object> payload) {
         log.debug("[CONSUMER] user.updated reçu");
         try {

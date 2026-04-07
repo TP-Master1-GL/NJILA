@@ -1,11 +1,3 @@
-"""
-AuthRepositoryImpl — couche d'accès PostgreSQL pour l'auth-service.
-
-Ajouts v1.2 :
-  - deactivate_agence_users()  : désactive en bulk tous les users d'une agence
-  - reactivate_agence_users()  : réactive en bulk tous les users d'une agence
-  - find_active_sessions_by_agence() : sessions actives d'une agence (pour révocation Redis)
-"""
 
 import logging
 import secrets
@@ -28,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 class AuthRepository:
-
-    # ── Utilisateurs ──────────────────────────────────────────────────────────
 
     def find_user_by_email(self, email: str) -> Optional[NjilaUser]:
         try:
@@ -65,7 +55,6 @@ class AuthRepository:
         is_active: bool,
         reason:    str = DeactivationReason.ADMIN_SUSPENDED,
     ) -> Optional[NjilaUser]:
-        """Activation / suspension manuelle par l'administrateur."""
         try:
             user = NjilaUser.objects.get(id=user_id)
             user.is_active = is_active
@@ -75,20 +64,9 @@ class AuthRepository:
         except NjilaUser.DoesNotExist:
             return None
 
-    # ── Gestion bulk agence (événements abonnement) ───────────────────────────
-
+   
     @transaction.atomic
     def deactivate_agence_users(self, agence_id: str) -> List[str]:
-        """
-        Désactive TOUS les utilisateurs staff d'une agence.
-        Déclenché par l'événement subscription.expired du subscribe-service.
-
-        Retourne la liste des user_id désactivés
-        (utilisée pour révoquer leurs sessions Redis).
-
-        Seuls les rôles ROLES_LINKED_TO_AGENCE sont affectés.
-        Les VOYAGEURS et ADMINISTRATEURS ne sont jamais impactés.
-        """
         users = NjilaUser.objects.filter(
             agence_id  = agence_id,
             role__in   = list(ROLES_LINKED_TO_AGENCE),
@@ -108,15 +86,6 @@ class AuthRepository:
 
     @transaction.atomic
     def reactivate_agence_users(self, agence_id: str) -> List[str]:
-        """
-        Réactive TOUS les utilisateurs staff d'une agence dont la désactivation
-        était due à un abonnement expiré.
-        Déclenché par l'événement subscription.renewed du subscribe-service.
-
-        Ne réactive PAS les comptes suspendus manuellement (ADMIN_SUSPENDED).
-
-        Retourne la liste des user_id réactivés.
-        """
         users = NjilaUser.objects.filter(
             agence_id           = agence_id,
             role__in            = list(ROLES_LINKED_TO_AGENCE),
@@ -136,10 +105,6 @@ class AuthRepository:
         return [str(uid) for uid in user_ids]
 
     def find_active_sessions_by_user_ids(self, user_ids: List[str]) -> List[AuthSession]:
-        """
-        Retourne les sessions actives de plusieurs utilisateurs.
-        Utilisé pour révoquer les sessions Redis après désactivation bulk.
-        """
         return list(
             AuthSession.objects.filter(
                 user_id__in = user_ids,
@@ -149,18 +114,12 @@ class AuthRepository:
 
     @transaction.atomic
     def invalidate_sessions_by_user_ids(self, user_ids: List[str]) -> int:
-        """
-        Invalide en DB toutes les sessions actives d'une liste d'utilisateurs.
-        Retourne le nombre de sessions invalidées.
-        """
         count = AuthSession.objects.filter(
             user_id__in = user_ids,
             is_active   = True,
         ).update(is_active=False)
         logger.debug("[REPO] %d sessions invalidées pour %d users", count, len(user_ids))
         return count
-
-    # ── Sessions ──────────────────────────────────────────────────────────────
 
     def save_session(self, session: AuthSession) -> AuthSession:
         session.save()
@@ -177,8 +136,6 @@ class AuthRepository:
 
     def invalidate_all(self, user_id: str):
         AuthSession.objects.filter(user_id=user_id, is_active=True).update(is_active=False)
-
-    # ── Tokens de reset ───────────────────────────────────────────────────────
 
     def create_reset_token(self, user: NjilaUser) -> PasswordResetToken:
         PasswordResetToken.objects.filter(user=user, used=False).update(used=True)

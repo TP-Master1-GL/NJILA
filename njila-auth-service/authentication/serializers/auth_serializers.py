@@ -1,12 +1,3 @@
-"""
-Sérialiseurs DRF — auth-service NJILA v1.3
-
-Modifications v1.3 :
-  - RegisterSerializer : name, surname obligatoires + phone, adresse optionnels
-    (remplacement de nom/prenom par name/surname — alignement UserProfile)
-  - UserMeSerializer   : name, surname, phone, adresse ajoutés
-"""
-
 from rest_framework import serializers
 from authentication.models import Role
 
@@ -15,7 +6,6 @@ class RegisterSerializer(serializers.Serializer):
     email   = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True)
 
-    # Données d'identité — alignées avec UserProfile (user-service)
     name    = serializers.CharField(max_length=100)             # prénom
     surname = serializers.CharField(max_length=100)             # nom de famille
     phone   = serializers.CharField(max_length=20,  required=False, allow_null=True, default=None)
@@ -24,7 +14,7 @@ class RegisterSerializer(serializers.Serializer):
     role = serializers.ChoiceField(
         choices=[c[0] for c in Role.choices], default=Role.VOYAGEUR,
     )
-    photo_url  = serializers.URLField(required=False, allow_null=True, default=None)
+    photo_url  = serializers.CharField(required=False, allow_null=True, default=None)
     filiale_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     agence_id  = serializers.UUIDField(required=False, allow_null=True, default=None)
 
@@ -81,24 +71,26 @@ class AccountStatusSerializer(serializers.Serializer):
 
 
 class PhotoUpdateSerializer(serializers.Serializer):
-    """PATCH /api/auth/me/photo — mise à jour de la photo de profil."""
-    photo_url = serializers.URLField(max_length=500)
+    photo_url = serializers.CharField(max_length=500)
 
     def validate_photo_url(self, value):
-        if not value.startswith("https://"):
-            raise serializers.ValidationError("L'URL de la photo doit utiliser HTTPS.")
         return value
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
-    """
-    PATCH /api/auth/me — mise à jour des données de profil.
-    Tous les champs sont optionnels (PATCH partiel).
-    """
-    name    = serializers.CharField(max_length=100, required=False)
-    surname = serializers.CharField(max_length=100, required=False)
+    # AJOUT du champ email
+    email   = serializers.EmailField(required=False, allow_null=True)
+    name    = serializers.CharField(max_length=100, required=False, allow_null=True)
+    surname = serializers.CharField(max_length=100, required=False, allow_null=True)
     phone   = serializers.CharField(max_length=20,  required=False, allow_null=True)
     adresse = serializers.CharField(max_length=500, required=False, allow_null=True)
+
+    def validate_email(self, value):
+        """Validation optionnelle de l'email"""
+        if value is not None:
+            # Si l'email est fourni, on le nettoie
+            return value.lower().strip()
+        return value
 
     def validate_name(self, value):
         if value and not value.strip():
@@ -111,24 +103,18 @@ class ProfileUpdateSerializer(serializers.Serializer):
         return value.strip() if value else value
 
 
-# ── Réponses ──────────────────────────────────────────────────────────────────
 class UserMeSerializer(serializers.Serializer):
-    """Réponse GET /api/auth/me — profil complet de l'utilisateur connecté."""
     id          = serializers.UUIDField()
     email       = serializers.EmailField()
-    # Données d'identité
     name        = serializers.CharField()
     surname     = serializers.CharField()
     phone       = serializers.CharField(allow_null=True)
     adresse     = serializers.CharField(allow_null=True)
-    photo_url   = serializers.URLField(allow_null=True)
-    # Contexte organisationnel
+    photo_url   = serializers.CharField(allow_null=True)
     role        = serializers.CharField()
     filiale_id  = serializers.UUIDField(allow_null=True)
     agence_id   = serializers.UUIDField(allow_null=True)
-    # Flags
     is_active   = serializers.BooleanField()
     is_verified = serializers.BooleanField()
-    # Audit
     created_at    = serializers.DateTimeField()
     last_login_at = serializers.DateTimeField(allow_null=True)

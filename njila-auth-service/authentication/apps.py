@@ -1,4 +1,6 @@
 from django.apps import AppConfig
+import threading
+import time
 
 
 class AuthenticationConfig(AppConfig):
@@ -9,21 +11,21 @@ class AuthenticationConfig(AppConfig):
     def ready(self):
         
         import os
-        if os.environ.get("RUN_MAIN") != "true":
-            return
 
-        # Créer le compte administrateur par défaut
-        self._create_admin_user()
-
-        try:
-            from authentication.events.consumer import EventConsumer
-            consumer = EventConsumer()
-            consumer.start()
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
-                "[APP] Impossible de démarrer le consommateur RabbitMQ : %s", e
-            )
+        if os.environ.get("RUN_MAIN") == "true":
+            try:
+                from authentication.events.consumer import EventConsumer
+                consumer = EventConsumer()
+                consumer.start()
+                
+                # Démarrer un thread pour appeler l'endpoint sync-admin après le démarrage
+                self._call_sync_admin_endpoint()
+                
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "[APP] Impossible de démarrer le consommateur RabbitMQ : %s", e
+                )
 
         try:
             from django.conf import settings
@@ -41,35 +43,38 @@ class AuthenticationConfig(AppConfig):
                 "[APP] Impossible de s'enregistrer sur Eureka : %s", e
             )
 
-    def _create_admin_user(self):
-        """Crée un compte administrateur par défaut s'il n'existe pas."""
-        from authentication.models import NjilaUser, Role
-        import logging
-
-        logger = logging.getLogger(__name__)
-        
-        email = "ronalmaamoc52@gmail.com"
-        
-        # Vérifier si l'admin existe déjà
-        if not NjilaUser.objects.filter(email=email).exists():
+    def _call_sync_admin_endpoint(self):
+        """Appelle l'endpoint sync-admin après le démarrage du serveur."""
+        def call_endpoint():
+            # Attendre que le serveur HTTP soit complètement démarré
+            time.sleep(10)
+            
             try:
-                admin_user = NjilaUser(
-                    email       = email,
-                    name        = "Ronel",
-                    surname     = "Maamoc",
-                    role        = Role.ADMINISTRATEUR,
-                    is_active   = True,
-                    is_verified = True,
-                    is_staff    = True,
-                    created_by  = "SYSTEM",
+                import requests
+                response = requests.post(
+                    "http://localhost:8081/api/auth/sync-admin",
+                    timeout=5
                 )
-                admin_user.set_password("Ronel789")
-                admin_user.save()
                 
-                logger.info("[APP] Compte administrateur créé avec succès : %s", email)
-                logger.info("[APP]   → Mot de passe : Ronel789")
-                logger.info("[APP]   → ID: %s", admin_user.id)
+                import logging
+                logger = logging.getLogger(__name__)
+                
+                if response.status_code == 200:
+                    logger.info("[APP] ✅ Admin synchronisé avec user-service au démarrage")
+                    logger.debug(f"[APP] Réponse: {response.json()}")
+                else:
+                    logger.warning(f"[APP] ⚠️ Synchronisation admin échouée: {response.status_code}")
+                    
+            except requests.exceptions.ConnectionError:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "[APP] Impossible d'appeler sync-admin - Serveur non prêt"
+                )
             except Exception as e:
-                logger.error("[APP] Erreur lors de la création du compte admin : %s", e)
-        else:
-            logger.debug("[APP] Compte administrateur existe déjà : %s", email)
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"[APP] Erreur lors de l'appel à sync-admin: {e}"
+                )
+        
+        thread = threading.Thread(target=call_endpoint, daemon=True)
+        thread.start()

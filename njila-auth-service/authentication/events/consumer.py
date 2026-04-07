@@ -1,29 +1,3 @@
-"""
-EventConsumer — consommateur RabbitMQ de l'auth-service v2.0.
-
-Exchanges et queues écoutés :
-  ┌───────────────────────────────────────────────────────────────────────────┐
-  │  Queue                              Exchange source    Routing key         │
-  ├───────────────────────────────────────────────────────────────────────────┤
-  │  njila.auth.user.registered.queue   njila.user.exchange   user.registered  │
-  │  njila.auth.user.updated.queue      njila.user.exchange   user.updated     │
-  │  njila.auth.staff.to.auth.queue     njila.user.exchange   staff.to.auth    │  ← NOUVEAU
-  ├───────────────────────────────────────────────────────────────────────────┤
-  │  njila.auth.subscription.expired.queue                                     │
-  │                            njila.subscribe.exchange  subscription.expired  │
-  │  njila.auth.subscription.renewed.queue                                     │
-  │                            njila.subscribe.exchange  subscription.renewed  │
-  └───────────────────────────────────────────────────────────────────────────┘
-
-Événements d'abonnement :
-  subscription.expired  payload: { agenceId, expiresAt, message? }
-    → désactiver tous les users staff de l'agence (bulk)
-    → révoquer leurs sessions Redis + invalider en DB
-
-  subscription.renewed  payload: { agenceId, newExpiresAt }
-    → réactiver tous les users staff de l'agence (bulk, sauf ADMIN_SUSPENDED)
-"""
-
 import json
 import logging
 import threading
@@ -40,15 +14,15 @@ EXCHANGE_SUBSCRIBE   = "njila.subscribe.exchange"
 EXCHANGE_DEAD_LETTER = "njila.dead.letter.exchange"
 
 # ── Queues consommées par l'auth-service ──────────────────────────────────────
-QUEUE_USER_REGISTERED       = "njila.auth.user.registered.queue"
-QUEUE_USER_UPDATED          = "njila.auth.user.updated.queue"
-QUEUE_STAFF_TO_AUTH         = "njila.auth.staff.to.auth.queue"
+# CORRECTION : Ces queues doivent correspondre à ce que le user-service publie
+QUEUE_USER_REGISTERED       = "njila.user.registered.queue"        # modifié
+QUEUE_USER_UPDATED          = "njila.user.updated.queue"           # modifié
+QUEUE_STAFF_TO_AUTH         = "njila.staff.to.auth.queue"          # modifié
 QUEUE_SUBSCRIPTION_EXPIRED  = "njila.auth.subscription.expired.queue"
 QUEUE_SUBSCRIPTION_RENEWED  = "njila.auth.subscription.renewed.queue"
 
-# ── Anciennes queues (conservées pour compatibilité, mais plus utilisées) ─────
 
-MAX_RETRIES = 100
+MAX_RETRIES = 5
 
 
 class EventConsumer:
@@ -99,7 +73,7 @@ class EventConsumer:
 
             # ── Déclarer et lier les queues ───────────────────────────────────
             queues = [
-                # Messages du user-service → auth
+                # Messages du user-service → auth (CORRIGÉ)
                 (QUEUE_USER_REGISTERED, EXCHANGE_USER, "user.registered"),
                 (QUEUE_USER_UPDATED,    EXCHANGE_USER, "user.updated"),
                 (QUEUE_STAFF_TO_AUTH,   EXCHANGE_USER, "staff.to.auth"),
