@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'fleet',
+    'drf_yasg',
 ]
 
 MIDDLEWARE = [
@@ -140,3 +141,35 @@ AUTH_SERVICE_SHARED_SECRET = os.getenv('AUTH_SERVICE_SHARED_SECRET', 'njila-shar
 
 if 'test' in sys.argv:
     AUTH_SERVICE_TOKEN_VALIDATION_URL = 'http://testserver/api/auth/validate-token'
+
+# ============ SWAGGER CONFIGURATION ============
+SWAGGER_SETTINGS = {
+    'USE_SESSION_AUTH': False,
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': 'Entrez votre token JWT sous la forme: Bearer <token>'
+        }
+    },
+    'SECURITY_REQUIREMENTS': [{'Bearer': []}],
+    'DEFAULT_API_URL': None,
+    'DEFAULT_FIELD_INSPECTORS': [
+        'drf_yasg.inspectors.CamelCaseJSONFilter',
+        'drf_yasg.inspectors.InlineSerializerInspector',
+        'drf_yasg.inspectors.RelatedFieldInspector',
+        'drf_yasg.inspectors.ChoiceFieldInspector',
+        'drf_yasg.inspectors.FileFieldInspector',
+        'drf_yasg.inspectors.DictFieldInspector',
+        'drf_yasg.inspectors.SimpleFieldInspector',
+        'drf_yasg.inspectors.StringDefaultFieldInspector',
+    ],
+    'DEFAULT_FILTER_INSPECTORS': [
+        'drf_yasg.inspectors.CoreAPICompatInspector',
+    ],
+    'DEFAULT_PAGINATOR_INSPECTORS': [
+        'drf_yasg.inspectors.DjangoRestResponsePagination',
+        'drf_yasg.inspectors.CoreAPICompatInspector',
+    ],
+}
