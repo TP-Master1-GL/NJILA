@@ -75,9 +75,20 @@ DATABASES = {
         "USER":     _get("db.user",     "DB_USER",     default="njila"),
         "PASSWORD": _get("db.password", "DB_PASSWORD", default="njila2026"),
         "HOST":     _get("db.host",     "DB_HOST",     default="localhost"),
-        "PORT":     _get("db.port",     "DB_PORT",     cast=int, default=5433),
+        "PORT":     5432,  # Valeur directe
     }
 }
+
+# DATABASES = {
+#     "default": {
+#         "ENGINE":   "django.db.backends.postgresql",
+#         "NAME":     _get("db.name",     "DB_NAME",     default="njila-auth-db"),
+#         "USER":     _get("db.user",     "DB_USER",     default="njila"),
+#         "PASSWORD": _get("db.password", "DB_PASSWORD", default="njila2026"),
+#         "HOST":     _get("db.host",     "DB_HOST",     default="localhost"),
+#         "PORT":     _get("db.port",     "DB_PORT",     default=5432),  # Ajout des clés
+#     }
+# }
 
 _redis_host = _get("redis.host", "REDIS_HOST", default="localhost")
 _redis_port = _get("redis.port", "REDIS_PORT", cast=int, default=6379)
