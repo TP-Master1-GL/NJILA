@@ -13,7 +13,8 @@ const Notification = sequelize.define('Notification', {
     status: { type: DataTypes.ENUM('PENDING', 'SENT', 'FAILED'), defaultValue: 'PENDING' }
 }, {
     tableName: 'Notifications',
-    schema: 'public'
+    schema: 'public',
+    timestamps: false
 });
 
 module.exports = Notification;
