@@ -11,7 +11,7 @@ async function simulate() {
         // --- SIMULATION 1 : INSCRIPTION (Bienvenue) ---
         const welcomePayload = {
             userId: "USR-99",
-            email: "maffo.test@gmail.com",
+            email: "maffo.ngaleu@gmail.com",
             name: "Laetitia",
             surname: "Maffo"
         };
