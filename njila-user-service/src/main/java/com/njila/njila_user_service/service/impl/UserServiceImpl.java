@@ -571,4 +571,69 @@ public class UserServiceImpl implements UserService, IUserSubject {
             .updatedAt(avis.getUpdatedAt())
             .build();
     }
+
+    
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> listStaffByAgence(UUID agenceId, JwtClaims caller) {
+        roleManager.assertManagerCanManageAgence(caller, agenceId);
+        
+        List<UserProfile> staff = userRepository.findAllStaffByAgenceId(agenceId);
+        return staff.stream()
+            .map(this::toResponse)
+            .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> listStaffByFiliale(UUID filialeId, JwtClaims caller) {
+        // Pour ManagerLocal, vérifier que la filiale est la sienne
+        // Pour ManagerGlobal, vérifier que la filiale appartient à son agence
+        if (caller.getRole() == Role.MANAGER_GLOBAL) {
+            // Vérifier que la filiale appartient bien à son agence
+            Filiale filiale = filialeRepository.findById(filialeId)
+                .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
+            roleManager.assertManagerCanManageAgence(caller, filiale.getAgenceId());
+        } else {
+            roleManager.assertManagerCanManageFiliale(caller, filialeId);
+        }
+        
+        List<UserProfile> staff = userRepository.findAllStaffByFilialeId(filialeId);
+        return staff.stream()
+            .map(this::toResponse)
+            .toList();
+    }
+
+    @Override
+    @Transactional
+    public void deleteStaff(UUID staffId, JwtClaims caller) {
+        UserProfile staff = userRepository.findById(staffId)
+            .orElseThrow(() -> new ProfileNotFoundException(staffId.toString()));
+        
+        // Vérifier que c'est bien un staff (pas un voyageur)
+        if (staff.getRole() == Role.VOYAGEUR) {
+            throw new ForbiddenException("Impossible de supprimer un compte voyageur via cette endpoint.");
+        }
+        
+        // Vérifier les droits
+        roleManager.assertCanDeleteStaff(caller, staff);
+        
+        // Ne pas supprimer un manager global par un manager local
+        if (staff.getRole() == Role.MANAGER_GLOBAL && caller.getRole() != Role.ADMINISTRATEUR) {
+            throw new ForbiddenException("Seul un Administrateur peut supprimer un ManagerGlobal.");
+        }
+        
+        userRepository.delete(staff);
+        
+        // Invalider les caches
+        evictUserLists();
+        var profileCache = cacheManager.getCache("profiles");
+        if (profileCache != null) {
+            profileCache.evict(staffId.toString());
+        }
+        
+        log.info("[SERVICE] Staff supprimé | staffId={} par caller={}", staffId, caller.getUserId());
+    }
+
+
 }
