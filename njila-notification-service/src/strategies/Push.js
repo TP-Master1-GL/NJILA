@@ -35,11 +35,11 @@ class PushStrategy extends NotificationStrategy {
             // Envoi réel via le protocole Web-Push
             await webpush.sendNotification(subscription, payload);
             
-            console.log('✅ [STRATEGY-PUSH] Notification envoyée avec succès.');
+            console.log('[STRATEGY-PUSH] Notification envoyée avec succès.');
             return { success: true };
 
         } catch (error) {
-            console.error('❌ [STRATEGY-PUSH] Erreur lors de l\'envoi :', error.message);
+            console.error(' [STRATEGY-PUSH] Erreur lors de l\'envoi :', error.message);
             
             // Si l'abonnement est expiré ou invalide (404 ou 410)
             if (error.statusCode === 410 || error.statusCode === 404) {

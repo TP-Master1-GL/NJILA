@@ -130,6 +130,41 @@ class NotificationHandlers {
             content: `Le départ de votre bus vers ${payload.destination} est retardé de ${payload.delayMinutes} min suite à ${payload.reason}. Nous nous excusons pour le désagrément.`
         });
     }
+
+    async handleBookingCreated(payload) {
+        console.log(`[HANDLER] Réservation créée : ${payload.bookingId}`);
+        return await NotificationService.sendNotification({
+            userId: payload.userId,
+            type: 'EMAIL',
+            recipient: payload.email,
+            subject: " Votre réservation NJILA est enregistrée",
+            content: `Votre réservation #${payload.bookingId} pour ${payload.destination} est en attente de paiement. Elle sera validée dès réception des fonds.`
+        });
+    }
+
+    // Traitement de : booking.cancelled
+    async handleBookingCancelled(payload) {
+        console.log(`[HANDLER] Réservation annulée : ${payload.bookingId}`);
+        return await NotificationService.sendNotification({
+            userId: payload.userId,
+            type: 'EMAIL',
+            recipient: payload.email,
+            subject: " Annulation de votre trajet - NJILA",
+            content: `Nous vous confirmons l'annulation de votre réservation #${payload.bookingId}. Si un paiement a été effectué, le processus de remboursement est activé.`
+        });
+    }
+
+    // Traitement de : payment.refunded
+    async handlePaymentRefunded(payload) {
+        console.log(`[HANDLER] Remboursement effectué : ${payload.transactionId}`);
+        return await NotificationService.sendNotification({
+            userId: payload.userId,
+            type: 'EMAIL',
+            recipient: payload.email,
+            subject: " Remboursement NJILA confirmé",
+            content: `Le remboursement de ${payload.montant} FCFA lié à votre transaction ${payload.transactionId} a été crédité sur votre compte.`
+        });
+    }
 }
 
 module.exports = new NotificationHandlers();
