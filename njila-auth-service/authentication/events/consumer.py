@@ -285,44 +285,52 @@ class EventConsumer:
     def _create_auth_account(self, data: dict):
         """
         Crée un compte auth depuis un événement externe.
-        
-        Payload complet :
-        {
-            "userId":        "uuid",           // optionnel, peut être généré
-            "email":         "user@njila.com",
-            "passwordTemp":  "0000",           // mot de passe temporaire
-            "role":          "VOYAGEUR|GUICHETIER|CHAUFFEUR|MANAGER_LOCAL|MANAGER_GLOBAL",
-            "name":          "Prénom",
-            "surname":       "Nom",
-            "phone":         "+237XXXXXXXX",   // optionnel
-            "adresse":       "Adresse",        // optionnel
-            "photoUrl":      "https://...",    // optionnel
-            "filialeId":     "uuid",           // optionnel
-            "agenceId":      "uuid",           // optionnel
-            "poste":         "Agent",          // optionnel (guichetier)
-            "numeroPermis":  "SN-2025-001234"  // optionnel (chauffeur)
-        }
         """
         from authentication.models import NjilaUser
         from django.core.validators import validate_email
         from django.core.exceptions import ValidationError
+        import uuid
 
-        repo       = AuthRepository()
-        email      = data.get("email", "").lower().strip()
-        role       = data.get("role", "GUICHETIER")
-        user_id    = data.get("userId")
-        password   = data.get("passwordTemp", "0000")
-        # Données d'identité — alignées avec UserProfile (user-service)
-        name       = data.get("name",    "")
-        surname    = data.get("surname", "")
-        phone      = data.get("phone")
-        adresse    = data.get("adresse")
-        photo_url  = data.get("photoUrl")
-        filiale_id = data.get("filialeId")
-        agence_id  = data.get("agenceId")
+        repo = AuthRepository()
+        email = data.get("email", "").lower().strip()
+        role = data.get("role", "GUICHETIER")
+        user_id = data.get("userId")
+        password = data.get("passwordTemp", "0000")
         
-        # Champs spécifiques stockés dans meta_data
-        poste        = data.get("poste")
+        # Données d'identité
+        name = data.get("name", "")
+        surname = data.get("surname", "")
+        phone = data.get("phone")
+        adresse = data.get("adresse")
+        photo_url = data.get("photoUrl")
+        
+        # CORRECTION IMPORTANTE : Convertir les chaînes vides en None
+        filiale_id = data.get("filialeId")
+        agence_id = data.get("agenceId")
+        
+        # Si filiale_id est une chaîne vide ou "null", le mettre à None
+        if filiale_id == "" or filiale_id == "null" or filiale_id is None:
+            filiale_id = None
+        elif filiale_id:
+            try:
+                # Valider que c'est un UUID valide
+                uuid.UUID(filiale_id)
+            except ValueError:
+                logger.warning("[CONSUMER] filialeId invalide: %s", filiale_id)
+                filiale_id = None
+        
+        # Si agence_id est une chaîne vide ou "null", le mettre à None
+        if agence_id == "" or agence_id == "null" or agence_id is None:
+            agence_id = None
+        elif agence_id:
+            try:
+                uuid.UUID(agence_id)
+            except ValueError:
+                logger.warning("[CONSUMER] agenceId invalide: %s", agence_id)
+                agence_id = None
+        
+        # Champs spécifiques
+        poste = data.get("poste")
         numero_permis = data.get("numeroPermis")
 
         if not email:
@@ -341,11 +349,10 @@ class EventConsumer:
             logger.warning("[CONSUMER] Compte déjà existant pour %s — ignoré", email)
             return
 
-        # Si user_id n'est pas fourni, en générer un
-        import uuid
+        # Générer user_id si non fourni
         final_user_id = user_id or str(uuid.uuid4())
 
-        # Construction des meta_data pour les champs spécifiques
+        # Construction des meta_data
         meta_data = {}
         if poste:
             meta_data["poste"] = poste
@@ -353,25 +360,25 @@ class EventConsumer:
             meta_data["numeroPermis"] = numero_permis
 
         user = NjilaUser(
-            id          = final_user_id,
-            email       = email,
-            name        = name,
-            surname     = surname,
-            phone       = phone,
-            adresse     = adresse,
-            role        = role.upper(),
-            photo_url   = photo_url,
-            filiale_id  = filiale_id,
-            agence_id   = agence_id,
-            is_active   = True,
-            is_verified = True,
-            created_by  = "SYSTEM",
-            meta_data   = meta_data if meta_data else None,
+            id=final_user_id,
+            email=email,
+            name=name,
+            surname=surname,
+            phone=phone,
+            adresse=adresse,
+            role=role.upper(),
+            photo_url=photo_url,
+            filiale_id=filiale_id,  # Maintenant None au lieu de "" ou "null"
+            agence_id=agence_id,    # Maintenant None au lieu de "" ou "null"
+            is_active=True,
+            is_verified=True,
+            created_by="SYSTEM",
+            meta_data=meta_data if meta_data else None,
         )
         user.set_password(password)
         repo.save_user(user)
         
         logger.info(
-            "[CONSUMER] Compte auth créé | userId=%s email=%s role=%s passwordTemp=%s",
-            final_user_id, email, role, password
+            "[CONSUMER] Compte auth créé | userId=%s email=%s role=%s filiale_id=%s agence_id=%s",
+            final_user_id, email, role, filiale_id, agence_id
         )

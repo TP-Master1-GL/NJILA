@@ -26,9 +26,13 @@ public class CreateStaffRequest {
     @NotNull(message = "Le rôle est obligatoire")
     private Role role;
 
-    // Pour ManagerLocal, ManagerGlobal, Guichetier, Chauffeur
-    @NotBlank(message = "L'ID filiale est obligatoire pour ce rôle")
-    private String filialeId;
+    // Adresse (optionnelle pour tous les rôles)
+    @Size(max = 500, message = "L'adresse ne peut dépasser 500 caractères")
+    private String adresse;  // ← AJOUTÉ
+
+    // Pour ManagerLocal, Guichetier, Chauffeur
+    // Pour ManagerGlobal, ce champ n'est PAS obligatoire
+    private String filialeId;  // ← Retirer @NotBlank
 
     // Pour ManagerGlobal, ManagerLocal, Guichetier, Chauffeur (optionnel selon contexte)
     private String agenceId;

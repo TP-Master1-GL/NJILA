@@ -52,6 +52,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * - Génération de l'UUID côté user-service
  * - Suppression de la dépendance à l'ancien consumer staff.created
  * - Mot de passe temporaire fixé à "0000" pour les nouveaux comptes staff
+ * - Ajout du champ adresse pour les staff
+ * - filialeId n'est plus obligatoire pour MANAGER_GLOBAL
  */
 @Service
 @RequiredArgsConstructor
@@ -244,7 +246,7 @@ public class UserServiceImpl implements UserService, IUserSubject {
      * 1. Vérification des droits (Manager ou Admin)
      * 2. Vérification email unique
      * 3. Génération de l'UUID
-     * 4. Validation de l'existence de l'agence et/ou filiale
+     * 4. Validation de l'existence de l'agence et/ou filiale (selon le rôle)
      * 5. Sauvegarde IMMÉDIATE en base
      * 6. Publication d'un événement vers auth-service avec mot de passe "0000"
      * 7. Notification des observateurs internes
@@ -265,8 +267,8 @@ public class UserServiceImpl implements UserService, IUserSubject {
         // 3. Génération de l'UUID (le user-service maîtrise l'identifiant)
         UUID newUserId = UUID.randomUUID();
         
-        // 4. Validation des entités externes (Agence/Filiale)
-        validateAgenceAndFiliale(request);
+        // 4. Validation des entités externes (Agence/Filiale) selon le rôle
+        validateAgenceAndFilialeByRole(request);
         
         // 5. Création et sauvegarde du profil en BASE (immédiat)
         UserProfile profile = buildUserProfile(newUserId, request);
@@ -295,33 +297,83 @@ public class UserServiceImpl implements UserService, IUserSubject {
 
     /**
      * Valide que l'agence et la filiale référencées existent bien en base.
-     * Ces entités sont synchronisées via les événements du fleet-management-service.
+     * Les règles de validation dépendent du rôle :
+     * - MANAGER_GLOBAL : agenceId obligatoire, filialeId optionnel
+     * - MANAGER_LOCAL : agenceId et filialeId obligatoires
+     * - GUICHETIER/CHAUFFEUR : filialeId obligatoire, agenceId optionnel
      */
-    private void validateAgenceAndFiliale(CreateStaffRequest request) {
-        // Validation de l'agence (si fournie)
-        if (request.getAgenceId() != null && !request.getAgenceId().isBlank()) {
-            try {
-                UUID agenceId = UUID.fromString(request.getAgenceId());
-                if (!agenceRepository.existsByIdAgence(agenceId)) {
-                    throw new AgenceNotFoundException(request.getAgenceId());
-                }
-                log.debug("[SERVICE] Agence validée : {}", agenceId);
-            } catch (IllegalArgumentException e) {
-                throw new AgenceNotFoundException("Format UUID invalide : " + request.getAgenceId());
-            }
-        }
+    private void validateAgenceAndFilialeByRole(CreateStaffRequest request) {
+        Role role = request.getRole();
         
-        // Validation de la filiale (si fournie)
-        if (request.getFilialeId() != null && !request.getFilialeId().isBlank()) {
-            try {
-                UUID filialeId = UUID.fromString(request.getFilialeId());
-                if (!filialeRepository.existsByIdFiliale(filialeId)) {
-                    throw new FilialeNotFoundException(request.getFilialeId());
+        switch (role) {
+            case MANAGER_GLOBAL:
+                // agenceId OBLIGATOIRE, filialeId OPTIONNEL
+                if (request.getAgenceId() == null || request.getAgenceId().isBlank()) {
+                    Map<String, String> errors = new HashMap<>();
+                    errors.put("agenceId", "L'ID agence est obligatoire pour MANAGER_GLOBAL");
+                    throw new ValidationException("Données invalides", errors);
                 }
-                log.debug("[SERVICE] Filiale validée : {}", filialeId);
-            } catch (IllegalArgumentException e) {
-                throw new FilialeNotFoundException("Format UUID invalide : " + request.getFilialeId());
+                validateAgenceExists(request.getAgenceId());
+                // filialeId peut être null, pas de validation
+                break;
+                
+            case MANAGER_LOCAL:
+                // agenceId et filialeId OBLIGATOIRES
+                Map<String, String> errors = new HashMap<>();
+                if (request.getAgenceId() == null || request.getAgenceId().isBlank()) {
+                    errors.put("agenceId", "L'ID agence est obligatoire pour MANAGER_LOCAL");
+                }
+                if (request.getFilialeId() == null || request.getFilialeId().isBlank()) {
+                    errors.put("filialeId", "L'ID filiale est obligatoire pour MANAGER_LOCAL");
+                }
+                if (!errors.isEmpty()) {
+                    throw new ValidationException("Données invalides", errors);
+                }
+                validateAgenceExists(request.getAgenceId());
+                validateFilialeExists(request.getFilialeId());
+                break;
+                
+            case GUICHETIER:
+            case CHAUFFEUR:
+                // filialeId OBLIGATOIRE
+                if (request.getFilialeId() == null || request.getFilialeId().isBlank()) {
+                    Map<String, String> err = new HashMap<>();
+                    err.put("filialeId", "L'ID filiale est obligatoire pour " + role);
+                    throw new ValidationException("Données invalides", err);
+                }
+                validateFilialeExists(request.getFilialeId());
+                // agenceId optionnel
+                if (request.getAgenceId() != null && !request.getAgenceId().isBlank()) {
+                    validateAgenceExists(request.getAgenceId());
+                }
+                break;
+                
+            default:
+                log.warn("[SERVICE] Rôle non géré pour validation : {}", role);
+        }
+    }
+    
+    private void validateAgenceExists(String agenceIdStr) {
+        try {
+            UUID agenceId = UUID.fromString(agenceIdStr);
+            if (!agenceRepository.existsByIdAgence(agenceId)) {
+                throw new AgenceNotFoundException(agenceIdStr);
             }
+            log.debug("[SERVICE] Agence validée : {}", agenceId);
+        } catch (IllegalArgumentException e) {
+            throw new AgenceNotFoundException("Format UUID invalide : " + agenceIdStr);
+        }
+    }
+    
+    private void validateFilialeExists(String filialeIdStr) {
+        try {
+            UUID filialeId = UUID.fromString(filialeIdStr);
+            if (!filialeRepository.existsByIdFiliale(filialeId)) {
+                throw new FilialeNotFoundException(filialeIdStr);
+            }
+            log.debug("[SERVICE] Filiale validée : {}", filialeId);
+        } catch (IllegalArgumentException e) {
+            throw new FilialeNotFoundException("Format UUID invalide : " + filialeIdStr);
         }
     }
 
@@ -336,6 +388,7 @@ public class UserServiceImpl implements UserService, IUserSubject {
             .name(request.getName().strip())
             .surname(request.getSurname().strip())
             .phone(request.getPhone())
+            .adresse(request.getAdresse())
             .role(request.getRole())
             .isActive(true);
         
@@ -399,26 +452,37 @@ public class UserServiceImpl implements UserService, IUserSubject {
      * n'est pas celui qui utilisera le compte. L'utilisateur final devra modifier
      * son mot de passe lors de sa première connexion.
      */
+    /**
+     * Publie un événement vers auth-service pour créer le compte authentifiable.
+     */
     private void publishStaffToAuth(UUID userId, CreateStaffRequest request) {
         // Mot de passe temporaire fixe "0000"
         String temporaryPassword = "0000";
         
         Map<String, Object> payload = new HashMap<>();
-        payload.put("userId",        userId.toString());
-        payload.put("email",         request.getEmail().toLowerCase().strip());
-        payload.put("passwordTemp",  temporaryPassword);
-        payload.put("role",          request.getRole().name());
-        payload.put("name",          request.getName());
-        payload.put("surname",       request.getSurname());
-        payload.put("phone",         request.getPhone());
-        payload.put("filialeId",     request.getFilialeId() != null ? request.getFilialeId() : "");
-        payload.put("agenceId",      request.getAgenceId() != null ? request.getAgenceId() : "");
+        payload.put("userId", userId.toString());
+        payload.put("email", request.getEmail().toLowerCase().strip());
+        payload.put("passwordTemp", temporaryPassword);
+        payload.put("role", request.getRole().name());
+        payload.put("name", request.getName());
+        payload.put("surname", request.getSurname());
+        payload.put("phone", request.getPhone());
+        
+        // IMPORTANT: Envoyer null au lieu de chaîne vide pour les UUID
+        payload.put("adresse", request.getAdresse() != null && !request.getAdresse().isBlank() 
+            ? request.getAdresse() : null);
+        
+        payload.put("filialeId", request.getFilialeId() != null && !request.getFilialeId().isBlank() 
+            ? request.getFilialeId() : null);
+        
+        payload.put("agenceId", request.getAgenceId() != null && !request.getAgenceId().isBlank() 
+            ? request.getAgenceId() : null);
         
         // Champs spécifiques pour le auth-service (optionnels)
-        if (request.getPoste() != null) {
+        if (request.getPoste() != null && !request.getPoste().isBlank()) {
             payload.put("poste", request.getPoste());
         }
-        if (request.getNumeroPermis() != null) {
+        if (request.getNumeroPermis() != null && !request.getNumeroPermis().isBlank()) {
             payload.put("numeroPermis", request.getNumeroPermis());
         }
         
@@ -433,11 +497,8 @@ public class UserServiceImpl implements UserService, IUserSubject {
         } catch (Exception e) {
             log.error("[SERVICE] Erreur publication staff.to.auth pour userId={} : {}", 
                       userId, e.getMessage());
-            // La base est déjà sauvegardée, on log l'erreur
-            // Idéalement : stocker dans une table outbox pour retry
         }
     }
-
     /**
      * Invalide le cache des listes d'utilisateurs.
      */
@@ -529,50 +590,8 @@ public class UserServiceImpl implements UserService, IUserSubject {
         return moyenne != null ? Math.round(moyenne * 10.0) / 10.0 : 0.0;
     }
 
-    // ── Mappers ─────────────────────────────────────────────────────────────
+    // ── STAFF MANAGEMENT ────────────────────────────────────────────────────
 
-    private UserProfileResponse toResponse(UserProfile p) {
-        return UserProfileResponse.builder()
-            .idUser(p.getIdUser())
-            .name(p.getName())
-            .surname(p.getSurname())
-            .email(p.getEmail())
-            .phone(p.getPhone())
-            .adresse(p.getAdresse())
-            .photoProfil(p.getPhotoProfil())
-            .role(p.getRole())
-            .filialeId(p.getFilialeId())
-            .agenceId(p.getAgenceId())
-            .isActive(p.isActive())
-            .dateInscription(p.getDateInscription())
-            .derniereConnexion(p.getDerniereConnexion())
-            .historiqueResa(p.getHistoriqueResa())
-            .poste(p.getPoste())
-            .numeroPermis(p.getNumeroPermis())
-            .idVoyageActuel(p.getIdVoyageActuel())
-            .disponible(p.getDisponible())
-            .dateEmbauche(p.getDateEmbauche())
-            .niveauAcces(p.getNiveauAcces())
-            .idAgenceManager(p.getIdAgenceManager())
-            .build();
-    }
-
-    private AvisResponse toAvisResponse(Avis avis, UserProfile auteur) {
-        return AvisResponse.builder()
-            .id(avis.getId())
-            .agenceId(avis.getAgenceId())
-            .agenceNom(avis.getAgenceNom())
-            .auteurName(auteur.getName())
-            .auteurSurname(auteur.getSurname())
-            .note(avis.getNote())
-            .commentaire(avis.getCommentaire())
-            .visible(avis.isVisible())
-            .createdAt(avis.getCreatedAt())
-            .updatedAt(avis.getUpdatedAt())
-            .build();
-    }
-
-    
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listStaffByAgence(UUID agenceId, JwtClaims caller) {
@@ -635,5 +654,46 @@ public class UserServiceImpl implements UserService, IUserSubject {
         log.info("[SERVICE] Staff supprimé | staffId={} par caller={}", staffId, caller.getUserId());
     }
 
+    // ── Mappers ─────────────────────────────────────────────────────────────
 
+    private UserProfileResponse toResponse(UserProfile p) {
+        return UserProfileResponse.builder()
+            .idUser(p.getIdUser())
+            .name(p.getName())
+            .surname(p.getSurname())
+            .email(p.getEmail())
+            .phone(p.getPhone())
+            .adresse(p.getAdresse())
+            .photoProfil(p.getPhotoProfil())
+            .role(p.getRole())
+            .filialeId(p.getFilialeId())
+            .agenceId(p.getAgenceId())
+            .isActive(p.isActive())
+            .dateInscription(p.getDateInscription())
+            .derniereConnexion(p.getDerniereConnexion())
+            .historiqueResa(p.getHistoriqueResa())
+            .poste(p.getPoste())
+            .numeroPermis(p.getNumeroPermis())
+            .idVoyageActuel(p.getIdVoyageActuel())
+            .disponible(p.getDisponible())
+            .dateEmbauche(p.getDateEmbauche())
+            .niveauAcces(p.getNiveauAcces())
+            .idAgenceManager(p.getIdAgenceManager())
+            .build();
+    }
+
+    private AvisResponse toAvisResponse(Avis avis, UserProfile auteur) {
+        return AvisResponse.builder()
+            .id(avis.getId())
+            .agenceId(avis.getAgenceId())
+            .agenceNom(avis.getAgenceNom())
+            .auteurName(auteur.getName())
+            .auteurSurname(auteur.getSurname())
+            .note(avis.getNote())
+            .commentaire(avis.getCommentaire())
+            .visible(avis.isVisible())
+            .createdAt(avis.getCreatedAt())
+            .updatedAt(avis.getUpdatedAt())
+            .build();
+    }
 }

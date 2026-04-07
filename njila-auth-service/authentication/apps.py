@@ -119,7 +119,7 @@ class AuthenticationConfig(AppConfig):
             
             # Attendre un peu que RabbitMQ soit prêt
             import time
-            time.sleep(2)
+            time.sleep(100)
             
             publisher.publish_user_registered(
                 user_id=str(user.id),

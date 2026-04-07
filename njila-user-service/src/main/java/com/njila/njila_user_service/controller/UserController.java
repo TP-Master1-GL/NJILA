@@ -34,9 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * UserController — diagramme composants user-service.
- */
+
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -78,7 +76,6 @@ public class UserController {
             **Permissions requises :**
             - L'utilisateur lui-même
             - MANAGER_LOCAL / MANAGER_GLOBAL
-            - ADMINISTRATEUR
             """
     )
     @ApiResponses(value = {
@@ -116,7 +113,6 @@ public class UserController {
             
             **Permissions requises :**
             - L'utilisateur lui-même
-            - ADMINISTRATEUR
             """
     )
     @ApiResponses(value = {
@@ -212,7 +208,6 @@ public class UserController {
             **Permissions requises :**
             - MANAGER_LOCAL (doit être associé à la filiale)
             - MANAGER_GLOBAL
-            - ADMINISTRATEUR
             """
     )
     public ResponseEntity<ApiResponse<Void>> createGuichetier(
@@ -238,7 +233,6 @@ public class UserController {
             **Permissions requises :**
             - MANAGER_LOCAL (doit être associé à la filiale)
             - MANAGER_GLOBAL
-            - ADMINISTRATEUR
             """
     )
     public ResponseEntity<ApiResponse<Void>> createChauffeur(
@@ -263,7 +257,6 @@ public class UserController {
             
             **Permissions requises :**
             - MANAGER_GLOBAL (peut créer MANAGER_LOCAL)
-            - ADMINISTRATEUR (peut créer tous les types)
             """
     )
     public ResponseEntity<ApiResponse<Void>> createManager(
@@ -385,7 +378,6 @@ public class UserController {
             
             **Permissions requises :**
             - MANAGER_GLOBAL (uniquement pour son agence)
-            - ADMINISTRATEUR
             """
     )
     public ResponseEntity<ApiResponse<List<UserProfileResponse>>> listStaffByAgence(
@@ -406,7 +398,6 @@ public class UserController {
             **Permissions requises :**
             - MANAGER_LOCAL (uniquement pour sa filiale)
             - MANAGER_GLOBAL (si la filiale appartient à son agence)
-            - ADMINISTRATEUR
             """
     )
     public ResponseEntity<ApiResponse<List<UserProfileResponse>>> listStaffByFiliale(
@@ -427,7 +418,6 @@ public class UserController {
             **Permissions requises :**
             - MANAGER_LOCAL : peut supprimer Guichetier et Chauffeur de SA filiale uniquement
             - MANAGER_GLOBAL : peut supprimer tout staff de SON agence
-            - ADMINISTRATEUR : peut tout supprimer
             """
     )
     public ResponseEntity<Void> deleteStaff(

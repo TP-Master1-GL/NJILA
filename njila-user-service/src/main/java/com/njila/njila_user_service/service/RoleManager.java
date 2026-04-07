@@ -37,7 +37,6 @@ public class RoleManager {
 
     public void assertCanUpdateProfile(JwtClaims caller, UUID targetUserId) {
         if (caller == null) throw new ForbiddenException("Authentification requise.");
-        if (caller.getRole() == Role.ADMINISTRATEUR)  return;
         if (caller.getUserId().equals(targetUserId))   return;
         throw new ForbiddenException(
             "Accès interdit : vous ne pouvez modifier que votre propre profil."
@@ -55,8 +54,8 @@ public class RoleManager {
     public void assertCanCreateStaff(JwtClaims caller) {
         if (caller == null) throw new ForbiddenException("Authentification requise.");
         if (caller.getRole() == Role.MANAGER_LOCAL
-            || caller.getRole() == Role.MANAGER_GLOBAL
-            || caller.getRole() == Role.ADMINISTRATEUR) return;
+            || caller.getRole() == Role.ADMINISTRATEUR
+            || caller.getRole() == Role.MANAGER_GLOBAL) return;
         throw new ForbiddenException(
             "Accès interdit : seuls les managers peuvent créer des comptes staff."
         );
@@ -104,10 +103,6 @@ public class RoleManager {
             throw new ForbiddenException("Authentification requise.");
         }
         
-        // ADMIN peut tout faire
-        if (caller.getRole() == Role.ADMINISTRATEUR) {
-            return;
-        }
         
         // ManagerGlobal doit avoir l'agenceId dans son token
         if (caller.getRole() == Role.MANAGER_GLOBAL) {
@@ -131,10 +126,6 @@ public class RoleManager {
             throw new ForbiddenException("Authentification requise.");
         }
         
-        // ADMIN peut tout faire
-        if (caller.getRole() == Role.ADMINISTRATEUR) {
-            return;
-        }
         
         // ManagerLocal doit avoir la filialeId dans son token
         if (caller.getRole() == Role.MANAGER_LOCAL) {
@@ -162,11 +153,6 @@ public class RoleManager {
     public void assertCanDeleteStaff(JwtClaims caller, UserProfile targetStaff) {
         if (caller == null) {
             throw new ForbiddenException("Authentification requise.");
-        }
-        
-        // ADMIN peut tout supprimer
-        if (caller.getRole() == Role.ADMINISTRATEUR) {
-            return;
         }
         
         // ManagerGlobal : vérifier que le staff est dans son agence
