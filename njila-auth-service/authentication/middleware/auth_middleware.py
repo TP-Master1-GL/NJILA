@@ -1,17 +1,3 @@
-"""
-AuthMiddleware — correspond à la classe AuthMiddleware du diagramme UML.
-
-Méthodes :
-  authenticate(request)  → extrait et valide le JWT
-  authorize(roles)       → vérifie les permissions RBAC
-  extractToken(header)   → extrait le Bearer token
-
-Implémenté comme :
-  1. JWTAuthentication DRF (pour les vues protégées)
-  2. Permission classes RBAC
-  3. Décorateur @require_roles
-"""
-
 import logging
 from functools import wraps
 from typing import Optional, Tuple
@@ -29,15 +15,8 @@ from authentication.models import NjilaUser, Role
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Objet "utilisateur authentifié" injecté dans request.user
-# ─────────────────────────────────────────────────────────────────────────────
 class AuthenticatedUser:
-    """
-    Représente l'utilisateur courant extrait du JWT.
-    Injecté dans request.user par NjilaJWTAuthentication.
-    """
-
+    
     def __init__(self, payload: TokenPayload):
         self.id         = payload.user_id
         self.role       = payload.role
@@ -54,24 +33,14 @@ class AuthenticatedUser:
         return f"User({self.id}, {self.role})"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Authentication class DRF
-# ─────────────────────────────────────────────────────────────────────────────
 class NjilaJWTAuthentication(BaseAuthentication):
-    """
-    Authentification JWT pour DRF.
-    Correspond à authenticate(request) du diagramme AuthMiddleware.
-    """
+    
 
     def __init__(self):
         self._jwt   = JwtTokenService()
         self._cache = RedisSessionCache()
 
     def authenticate(self, request: Request) -> Optional[Tuple[AuthenticatedUser, str]]:
-        """
-        Extrait et valide le JWT depuis le header Authorization.
-        Retourne (user, token) ou None (laisse les autres backends tenter).
-        """
         token = self.extract_token(request)
         if token is None:
             return None
@@ -95,10 +64,6 @@ class NjilaJWTAuthentication(BaseAuthentication):
         return (user, token)
 
     def extract_token(self, request: Request) -> Optional[str]:
-        """
-        extractToken(header: String) — diagramme UML.
-        Extrait le token Bearer du header Authorization.
-        """
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
         if not auth_header.startswith("Bearer "):
             return None
@@ -154,11 +119,7 @@ class IsGuichetier(BasePermission):
 
 
 class IsInternalService(BasePermission):
-    """
-    Accès réservé aux services internes (validate-token).
-    Vérifie un header X-Internal-Token secret.
-    """
-
+    
     def has_permission(self, request, view):
         internal_token = request.META.get("HTTP_X_INTERNAL_TOKEN", "")
         expected       = getattr(settings, "INTERNAL_SERVICE_TOKEN", "")
@@ -169,15 +130,7 @@ class IsInternalService(BasePermission):
 # Décorateur @require_roles
 # ─────────────────────────────────────────────────────────────────────────────
 def require_roles(*roles):
-    """
-    authorize(roles) — diagramme UML AuthMiddleware.
-    Décorateur pour restreindre l'accès à certains rôles.
-
-    Usage :
-        @require_roles(Role.ADMINISTRATEUR, Role.MANAGER_GLOBAL)
-        def my_view(request):
-            ...
-    """
+    
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(request, *args, **kwargs):

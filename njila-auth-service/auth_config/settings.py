@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "drf_spectacular",
     "authentication",
 ]
 
@@ -112,6 +113,41 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "authentication.middleware.auth_middleware.IsAuthenticated",
     ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Njila Auth API",
+    "DESCRIPTION": "Service d'authentification de la plateforme Njila",
+    "VERSION": "1.3.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    
+    # Désactiver la sécurité dans la documentation
+    "SECURITY": [],
+    "SECURITY_REQUIREMENTS": [],
+    
+    "COMPONENTS": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Entrez votre access token JWT",
+            },
+            "InternalServiceToken": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Internal-Token",
+                "description": "Token secret pour les appels inter-services",
+            },
+        }
+    },
+    
+    # Permet l'auto-login dans Swagger UI
+    "SWAGGER_UI_SETTINGS": {
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+    },
 }
 
 SIMPLE_JWT = {

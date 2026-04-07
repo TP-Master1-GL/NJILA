@@ -1,13 +1,3 @@
-"""
-AuthService — logique métier centrale de l'authentification — v1.3
-
-Modifications v1.3 :
-  - RegisterCommand enrichi : name, surname, phone, adresse
-  - NjilaUser créé avec les nouvelles données d'identité
-  - LoginResult enrichi : name, surname retournés
-  - _create_auth_account (consumer) reçoit aussi name/surname/phone/adresse
-"""
-
 import logging
 import uuid
 from dataclasses import dataclass
@@ -30,9 +20,6 @@ from authentication.services.redis_cache import RedisSessionCache
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DTOs
-# ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class RegisterCommand:
     email:      str

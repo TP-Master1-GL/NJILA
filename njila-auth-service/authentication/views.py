@@ -1,27 +1,11 @@
-"""
-AuthController — endpoints REST de l'auth-service — v1.3
-
-Endpoints :
-  GET    /api/auth/health
-  POST   /api/auth/register             (public)
-  POST   /api/auth/login                (public)
-  POST   /api/auth/logout               (authentifié)
-  POST   /api/auth/refresh              (public)
-  POST   /api/auth/forgot-password      (public)
-  POST   /api/auth/reset-password       (public)
-  GET    /api/auth/me                   (authentifié)
-  PATCH  /api/auth/me                   (authentifié) — mise à jour profil (v1.3)
-  PATCH  /api/auth/me/photo             (authentifié) — mise à jour photo
-  POST   /api/auth/validate-token       (services internes)
-  PATCH  /api/auth/users/:id/status     (Admin)
-"""
-
 import logging
 
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework import serializers as drf_serializers
 
 from authentication.middleware.auth_middleware import (
     IsAdministrateur,
@@ -58,10 +42,77 @@ logger = logging.getLogger(__name__)
 
 _auth_service = AuthService()
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Serializers de réponse (documentation Swagger uniquement)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AuthResponseSerializer(drf_serializers.Serializer):
+    userId       = drf_serializers.UUIDField()
+    email        = drf_serializers.EmailField()
+    name         = drf_serializers.CharField()
+    surname      = drf_serializers.CharField()
+    role         = drf_serializers.ChoiceField(choices=[c[0] for c in Role.choices])
+    photoUrl     = drf_serializers.URLField(allow_null=True)
+    accessToken  = drf_serializers.CharField()
+    refreshToken = drf_serializers.CharField()
+    expiresIn    = drf_serializers.IntegerField()
+    tokenType    = drf_serializers.CharField(default="Bearer")
+
+
+class TokenPairResponseSerializer(drf_serializers.Serializer):
+    accessToken  = drf_serializers.CharField()
+    refreshToken = drf_serializers.CharField()
+    expiresIn    = drf_serializers.IntegerField()
+    tokenType    = drf_serializers.CharField(default="Bearer")
+
+
+class MessageResponseSerializer(drf_serializers.Serializer):
+    message = drf_serializers.CharField()
+
+
+class HealthResponseSerializer(drf_serializers.Serializer):
+    status  = drf_serializers.CharField()
+    service = drf_serializers.CharField()
+
+
+class PhotoResponseSerializer(drf_serializers.Serializer):
+    message  = drf_serializers.CharField()
+    photoUrl = drf_serializers.URLField()
+
+
+class AccountStatusResponseSerializer(drf_serializers.Serializer):
+    message = drf_serializers.CharField()
+
+
+class ValidateTokenPayloadSerializer(drf_serializers.Serializer):
+    userId    = drf_serializers.UUIDField()
+    role      = drf_serializers.CharField()
+    sessionId = drf_serializers.UUIDField()
+    filialeId = drf_serializers.UUIDField(allow_null=True)
+    agenceId  = drf_serializers.UUIDField(allow_null=True)
+    exp       = drf_serializers.IntegerField()
+
+
+class ValidateTokenResponseSerializer(drf_serializers.Serializer):
+    valid   = drf_serializers.BooleanField()
+    payload = ValidateTokenPayloadSerializer()
+
+
+class ErrorSerializer(drf_serializers.Serializer):
+    error   = drf_serializers.CharField()
+    details = drf_serializers.DictField(required=False)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Health
+# Vues
 # ─────────────────────────────────────────────────────────────────────────────
+
+@extend_schema(
+    tags=["Santé"],
+    summary="Health check",
+    description="Vérifie que le service d'authentification est opérationnel.",
+    responses={200: HealthResponseSerializer},
+)
 @api_view(["GET"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -69,19 +120,25 @@ def health(request):
     return Response({"status": "UP", "service": "njila-auth-service"})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Register
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Auth"],
+    summary="Inscription d'un voyageur",
+    description=(
+        "Crée un nouveau compte utilisateur avec le rôle VOYAGEUR. "
+        "L'auto-inscription est uniquement autorisée pour ce rôle."
+    ),
+    request=RegisterSerializer,
+    responses={
+        201: AuthResponseSerializer,
+        400: OpenApiResponse(response=ErrorSerializer, description="Données invalides (champs manquants ou incorrects)"),
+        403: OpenApiResponse(response=ErrorSerializer, description="Rôle non autorisé à l'auto-inscription"),
+        409: OpenApiResponse(response=ErrorSerializer, description="Email déjà utilisé"),
+    },
+)
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
 def register(request):
-    """
-    201 — Inscription voyageur réussie
-    400 — Données invalides (name/surname manquants, password trop court…)
-    403 — Rôle non autorisé en auto-inscription
-    409 — Email déjà utilisé
-    """
     serializer = RegisterSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -131,9 +188,24 @@ def register(request):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Login
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Auth"],
+    summary="Connexion",
+    description=(
+        "Authentifie un utilisateur avec son email et mot de passe. "
+        "Retourne une paire de tokens JWT (access + refresh)."
+    ),
+    request=LoginSerializer,
+    responses={
+        200: AuthResponseSerializer,
+        400: OpenApiResponse(response=ErrorSerializer, description="Données invalides"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Email ou mot de passe incorrect"),
+        403: OpenApiResponse(
+            response=ErrorSerializer,
+            description="Compte verrouillé (trop de tentatives) ou inactif. Si `code: SUBSCRIPTION_EXPIRED` → abonnement expiré.",
+        ),
+    },
+)
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -182,9 +254,28 @@ def login(request):
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Logout
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Auth"],
+    summary="Déconnexion",
+    description=(
+        "Invalide le token d'accès de la session courante. "
+        "Avec `?all=true`, toutes les sessions actives de l'utilisateur sont révoquées."
+    ),
+    parameters=[
+        OpenApiParameter(
+            name="all",
+            location=OpenApiParameter.QUERY,
+            description="Si `true`, révoque **toutes** les sessions actives de l'utilisateur.",
+            required=False,
+            type=bool,
+            default=False,
+        )
+    ],
+    responses={
+        204: OpenApiResponse(description="Déconnexion réussie (aucun corps de réponse)"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Token manquant ou invalide"),
+    },
+)
 @api_view(["POST"])
 @authentication_classes([NjilaJWTAuthentication])
 @permission_classes([IsAuthenticated])
@@ -204,9 +295,20 @@ def logout(request):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Refresh
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Auth"],
+    summary="Rafraîchir les tokens",
+    description=(
+        "Échange un refresh token valide contre une nouvelle paire access/refresh. "
+        "L'ancien refresh token est invalidé (rotation automatique)."
+    ),
+    request=RefreshSerializer,
+    responses={
+        200: TokenPairResponseSerializer,
+        400: OpenApiResponse(response=ErrorSerializer, description="Champ `refresh_token` manquant"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Refresh token expiré ou invalide"),
+    },
+)
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -231,9 +333,19 @@ def refresh_token(request):
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Forgot password
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Mot de passe"],
+    summary="Demande de réinitialisation",
+    description=(
+        "Envoie un email contenant un lien de réinitialisation si l'adresse est connue. "
+        "La réponse est identique dans tous les cas (protection anti-énumération d'emails)."
+    ),
+    request=ForgotPasswordSerializer,
+    responses={
+        200: MessageResponseSerializer,
+        400: OpenApiResponse(response=ErrorSerializer, description="Email invalide"),
+    },
+)
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -255,9 +367,22 @@ def forgot_password(request):
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Reset password
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Mot de passe"],
+    summary="Confirmer la réinitialisation",
+    description=(
+        "Valide le token reçu par email et applique le nouveau mot de passe. "
+        "Le token est à usage unique et expire après 1 heure."
+    ),
+    request=ResetPasswordSerializer,
+    responses={
+        200: MessageResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorSerializer,
+            description="Token expiré/invalide ou nouveau mot de passe trop court (min. 8 caractères)",
+        ),
+    },
+)
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -280,9 +405,16 @@ def reset_password(request):
     return Response({"message": "Mot de passe réinitialisé avec succès."})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Me — GET profil
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Profil"],
+    summary="Mon profil",
+    description="Retourne le profil complet de l'utilisateur actuellement authentifié.",
+    responses={
+        200: UserMeSerializer,
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié ou token invalide"),
+        404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
+    },
+)
 @api_view(["GET"])
 @authentication_classes([NjilaJWTAuthentication])
 @permission_classes([IsAuthenticated])
@@ -293,18 +425,29 @@ def me(request):
     return Response(UserMeSerializer(user).data)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Me — PATCH mise à jour profil (name, surname, phone, adresse)
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Profil"],
+    summary="Mettre à jour le profil",
+    description=(
+        "Met à jour les données de profil de l'utilisateur connecté (PATCH partiel). "
+        "Seuls les champs fournis sont modifiés. "
+        "Champs disponibles : `name`, `surname`, `phone`, `adresse`, `email`."
+    ),
+    request=ProfileUpdateSerializer,
+    responses={
+        200: UserMeSerializer,
+        400: OpenApiResponse(response=ErrorSerializer, description="Données invalides"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié ou token invalide"),
+        404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
+    },
+)
 @api_view(["PATCH"])
 @authentication_classes([NjilaJWTAuthentication])
 @permission_classes([IsAuthenticated])
 def update_profile(request):
-    """
-    Met à jour les données de profil de l'utilisateur connecté.
-    Tous les champs sont optionnels (PATCH partiel).
-    Body : { name?, surname?, phone?, adresse? }
-    """
+    from django.core.validators import validate_email
+    from django.core.exceptions import ValidationError
+    
     serializer = ProfileUpdateSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -318,6 +461,35 @@ def update_profile(request):
 
     data = serializer.validated_data
     updated_fields = []
+    email_changed = False
+    old_email = user.email
+
+    # Mise à jour de l'email
+    if "email" in data and data["email"] is not None:
+        new_email = data["email"].lower().strip()
+        
+        # Validation de l'email
+        try:
+            validate_email(new_email)
+        except ValidationError:
+            return Response(
+                {"error": "Email invalide."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Vérifier si l'email n'est pas déjà pris
+        if new_email != user.email:
+            from authentication.repositories.auth_repository import AuthRepository
+            repo = AuthRepository()
+            if repo.exists_by_email(new_email):
+                return Response(
+                    {"error": "Cet email est déjà utilisé par un autre compte."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.email = new_email
+            updated_fields.append("email")
+            email_changed = True
+            logger.info(f"[UPDATE] Email changé pour user={user.id}: {old_email} -> {new_email}")
 
     if "name"    in data and data["name"]    is not None:
         user.name    = data["name"];    updated_fields.append("name")
@@ -332,24 +504,54 @@ def update_profile(request):
         updated_fields.append("updated_at")
         user.save(update_fields=updated_fields)
 
-        # Notifier le user-service de la mise à jour
+        # Publier l'événement de mise à jour
         try:
             from authentication.events.publisher import EventPublisher
-            EventPublisher().publish_user_updated(
+            publisher = EventPublisher()
+            
+            # Toujours publier une mise à jour (même sans changement d'email)
+            publisher.publish_user_updated(
                 user_id       = str(user.id),
                 email         = user.email,
-                email_changed = False,
+                email_changed = email_changed,
                 photo_url     = user.photo_url,
             )
+            
+            # Si l'email a changé, invalider tous les tokens
+            if email_changed:
+                from authentication.repositories.auth_repository import AuthRepository
+                from authentication.services.redis_cache import RedisSessionCache
+                repo = AuthRepository()
+                cache = RedisSessionCache()
+                repo.invalidate_all(str(user.id))
+                cache.delete_all_user_sessions(str(user.id))
+                cache.delete_refresh_token(str(user.id))
+                logger.info(f"[UPDATE] Tokens invalidés pour user={user.id} après changement d'email")
+                
         except Exception as e:
             logger.warning("[VIEW] Événement profile update non envoyé : %s", e)
 
     return Response(UserMeSerializer(user).data)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Update photo de profil — PATCH /api/auth/me/photo
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Profil"],
+    summary="Mettre à jour la photo de profil",
+    description=(
+        "Remplace l'URL de la photo de profil de l'utilisateur connecté. "
+        "L'URL doit obligatoirement utiliser HTTPS."
+    ),
+    request=PhotoUpdateSerializer,
+    responses={
+        200: PhotoResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorSerializer,
+            description="URL invalide ou ne commence pas par HTTPS",
+        ),
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié ou token invalide"),
+        404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
+    },
+)
 @api_view(["PATCH"])
 @authentication_classes([NjilaJWTAuthentication])
 @permission_classes([IsAuthenticated])
@@ -372,9 +574,22 @@ def update_photo(request):
     return Response({"message": "Photo de profil mise à jour.", "photoUrl": user.photo_url})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Validate token (interne — API Gateway)
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Interne"],
+    summary="Valider un token JWT (usage inter-services)",
+    description=(
+        "Endpoint réservé aux services internes. "
+        "Vérifie la validité d'un access token et retourne son payload décodé. "
+        "Requiert le header `X-Internal-Token` avec le secret partagé."
+    ),
+    request=ValidateTokenSerializer,
+    responses={
+        200: ValidateTokenResponseSerializer,
+        400: OpenApiResponse(response=ErrorSerializer, description="Champ `token` manquant"),
+        401: OpenApiResponse(description="Token JWT invalide ou expiré"),
+        403: OpenApiResponse(description="Header X-Internal-Token absent ou incorrect"),
+    },
+)
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([IsInternalService])
@@ -400,9 +615,32 @@ def validate_token(request):
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Account status (Admin)
-# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    tags=["Administration"],
+    summary="Modifier le statut d'un compte",
+    description=(
+        "Active ou désactive/suspend le compte d'un utilisateur. "
+        "Réservé au rôle `ADMINISTRATEUR`. "
+        "Valeurs possibles pour `status` : `active`, `inactive`, `suspended`."
+    ),
+    parameters=[
+        OpenApiParameter(
+            name="user_id",
+            location=OpenApiParameter.PATH,
+            description="UUID de l'utilisateur dont le statut doit être modifié.",
+            required=True,
+            type=str,
+        )
+    ],
+    request=AccountStatusSerializer,
+    responses={
+        200: AccountStatusResponseSerializer,
+        400: OpenApiResponse(response=ErrorSerializer, description="Valeur de statut invalide"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié"),
+        403: OpenApiResponse(response=ErrorSerializer, description="Rôle ADMINISTRATEUR requis"),
+        404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
+    },
+)
 @api_view(["PATCH"])
 @authentication_classes([NjilaJWTAuthentication])
 @permission_classes([IsAdministrateur])
@@ -423,3 +661,43 @@ def account_status(request, user_id: str):
     return Response({
         "message": f"Compte {'activé' if is_active else 'désactivé/suspendu'} avec succès."
     })
+
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def sync_admin(request):
+    """Force la synchronisation du compte admin avec user-service."""
+    from authentication.models import NjilaUser
+    from authentication.events.publisher import EventPublisher
+    
+    email = "ronelmaamoc52@gmail.com"
+    
+    try:
+        user = NjilaUser.objects.get(email=email)
+        publisher = EventPublisher()
+        
+        publisher.publish_user_registered(
+            user_id=str(user.id),
+            email=user.email,
+            name=user.name,
+            surname=user.surname,
+            role=user.role,
+            phone=user.phone,
+            adresse=user.adresse,
+            photo_url=user.photo_url,
+            filiale_id=user.filiale_id,
+            agence_id=user.agence_id
+        )
+        
+        return Response({
+            "message": "Admin synchronisé avec user-service",
+            "userId": str(user.id),
+            "email": user.email
+        })
+        
+    except NjilaUser.DoesNotExist:
+        return Response({"error": "Admin non trouvé"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)

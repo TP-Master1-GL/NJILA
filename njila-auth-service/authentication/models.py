@@ -1,38 +1,13 @@
-"""
-Modèles du service d'authentification NJILA — v1.3
-  - NjilaUser          (AuthUser dans le diagramme UML)
-  - AuthSession
-  - PasswordResetToken
-
-Attributs ajoutés (v1.3) depuis le diagramme UserProfile :
-  name, surname, phone, adresse
-  → Alignement avec user-service pour éviter les données manquantes
-    lors des communications inter-services (events user.registered / staff.created)
-  → photo_url conservée (encodée dans le JWT pour accès sans appel user-service)
-  → date_inscription  = created_at (déjà présent)
-  → dernière_connexion = last_login_at (déjà présent)
-
-Gestion de l'abonnement — principe event-driven :
-  subscription.expired  → is_active=False + sessions révoquées (reason: SUBSCRIPTION_EXPIRED)
-  subscription.renewed  → is_active=True  + raison effacée
-"""
-
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.db import models
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Constantes de raison de désactivation
-# ─────────────────────────────────────────────────────────────────────────────
 class DeactivationReason:
     SUBSCRIPTION_EXPIRED = "SUBSCRIPTION_EXPIRED"
     ADMIN_SUSPENDED      = "ADMIN_SUSPENDED"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RoleEnum
-# ─────────────────────────────────────────────────────────────────────────────
 class Role(models.TextChoices):
     VOYAGEUR       = "VOYAGEUR",       "Voyageur"
     GUICHETIER     = "GUICHETIER",     "Guichetier"
@@ -41,8 +16,6 @@ class Role(models.TextChoices):
     ADMINISTRATEUR = "ADMINISTRATEUR", "Administrateur"
     CHAUFFEUR      = "CHAUFFEUR",      "Chauffeur"
 
-
-# Rôles liés à une agence (affectés par l'abonnement)
 ROLES_LINKED_TO_AGENCE = {
     Role.GUICHETIER,
     Role.MANAGER_LOCAL,
@@ -51,9 +24,6 @@ ROLES_LINKED_TO_AGENCE = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UserManager
-# ─────────────────────────────────────────────────────────────────────────────
 class NjilaUserManager(BaseUserManager):
 
     def create_user(self, email, password=None, role=Role.VOYAGEUR, **extra_fields):
@@ -72,67 +42,34 @@ class NjilaUserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# NjilaUser
-# ─────────────────────────────────────────────────────────────────────────────
 class NjilaUser(AbstractBaseUser):
-    """
-    Entité centrale de l'auth-service.
-
-    ── Données d'identité (alignées avec UserProfile du user-service) ──────────
-      name      → prénom    (UserProfile.name)
-      surname   → nom       (UserProfile.surname)
-      email     → email     (UserProfile.email)
-      phone     → téléphone (UserProfile.phone)
-      adresse   → adresse   (UserProfile.adresse)
-      photo_url → photo_profil (UserProfile.photo_profil) — aussi encodée dans JWT
-
-    ── Données d'audit ──────────────────────────────────────────────────────────
-      created_at    = UserProfile.date_inscription
-      last_login_at = UserProfile.dernière_connexion
-
-    ── Cycle de vie is_active (staff) ───────────────────────────────────────────
-      ① staff.created            → is_active=True  (abonnement valide par défaut)
-      ② subscription.expired     → is_active=False, reason='SUBSCRIPTION_EXPIRED'
-      ③ subscription.renewed     → is_active=True,  reason=None
-      ④ admin suspend            → is_active=False, reason='ADMIN_SUSPENDED'
-    """
 
     id    = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # ── Identité — alignée avec UserProfile (user-service) ────────────────────
     email   = models.EmailField(unique=True, db_index=True)
-    name    = models.CharField(max_length=100, blank=True, default="")   # prénom
-    surname = models.CharField(max_length=100, blank=True, default="")   # nom de famille
+    name    = models.CharField(max_length=100, blank=True, default="")
+    surname = models.CharField(max_length=100, blank=True, default="")
     phone   = models.CharField(max_length=20,  null=True,  blank=True)
     adresse = models.TextField(null=True, blank=True)
 
-    # Photo de profil : URL S3/CDN encodée dans le JWT pour accès immédiat au front
-    # sans appel supplémentaire au user-service (= UserProfile.photo_profil)
-    photo_url = models.URLField(max_length=500, null=True, blank=True)
+    photo_url = models.CharField(max_length=500, null=True, blank=True)
 
-    # ── Rôle et contexte organisationnel ─────────────────────────────────────
     role = models.CharField(
         max_length=20, choices=Role.choices, default=Role.VOYAGEUR
     )
     filiale_id = models.UUIDField(null=True, blank=True, db_index=True)
     agence_id  = models.UUIDField(null=True, blank=True, db_index=True)
 
-    # ── Accès ─────────────────────────────────────────────────────────────────
     is_active   = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)
     is_staff    = models.BooleanField(default=False)
 
-    # Raison de désactivation : 'SUBSCRIPTION_EXPIRED' | 'ADMIN_SUSPENDED' | None
     deactivation_reason = models.CharField(max_length=30, null=True, blank=True)
 
-    # ── Anti-brute-force ──────────────────────────────────────────────────────
     failed_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until    = models.DateTimeField(null=True, blank=True)
 
-    # ── Audit ─────────────────────────────────────────────────────────────────
-    # created_at    ↔ UserProfile.date_inscription
-    # last_login_at ↔ UserProfile.dernière_connexion
     last_login_at = models.DateTimeField(null=True, blank=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
@@ -143,8 +80,7 @@ class NjilaUser(AbstractBaseUser):
     USERNAME_FIELD  = "email"
     REQUIRED_FIELDS = []
 
-    # ── Méthodes métier ───────────────────────────────────────────────────────
-
+    
     @property
     def full_name(self) -> str:
         """Retourne 'name surname' ou l'email si les deux sont vides."""
@@ -203,9 +139,6 @@ class NjilaUser(AbstractBaseUser):
         ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# AuthSession
-# ─────────────────────────────────────────────────────────────────────────────
 class AuthSession(models.Model):
     session_id    = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user          = models.ForeignKey(
@@ -235,9 +168,6 @@ class AuthSession(models.Model):
         indexes  = [models.Index(fields=["user", "is_active"])]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PasswordResetToken
-# ─────────────────────────────────────────────────────────────────────────────
 class PasswordResetToken(models.Model):
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user       = models.ForeignKey(NjilaUser, on_delete=models.CASCADE)

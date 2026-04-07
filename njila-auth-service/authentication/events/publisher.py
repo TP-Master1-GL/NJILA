@@ -148,9 +148,11 @@ class EventPublisher:
         self,
         user_id:       str,
         email:         str,
-        nom:           str,
-        prenom:        str,
+        name:          str,
+        surname:       str,
         role:          str,
+        phone:         Optional[str] = None,      # AJOUTÉ
+        adresse:       Optional[str] = None,      # AJOUTÉ
         photo_url:     Optional[str] = None,
         filiale_id:    Optional[str] = None,
         agence_id:     Optional[str] = None,
@@ -165,9 +167,11 @@ class EventPublisher:
         profile_payload = {
             "userId":    user_id,
             "email":     email,
-            "name":      nom,       # aligné avec le nommage user-service (name = prénom)
-            "surname":   prenom,    # aligné avec le nommage user-service (surname = nom)
+            "name":      name,
+            "surname":   surname,
             "role":      role,
+            "phone":     phone,
+            "adresse":   adresse,
             "photoUrl":  photo_url,
             "filialeId": filiale_id,
             "agenceId":  agence_id,
@@ -183,12 +187,13 @@ class EventPublisher:
             exchange    = EXCHANGE_NOTIFICATION,
             routing_key = ROUTING_WELCOME_EMAIL,
             payload     = {
-                "email":  email,
-                "name":   nom,
-                "surname": prenom,
-                "type":   "welcome",
+                "email":   email,
+                "name":    name,
+                "surname": surname,
+                "type":    "welcome",
             },
         )
+        logger.info("[RABBITMQ] user.registered publié | userId=%s email=%s", user_id, email)
 
     def publish_user_updated(
         self,
@@ -211,6 +216,7 @@ class EventPublisher:
                 "photoUrl":     photo_url,
             },
         )
+        logger.debug("[RABBITMQ] user.updated publié | userId=%s emailChanged=%s", user_id, email_changed)
 
     def publish_password_reset(self, email: str, reset_link: str, name: str = ""):
         """
@@ -226,4 +232,3 @@ class EventPublisher:
                 "type":      "password_reset",
             },
         )
-
