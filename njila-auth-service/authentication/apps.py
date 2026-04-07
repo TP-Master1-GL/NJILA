@@ -12,7 +12,9 @@ class AuthenticationConfig(AppConfig):
         if os.environ.get("RUN_MAIN") != "true":
             return
 
-        # ─── 1. Démarrer le consommateur RabbitMQ ────────────────────────────────
+        # Créer le compte administrateur par défaut
+        self._create_admin_user()
+
         try:
             from authentication.events.consumer import EventConsumer
             consumer = EventConsumer()
@@ -23,7 +25,6 @@ class AuthenticationConfig(AppConfig):
                 "[APP] Impossible de démarrer le consommateur RabbitMQ : %s", e
             )
 
-        # ─── 2. Enregistrement sur Eureka ─────────────────────────────────────────
         try:
             from django.conf import settings
             from auth_config.cloud import register_to_eureka
@@ -39,3 +40,36 @@ class AuthenticationConfig(AppConfig):
             logging.getLogger(__name__).warning(
                 "[APP] Impossible de s'enregistrer sur Eureka : %s", e
             )
+
+    def _create_admin_user(self):
+        """Crée un compte administrateur par défaut s'il n'existe pas."""
+        from authentication.models import NjilaUser, Role
+        import logging
+
+        logger = logging.getLogger(__name__)
+        
+        email = "ronalmaamoc52@gmail.com"
+        
+        # Vérifier si l'admin existe déjà
+        if not NjilaUser.objects.filter(email=email).exists():
+            try:
+                admin_user = NjilaUser(
+                    email       = email,
+                    name        = "Ronel",
+                    surname     = "Maamoc",
+                    role        = Role.ADMINISTRATEUR,
+                    is_active   = True,
+                    is_verified = True,
+                    is_staff    = True,
+                    created_by  = "SYSTEM",
+                )
+                admin_user.set_password("Ronel789")
+                admin_user.save()
+                
+                logger.info("[APP] Compte administrateur créé avec succès : %s", email)
+                logger.info("[APP]   → Mot de passe : Ronel789")
+                logger.info("[APP]   → ID: %s", admin_user.id)
+            except Exception as e:
+                logger.error("[APP] Erreur lors de la création du compte admin : %s", e)
+        else:
+            logger.debug("[APP] Compte administrateur existe déjà : %s", email)
