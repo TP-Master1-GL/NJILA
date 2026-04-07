@@ -6,7 +6,7 @@ echo "  NJILA - njila-auth-service"
 echo "================================================="
 echo ""
 
-source venv/bin/activate
+# source venv/bin/activate
 
 # ── Etape 1 : port depuis njila-conf-service ──────────────────────────────────
 echo "[START] Etape 1 - Lecture config sur njila-conf-service (8080)..."
