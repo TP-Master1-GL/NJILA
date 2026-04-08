@@ -11,6 +11,10 @@ from django.db.models import Count, Q, Sum, Avg
 from django.utils import timezone
 import logging
 
+# Swagger imports
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
+
 from .models import (
     Agence, Bus, Guichetier, Chauffeur, Trajet, 
     Voyage, Filiale, Annonce, Avis,
@@ -52,7 +56,7 @@ class AgenceListCreateView(generics.ListCreateAPIView):
     GET: Liste des agences (Public)
     POST: Créer une agence (Admin uniquement)
     """
-    permission_classes = [AllowAny]  # GET public, POST checké dans perform_create
+    permission_classes = [AllowAny]
     
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -76,6 +80,66 @@ class AgenceListCreateView(generics.ListCreateAPIView):
             return AgenceSerializer
         return AgenceListSerializer
     
+    @extend_schema(
+        tags=['Agences'],
+        summary="Liste des agences",
+        description="Récupère la liste de toutes les agences (accès public). Possibilité de filtrer par statut.",
+        parameters=[
+            OpenApiParameter(
+                name='statut_global',
+                description="Filtrer par statut (active, suspendue, expiree, en_attente)",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: AgenceListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Agences'],
+        summary="Créer une agence",
+        description="Crée une nouvelle agence (nécessite droits Administrateur)",
+        request=AgenceSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de création',
+                value={
+                    'name': 'Express Voyages',
+                    'adresse': '123 Boulevard de la Liberté, Douala',
+                    'telephone': '699888888',
+                    'email_officiel': 'contact@express.cm',
+                    'statut_global': 'active'
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Exemple de réponse',
+                value={
+                    'id_agence': '123e4567-e89b-12d3-a456-426614174000',
+                    'name': 'Express Voyages',
+                    'adresse': '123 Boulevard de la Liberté, Douala',
+                    'telephone': '699888888',
+                    'email_officiel': 'contact@express.cm',
+                    'statut_global': 'active',
+                    'date_inscription': '2026-04-08T10:00:00Z'
+                },
+                response_only=True,
+            )
+        ],
+        responses={
+            201: AgenceSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Admin requis"),
+            409: OpenApiResponse(description="Email déjà utilisé"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+    
     @transaction.atomic
     def perform_create(self, serializer):
         agence = serializer.save()
@@ -98,6 +162,72 @@ class AgenceDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method == 'GET':
             return [AllowAny()]
         return [IsAdmin()]
+    
+    @extend_schema(
+        tags=['Agences'],
+        summary="Détail d'une agence",
+        description="Récupère les détails d'une agence spécifique par son ID (accès public)",
+        responses={200: AgenceSerializer, 404: OpenApiResponse(description="Agence non trouvée")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Agences'],
+        summary="Modifier une agence",
+        description="Modifie une agence existante (nécessite droits Administrateur)",
+        request=AgenceSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de modification',
+                value={
+                    'name': 'Express Voyages SA',
+                    'telephone': '699888889',
+                    'statut_global': 'active'
+                }
+            )
+        ],
+        responses={
+            200: AgenceSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Agence non trouvée"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Agences'],
+        summary="Modification partielle d'une agence",
+        description="Modifie partiellement une agence existante (nécessite droits Administrateur)",
+        request=AgenceSerializer,
+        responses={
+            200: AgenceSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Agence non trouvée"),
+        }
+    )
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Agences'],
+        summary="Supprimer une agence",
+        description="Supprime une agence (nécessite droits Administrateur). L'agence ne doit pas avoir de bus associés.",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            400: OpenApiResponse(description="Impossible de supprimer - des bus sont associés"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Agence non trouvée"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
     
     @transaction.atomic
     def perform_update(self, serializer):
@@ -140,7 +270,6 @@ class FilialeListCreateView(generics.ListCreateAPIView):
         if ville:
             queryset = queryset.filter(ville=ville)
         
-        # Manager global ne voit que ses filiales
         if hasattr(self.request, 'user_info') and self.request.method != 'POST':
             role = self.request.user_info.get('role')
             if role == 'MANAGER_GLOBAL':
@@ -153,6 +282,62 @@ class FilialeListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return FilialeSerializer
         return FilialeListSerializer
+    
+    @extend_schema(
+        tags=['Filiales'],
+        summary="Liste des filiales",
+        description="Récupère la liste des filiales (accès public). Possibilité de filtrer par agence ou par ville.",
+        parameters=[
+            OpenApiParameter(
+                name='agence_id',
+                description="ID de l'agence parente",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='ville',
+                description="Filtrer par ville (Douala, Yaoundé, etc.)",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: FilialeListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Filiales'],
+        summary="Créer une filiale",
+        description="Crée une nouvelle filiale (nécessite droits Manager Global)",
+        request=FilialeSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de création',
+                value={
+                    'nom': 'Agence Centrale Douala',
+                    'code': 'DLA-CENTRAL-01',
+                    'ville': 'Douala',
+                    'adresse': '123 Boulevard de la Liberté, Douala',
+                    'telephone': '699777777',
+                    'email': 'douala@express.cm',
+                    'est_active': True,
+                    'agence': 'uuid-de-l-agence'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: FilialeSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Global requis"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
     
     @transaction.atomic
     def perform_create(self, serializer):
@@ -176,6 +361,45 @@ class FilialeDetailView(generics.RetrieveUpdateDestroyAPIView):
             return [AllowAny()]
         return [IsManagerGlobal()]
     
+    @extend_schema(
+        tags=['Filiales'],
+        summary="Détail d'une filiale",
+        description="Récupère les détails d'une filiale spécifique (accès public)",
+        responses={200: FilialeSerializer, 404: OpenApiResponse(description="Filiale non trouvée")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Filiales'],
+        summary="Modifier une filiale",
+        description="Modifie une filiale existante (nécessite droits Manager Global)",
+        request=FilialeSerializer,
+        responses={
+            200: FilialeSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Filiale non trouvée"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Filiales'],
+        summary="Supprimer une filiale",
+        description="Supprime une filiale (nécessite droits Manager Global)",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Filiale non trouvée"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+    
     @transaction.atomic
     def perform_update(self, serializer):
         filiale = serializer.save()
@@ -195,6 +419,15 @@ class FilialeStatsView(APIView):
     """GET: Statistiques d'une filiale (Public)"""
     permission_classes = [AllowAny]
     
+    @extend_schema(
+        tags=['Filiales'],
+        summary="Statistiques d'une filiale",
+        description="Récupère les statistiques d'une filiale (nombre de bus, voyages, etc.)",
+        responses={
+            200: OpenApiResponse(description="Statistiques récupérées avec succès"),
+            404: OpenApiResponse(description="Filiale non trouvée"),
+        }
+    )
     def get(self, request, id_filiale):
         filiale = get_object_or_404(Filiale, id_filiale=id_filiale)
         
@@ -232,10 +465,9 @@ class FilialeStatsView(APIView):
 
 class BusListCreateView(generics.ListCreateAPIView):
     """
-    GET: Liste des bus (Manager Local ou supérieur)
+    GET: Liste des bus (Public)
     POST: Ajouter un bus (Manager Local ou supérieur)
     """
-    # permission_classes = [IsManagerLocal]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['etat', 'Id_agence']
     search_fields = ['immatriculation', 'modele']
@@ -258,7 +490,6 @@ class BusListCreateView(generics.ListCreateAPIView):
         if disponible and disponible.lower() == 'true':
             queryset = queryset.filter(etat=StatusBus.DISPONIBLE)
         
-        # Filtrer par l'agence du manager local
         if hasattr(self.request, 'user_info'):
             role = self.request.user_info.get('role')
             if role == 'MANAGER_LOCAL':
@@ -272,6 +503,78 @@ class BusListCreateView(generics.ListCreateAPIView):
             return BusCreateUpdateSerializer
         return BusListSerializer
     
+    @extend_schema(
+        tags=['Bus'],
+        summary="Liste des bus",
+        description="Récupère la liste des bus (accès public). Possibilité de filtrer par agence ou par état.",
+        parameters=[
+            OpenApiParameter(
+                name='agence_id',
+                description="ID de l'agence",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='etat',
+                description="Filtrer par état (disponible, en_panne, maintenance, en_voyage)",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='disponible',
+                description="Filtrer les bus disponibles (true/false)",
+                required=False,
+                type=bool,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: BusListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Bus'],
+        summary="Ajouter un bus",
+        description="Ajoute un nouveau bus (nécessite droits Manager Local)",
+        request=BusCreateUpdateSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple d\'ajout',
+                value={
+                    'immatriculation': 'LT 001 AB',
+                    'modele': 'Toyota Coaster',
+                    'capacite': 30,
+                    'etat': 'disponible',
+                    'Id_agence': 'uuid-de-l-agence'
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Exemple de réponse',
+                value={
+                    'IdBus': 1,
+                    'immatriculation': 'LT 001 AB',
+                    'modele': 'Toyota Coaster',
+                    'capacite': 30,
+                    'etat': 'disponible',
+                    'Id_agence': 'uuid-de-l-agence'
+                },
+                response_only=True,
+            )
+        ],
+        responses={
+            201: BusDetailSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+    
     def perform_create(self, serializer):
         bus = serializer.save()
         logger.info(f"Bus créé: {bus.immatriculation}")
@@ -279,13 +582,12 @@ class BusListCreateView(generics.ListCreateAPIView):
 
 class BusRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     """
-    GET: Détail bus (Manager Local ou supérieur)
+    GET: Détail bus (Public)
     PUT/PATCH: Modifier bus (Manager Local ou supérieur)
     DELETE: Supprimer bus (Manager Local ou supérieur)
     """
     queryset = Bus.objects.all()
     lookup_field = 'IdBus'
-    # permission_classes = [IsManagerLocal]
     
     def get_permissions(self):
         if self.request.method == 'GET':
@@ -296,6 +598,46 @@ class BusRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             return BusCreateUpdateSerializer
         return BusDetailSerializer
+    
+    @extend_schema(
+        tags=['Bus'],
+        summary="Détail d'un bus",
+        description="Récupère les détails d'un bus spécifique (accès public)",
+        responses={200: BusDetailSerializer, 404: OpenApiResponse(description="Bus non trouvé")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Bus'],
+        summary="Modifier un bus",
+        description="Modifie un bus existant (nécessite droits Manager Local)",
+        request=BusCreateUpdateSerializer,
+        responses={
+            200: BusDetailSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Bus non trouvé"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Bus'],
+        summary="Supprimer un bus",
+        description="Supprime un bus (nécessite droits Manager Local). Le bus ne doit pas être en voyage.",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            400: OpenApiResponse(description="Impossible de supprimer un bus en voyage"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Bus non trouvé"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
     
     def perform_destroy(self, instance):
         if instance.etat == StatusBus.EN_VOYAGE:
@@ -309,6 +651,56 @@ class BusStatusUpdateView(APIView):
     """PUT: Changer l'état d'un bus (Manager Local ou supérieur)"""
     permission_classes = [IsManagerLocal]
     
+    @extend_schema(
+        tags=['Bus'],
+        summary="Changer l'état d'un bus",
+        description="Modifie l'état d'un bus (disponible, en_panne, maintenance, en_voyage)",
+        request={
+            'type': 'object',
+            'properties': {
+                'etat': {
+                    'type': 'string',
+                    'enum': ['disponible', 'en_panne', 'maintenance', 'en_voyage'],
+                    'description': 'Nouvel état du bus'
+                },
+                'raison': {
+                    'type': 'string',
+                    'description': 'Raison du changement (optionnel)'
+                }
+            },
+            'required': ['etat']
+        },
+        examples=[
+            OpenApiExample(
+                'Exemple - Mise en panne',
+                value={
+                    'etat': 'en_panne',
+                    'raison': 'Panne moteur'
+                }
+            ),
+            OpenApiExample(
+                'Exemple - Mise en maintenance',
+                value={
+                    'etat': 'maintenance',
+                    'raison': 'Révision périodique'
+                }
+            ),
+            OpenApiExample(
+                'Exemple - Remise en service',
+                value={
+                    'etat': 'disponible',
+                    'raison': 'Réparation terminée'
+                }
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description="État modifié avec succès"),
+            400: OpenApiResponse(description="État invalide"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Bus non trouvé"),
+        }
+    )
     def put(self, request, IdBus):
         bus = get_object_or_404(Bus, IdBus=IdBus)
         ancien_etat = bus.etat
@@ -342,6 +734,21 @@ class BusStatusUpdateView(APIView):
 class BusStatsView(APIView):
     permission_classes = [AllowAny]
     
+    @extend_schema(
+        tags=['Bus'],
+        summary="Statistiques des bus",
+        description="Récupère les statistiques globales des bus (total, par état, capacités)",
+        parameters=[
+            OpenApiParameter(
+                name='agence_id',
+                description="ID de l'agence pour filtrer les statistiques",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: OpenApiResponse(description="Statistiques récupérées avec succès")},
+    )
     def get(self, request):
         agence_id = request.query_params.get('agence_id')
         queryset = Bus.objects.filter(Id_agence_id=agence_id) if agence_id else Bus.objects.all()
@@ -366,7 +773,6 @@ class BusStatsView(APIView):
 
 
 class BusDisponiblesListView(generics.ListAPIView):
-
     serializer_class = BusListSerializer
     permission_classes = [AllowAny]
     
@@ -376,12 +782,29 @@ class BusDisponiblesListView(generics.ListAPIView):
         if agence_id:
             queryset = queryset.filter(Id_agence_id=agence_id)
         return queryset.select_related('Id_agence').order_by('-created_at')
+    
+    @extend_schema(
+        tags=['Bus'],
+        summary="Bus disponibles",
+        description="Liste des bus actuellement disponibles",
+        parameters=[
+            OpenApiParameter(
+                name='agence_id',
+                description="ID de l'agence pour filtrer",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: BusListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 # ============ CHAUFFEURS ============
 
 class ChauffeurListCreateView(generics.ListCreateAPIView):
-    # permission_classes = [IsManagerLocal]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['est_disponible', 'Id_agence']
     search_fields = ['name', 'surname', 'email', 'numero_permis']
@@ -391,6 +814,7 @@ class ChauffeurListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return [IsManagerLocal()]
         return [AllowAny()]
+    
     def get_queryset(self):
         queryset = Chauffeur.objects.all()
         agence_id = self.request.query_params.get('agence_id')
@@ -400,7 +824,6 @@ class ChauffeurListCreateView(generics.ListCreateAPIView):
         if disponible and disponible.lower() == 'true':
             queryset = queryset.filter(est_disponible=True)
         
-        # Filtrer par l'agence du manager local
         if hasattr(self.request, 'user_info'):
             role = self.request.user_info.get('role')
             if role == 'MANAGER_LOCAL':
@@ -413,6 +836,64 @@ class ChauffeurListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return ChauffeurSerializer
         return ChauffeurListSerializer
+    
+    @extend_schema(
+        tags=['Chauffeurs'],
+        summary="Liste des chauffeurs",
+        description="Récupère la liste des chauffeurs (accès public)",
+        parameters=[
+            OpenApiParameter(
+                name='agence_id',
+                description="ID de l'agence",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='disponible',
+                description="Filtrer les chauffeurs disponibles",
+                required=False,
+                type=bool,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: ChauffeurListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Chauffeurs'],
+        summary="Créer un chauffeur",
+        description="Crée un nouveau chauffeur (nécessite droits Manager Local)",
+        request=ChauffeurSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de création',
+                value={
+                    'numero_permis': 'P12345678',
+                    'name': 'Pierre',
+                    'surname': 'Kamga',
+                    'email': 'pierre.kamga@express.cm',
+                    'phone': '699555555',
+                    'Adresse': 'Quartier Makepe, Douala',
+                    'date_embauche': '2024-01-15',
+                    'Id_agence': 'uuid-de-l-agence',
+                    'est_disponible': True
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: ChauffeurSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+            409: OpenApiResponse(description="Numéro de permis ou email déjà utilisé"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
     
     def perform_create(self, serializer):
         chauffeur = serializer.save()
@@ -429,12 +910,52 @@ class ChauffeurDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Chauffeur.objects.all()
     lookup_field = 'id_chauffeur'
     serializer_class = ChauffeurSerializer
-    # permission_classes = [IsManagerLocal]
     
     def get_permissions(self):
         if self.request.method == 'GET':
             return [AllowAny()]
         return [IsManagerLocal()]
+    
+    @extend_schema(
+        tags=['Chauffeurs'],
+        summary="Détail d'un chauffeur",
+        description="Récupère les détails d'un chauffeur spécifique (accès public)",
+        responses={200: ChauffeurSerializer, 404: OpenApiResponse(description="Chauffeur non trouvé")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Chauffeurs'],
+        summary="Modifier un chauffeur",
+        description="Modifie un chauffeur existant (nécessite droits Manager Local)",
+        request=ChauffeurSerializer,
+        responses={
+            200: ChauffeurSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Chauffeur non trouvé"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Chauffeurs'],
+        summary="Supprimer un chauffeur",
+        description="Supprime un chauffeur (nécessite droits Manager Local). Le chauffeur ne doit pas avoir de voyages programmés.",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            400: OpenApiResponse(description="Impossible de supprimer - des voyages sont associés"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Chauffeur non trouvé"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+    
     def perform_destroy(self, instance):
         if instance.voyages.filter(status__in=[StatusVoyage.PROGRAMME, StatusVoyage.EN_COURS]).exists():
             from rest_framework.exceptions import ValidationError
@@ -447,6 +968,38 @@ class ChauffeurStatusUpdateView(APIView):
     """PUT: Changer la disponibilité d'un chauffeur (Manager Local ou supérieur)"""
     permission_classes = [IsManagerLocal]
     
+    @extend_schema(
+        tags=['Chauffeurs'],
+        summary="Changer la disponibilité d'un chauffeur",
+        description="Modifie la disponibilité d'un chauffeur (disponible/indisponible)",
+        request={
+            'type': 'object',
+            'properties': {
+                'est_disponible': {
+                    'type': 'boolean',
+                    'description': 'True = disponible, False = indisponible'
+                }
+            },
+            'required': ['est_disponible']
+        },
+        examples=[
+            OpenApiExample(
+                'Exemple - Rendre indisponible',
+                value={'est_disponible': False}
+            ),
+            OpenApiExample(
+                'Exemple - Rendre disponible',
+                value={'est_disponible': True}
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description="Disponibilité modifiée avec succès"),
+            400: OpenApiResponse(description="Champ est_disponible requis"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Chauffeur non trouvé"),
+        }
+    )
     def put(self, request, id_chauffeur):
         chauffeur = get_object_or_404(Chauffeur, id_chauffeur=id_chauffeur)
         est_disponible = request.data.get('est_disponible')
@@ -486,7 +1039,6 @@ class GuichetierListCreateView(generics.ListCreateAPIView):
         if actif and actif.lower() == 'true':
             queryset = queryset.filter(est_actif=True)
         
-        # Filtrer par la filiale du manager local
         if hasattr(self.request, 'user_info'):
             role = self.request.user_info.get('role')
             if role == 'MANAGER_LOCAL':
@@ -497,6 +1049,63 @@ class GuichetierListCreateView(generics.ListCreateAPIView):
     
     def get_serializer_class(self):
         return GuichetierSerializer
+    
+    @extend_schema(
+        tags=['Guichetiers'],
+        summary="Liste des guichetiers",
+        description="Récupère la liste des guichetiers (nécessite droits Manager Local)",
+        parameters=[
+            OpenApiParameter(
+                name='filiale_id',
+                description="ID de la filiale",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='actif',
+                description="Filtrer les guichetiers actifs",
+                required=False,
+                type=bool,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: GuichetierSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Guichetiers'],
+        summary="Créer un guichetier",
+        description="Crée un nouveau guichetier (nécessite droits Manager Local)",
+        request=GuichetierSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de création',
+                value={
+                    'name': 'Marie',
+                    'surname': 'Essonba',
+                    'email': 'marie.essonba@express.cm',
+                    'phone': '699444444',
+                    'adresse': 'Rue 123, Douala',
+                    'password': 'TempPass123',
+                    'est_actif': True,
+                    '_id_filiale': 'uuid-de-la-filiale'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: GuichetierSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+            409: OpenApiResponse(description="Email déjà utilisé"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
     
     def perform_create(self, serializer):
         guichetier = serializer.save()
@@ -514,6 +1123,45 @@ class GuichetierDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'Id_guichetier'
     serializer_class = GuichetierSerializer
     permission_classes = [IsManagerLocal]
+    
+    @extend_schema(
+        tags=['Guichetiers'],
+        summary="Détail d'un guichetier",
+        description="Récupère les détails d'un guichetier spécifique",
+        responses={200: GuichetierSerializer, 404: OpenApiResponse(description="Guichetier non trouvé")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Guichetiers'],
+        summary="Modifier un guichetier",
+        description="Modifie un guichetier existant",
+        request=GuichetierSerializer,
+        responses={
+            200: GuichetierSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Guichetier non trouvé"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Guichetiers'],
+        summary="Supprimer un guichetier",
+        description="Supprime un guichetier",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Guichetier non trouvé"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
     
     def perform_destroy(self, instance):
         instance.delete()
@@ -549,6 +1197,58 @@ class TrajetListCreateView(generics.ListCreateAPIView):
             return TrajetSerializer
         return TrajetListSerializer
     
+    @extend_schema(
+        tags=['Trajets'],
+        summary="Liste des trajets",
+        description="Récupère la liste des trajets (accès public)",
+        parameters=[
+            OpenApiParameter(
+                name='depart',
+                description="Filtrer par ville de départ",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='arrivee',
+                description="Filtrer par ville d'arrivée",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: TrajetListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Trajets'],
+        summary="Créer un trajet",
+        description="Crée un nouveau trajet entre deux filiales (nécessite droits Manager Global)",
+        request=TrajetSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de création',
+                value={
+                    'filiale_depart': 'uuid-filiale-depart',
+                    'filiale_arrive': 'uuid-filiale-arrivee',
+                    'distance': 250.5,
+                    'est_actif': True
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: TrajetSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Global requis"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+    
     def perform_create(self, serializer):
         trajet = serializer.save()
         logger.info(f"Trajet créé: {trajet}")
@@ -564,6 +1264,46 @@ class TrajetDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method == 'GET':
             return [AllowAny()]
         return [IsManagerGlobal()]
+    
+    @extend_schema(
+        tags=['Trajets'],
+        summary="Détail d'un trajet",
+        description="Récupère les détails d'un trajet spécifique (accès public)",
+        responses={200: TrajetSerializer, 404: OpenApiResponse(description="Trajet non trouvé")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Trajets'],
+        summary="Modifier un trajet",
+        description="Modifie un trajet existant (nécessite droits Manager Global)",
+        request=TrajetSerializer,
+        responses={
+            200: TrajetSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Trajet non trouvé"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Trajets'],
+        summary="Supprimer un trajet",
+        description="Supprime un trajet (nécessite droits Manager Global). Le trajet ne doit pas avoir de voyages associés.",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            400: OpenApiResponse(description="Impossible de supprimer - des voyages sont associés"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Trajet non trouvé"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
     
     def perform_destroy(self, instance):
         if instance.voyages.exists():
@@ -611,6 +1351,78 @@ class VoyageListCreateView(generics.ListCreateAPIView):
             return VoyageCreateUpdateSerializer
         return VoyageListSerializer
     
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Liste des voyages",
+        description="Récupère la liste des voyages (accès public). Possibilité de filtrer par dates, statut, etc.",
+        parameters=[
+            OpenApiParameter(
+                name='date_debut',
+                description="Date de début (YYYY-MM-DD)",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='date_fin',
+                description="Date de fin (YYYY-MM-DD)",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='agence_id',
+                description="ID de l'agence",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='status',
+                description="Statut du voyage (programme, confirme, en_cours, termine, annule, retarde)",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: VoyageListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Programmer un voyage",
+        description="Programme un nouveau voyage (nécessite droits Manager Local)",
+        request=VoyageCreateUpdateSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de création',
+                value={
+                    'date_heure_depart': '2026-04-10T10:00:00',
+                    'date_heure_arrive_prevue': '2026-04-10T15:00:00',
+                    'prix': 5000,
+                    'type_voyage': 'standard',
+                    'status': 'programme',
+                    'places_disponibles': 30,
+                    'places_total_reservees': 0,
+                    'Id_trajet': 'uuid-du-trajet',
+                    'IdBus': 1,
+                    'id_chauffeur': 'uuid-du-chauffeur'
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: VoyageSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+    
     @transaction.atomic
     def perform_create(self, serializer):
         voyage = serializer.save()
@@ -637,6 +1449,46 @@ class VoyageDetailView(generics.RetrieveUpdateDestroyAPIView):
             return [AllowAny()]
         return [IsManagerLocal()]
     
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Détail d'un voyage",
+        description="Récupère les détails d'un voyage spécifique (accès public)",
+        responses={200: VoyageSerializer, 404: OpenApiResponse(description="Voyage non trouvé")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Modifier un voyage",
+        description="Modifie un voyage existant (nécessite droits Manager Local)",
+        request=VoyageCreateUpdateSerializer,
+        responses={
+            200: VoyageSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Voyage non trouvé"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Supprimer un voyage",
+        description="Supprime un voyage (nécessite droits Manager Local). Le voyage ne doit pas être en cours.",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            400: OpenApiResponse(description="Impossible de supprimer un voyage en cours"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Voyage non trouvé"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+    
     @transaction.atomic
     def perform_update(self, serializer):
         voyage = serializer.save()
@@ -660,6 +1512,54 @@ class VoyageStatusUpdateView(APIView):
     """PUT: Changer le statut d'un voyage (Manager Local ou supérieur)"""
     permission_classes = [IsManagerLocal]
     
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Changer le statut d'un voyage",
+        description="Modifie le statut d'un voyage (programme, confirme, en_cours, termine, annule, retarde)",
+        request={
+            'type': 'object',
+            'properties': {
+                'status': {
+                    'type': 'string',
+                    'enum': ['programme', 'confirme', 'en_cours', 'termine', 'annule', 'retarde'],
+                    'description': 'Nouveau statut du voyage'
+                },
+                'motif': {
+                    'type': 'string',
+                    'description': 'Motif (obligatoire pour l\'annulation)'
+                }
+            },
+            'required': ['status']
+        },
+        examples=[
+            OpenApiExample(
+                'Exemple - Annulation',
+                value={
+                    'status': 'annule',
+                    'motif': 'Problème technique'
+                }
+            ),
+            OpenApiExample(
+                'Exemple - Retard',
+                value={'status': 'retarde'}
+            ),
+            OpenApiExample(
+                'Exemple - Départ',
+                value={'status': 'en_cours'}
+            ),
+            OpenApiExample(
+                'Exemple - Terminé',
+                value={'status': 'termine'}
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description="Statut modifié avec succès"),
+            400: OpenApiResponse(description="Statut invalide"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+            404: OpenApiResponse(description="Voyage non trouvé"),
+        }
+    )
     @transaction.atomic
     def put(self, request, Id_voyage):
         voyage = get_object_or_404(Voyage, Id_voyage=Id_voyage)
@@ -738,6 +1638,41 @@ class VoyageSearchView(generics.ListAPIView):
             queryset = queryset.filter(date_heure_depart__date=date)
         
         return queryset.select_related('Id_trajet', 'IdBus').order_by('date_heure_depart')
+    
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Rechercher des voyages",
+        description="Recherche des voyages disponibles pour une ville de départ, d'arrivée et une date (accès public)",
+        parameters=[
+            OpenApiParameter(
+                name='depart',
+                description="Ville de départ",
+                required=True,
+                type=str,
+                location=OpenApiParameter.QUERY,
+                # example='Douala'
+            ),
+            OpenApiParameter(
+                name='arrivee',
+                description="Ville d'arrivée",
+                required=True,
+                type=str,
+                location=OpenApiParameter.QUERY,
+                # example='Yaoundé'
+            ),
+            OpenApiParameter(
+                name='date',
+                description="Date de départ (format: YYYY-MM-DD)",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY,
+                # example='2026-04-10'
+            )
+        ],
+        responses={200: VoyageListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 # ============ ANNONCES ============
@@ -767,6 +1702,51 @@ class AnnonceListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         return AnnonceSerializer
     
+    @extend_schema(
+        tags=['Annonces'],
+        summary="Liste des annonces",
+        description="Récupère la liste des annonces (accès public)",
+        parameters=[
+            OpenApiParameter(
+                name='voyage_id',
+                description="ID du voyage pour filtrer les annonces",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: AnnonceSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Annonces'],
+        summary="Publier une annonce",
+        description="Publie une annonce pour un voyage (nécessite droits Manager Local)",
+        request=AnnonceSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple de publication',
+                value={
+                    'type': 'information',
+                    'message': 'Le voyage est maintenu malgré la pluie',
+                    'Id_voyage': 'uuid-du-voyage',
+                    'est_active': True
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: AnnonceSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+    
     def perform_create(self, serializer):
         annonce = serializer.save()
         publish_annonce_published(annonce)
@@ -787,6 +1767,45 @@ class AnnonceDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method == 'GET':
             return [AllowAny()]
         return [IsManagerLocal()]
+    
+    @extend_schema(
+        tags=['Annonces'],
+        summary="Détail d'une annonce",
+        description="Récupère les détails d'une annonce spécifique (accès public)",
+        responses={200: AnnonceSerializer, 404: OpenApiResponse(description="Annonce non trouvée")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Annonces'],
+        summary="Modifier une annonce",
+        description="Modifie une annonce existante (nécessite droits Manager Local)",
+        request=AnnonceSerializer,
+        responses={
+            200: AnnonceSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Annonce non trouvée"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Annonces'],
+        summary="Supprimer une annonce",
+        description="Supprime une annonce (nécessite droits Manager Local)",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants"),
+            404: OpenApiResponse(description="Annonce non trouvée"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
 
 
 # ============ AVIS ============
@@ -819,6 +1838,59 @@ class AvisListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         return AvisSerializer
     
+    @extend_schema(
+        tags=['Avis'],
+        summary="Liste des avis",
+        description="Récupère la liste des avis approuvés (accès public)",
+        parameters=[
+            OpenApiParameter(
+                name='voyage_id',
+                description="ID du voyage pour filtrer les avis",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='note_min',
+                description="Note minimum (1-5)",
+                required=False,
+                type=int,
+                location=OpenApiParameter.QUERY
+            )
+        ],
+        responses={200: AvisSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Avis'],
+        summary="Laisser un avis",
+        description="Laisse un avis sur un voyage (nécessite droits Voyageur)",
+        request=AvisSerializer,
+        examples=[
+            OpenApiExample(
+                'Exemple d\'avis',
+                value={
+                    'note': 5,
+                    'commentaires': 'Excellent voyage, très confortable!',
+                    'Id_voyage': 'uuid-du-voyage',
+                    'user_id': 'uuid-de-l-utilisateur',
+                    'est_approuve': True
+                },
+                request_only=True,
+            )
+        ],
+        responses={
+            201: AvisSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Voyageur requis"),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+    
     def perform_create(self, serializer):
         avis = serializer.save()
         logger.info(f"Avis créé: note {avis.note}/5 pour voyage {avis.Id_voyage}")
@@ -839,8 +1911,46 @@ class AvisDetailView(generics.RetrieveUpdateDestroyAPIView):
             return [AllowAny()]
         return [IsAuthenticated()]
     
+    @extend_schema(
+        tags=['Avis'],
+        summary="Détail d'un avis",
+        description="Récupère les détails d'un avis spécifique (accès public)",
+        responses={200: AvisSerializer, 404: OpenApiResponse(description="Avis non trouvé")},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Avis'],
+        summary="Modifier un avis",
+        description="Modifie un avis existant (nécessite droits Propriétaire ou Admin)",
+        request=AvisSerializer,
+        responses={
+            200: AvisSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Propriétaire requis"),
+            404: OpenApiResponse(description="Avis non trouvé"),
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+    
+    @extend_schema(
+        tags=['Avis'],
+        summary="Supprimer un avis",
+        description="Supprime un avis (nécessite droits Propriétaire ou Admin)",
+        responses={
+            204: OpenApiResponse(description="Suppression réussie"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Propriétaire requis"),
+            404: OpenApiResponse(description="Avis non trouvé"),
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
+    
     def perform_update(self, serializer):
-        # Vérifier que l'utilisateur est le propriétaire ou admin
         if hasattr(self.request, 'user_info'):
             user_id = self.request.user_info.get('userId')
             avis = self.get_object()
@@ -854,7 +1964,6 @@ class AvisDetailView(generics.RetrieveUpdateDestroyAPIView):
         logger.info(f"Avis modifié: {serializer.instance.id_avis}")
     
     def perform_destroy(self, instance):
-        # Vérifier que l'utilisateur est le propriétaire ou admin
         if hasattr(self.request, 'user_info'):
             user_id = self.request.user_info.get('userId')
             role = self.request.user_info.get('role')
@@ -871,6 +1980,15 @@ class AvisStatsView(APIView):
     """GET: Statistiques des avis pour un voyage (Public)"""
     permission_classes = [AllowAny]
     
+    @extend_schema(
+        tags=['Avis'],
+        summary="Statistiques des avis",
+        description="Récupère les statistiques des avis pour un voyage (note moyenne, répartition des notes)",
+        responses={
+            200: OpenApiResponse(description="Statistiques récupérées avec succès"),
+            404: OpenApiResponse(description="Voyage non trouvé"),
+        }
+    )
     def get(self, request, Id_voyage):
         voyage = get_object_or_404(Voyage, Id_voyage=Id_voyage)
         avis = Avis.objects.filter(Id_voyage=voyage, est_approuve=True)
@@ -897,6 +2015,34 @@ class VoyageAssignBusView(APIView):
     """POST: Assigner un bus à un voyage (Manager Local ou supérieur)"""
     permission_classes = [IsManagerLocal]
     
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Assigner un bus à un voyage",
+        description="Assigne un bus disponible à un voyage (nécessite droits Manager Local)",
+        request={
+            'type': 'object',
+            'properties': {
+                'bus_id': {
+                    'type': 'integer',
+                    'description': 'ID du bus à assigner'
+                }
+            },
+            'required': ['bus_id']
+        },
+        examples=[
+            OpenApiExample(
+                'Exemple d\'assignation',
+                value={'bus_id': 1}
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description="Bus assigné avec succès"),
+            400: OpenApiResponse(description="Bus non disponible ou ID manquant"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+            404: OpenApiResponse(description="Voyage ou bus non trouvé"),
+        }
+    )
     def post(self, request, Id_voyage):
         voyage = get_object_or_404(Voyage, Id_voyage=Id_voyage)
         bus_id = request.data.get('bus_id')
@@ -943,6 +2089,35 @@ class VoyageAssignChauffeurView(APIView):
     """POST: Assigner un chauffeur à un voyage (Manager Local ou supérieur)"""
     permission_classes = [IsManagerLocal]
     
+    @extend_schema(
+        tags=['Voyages'],
+        summary="Assigner un chauffeur à un voyage",
+        description="Assigne un chauffeur disponible à un voyage (nécessite droits Manager Local)",
+        request={
+            'type': 'object',
+            'properties': {
+                'chauffeur_id': {
+                    'type': 'string',
+                    'format': 'uuid',
+                    'description': 'UUID du chauffeur à assigner'
+                }
+            },
+            'required': ['chauffeur_id']
+        },
+        examples=[
+            OpenApiExample(
+                'Exemple d\'assignation',
+                value={'chauffeur_id': 'uuid-du-chauffeur'}
+            )
+        ],
+        responses={
+            200: OpenApiResponse(description="Chauffeur assigné avec succès"),
+            400: OpenApiResponse(description="Chauffeur non disponible ou ID manquant"),
+            401: OpenApiResponse(description="Non authentifié"),
+            403: OpenApiResponse(description="Droits insuffisants - Manager Local requis"),
+            404: OpenApiResponse(description="Voyage ou chauffeur non trouvé"),
+        }
+    )
     def post(self, request, Id_voyage):
         voyage = get_object_or_404(Voyage, Id_voyage=Id_voyage)
         chauffeur_id = request.data.get('chauffeur_id')
@@ -982,9 +2157,14 @@ class VoyageAssignChauffeurView(APIView):
 
 # ============ HEALTH CHECK ============
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@extend_schema(
+    tags=['Health'],
+    summary="Health check",
+    description="Vérifie que le service est opérationnel",
+    responses={200: OpenApiResponse(description="Service en bonne santé")},
+)
 def health_check(request):
     """Endpoint public pour vérifier que le service est vivant"""
     return Response({

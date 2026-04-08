@@ -17,8 +17,15 @@ class JWTAuthenticationMiddleware:
         self.get_response = get_response
     
     def __call__(self, request):
-        # Exclure les endpoints publics de l'authentification
         public_paths = [
+            r'^/swagger/?$',
+            r'^/swagger/.*$',
+            r'^/redoc/?$',
+            r'^/redoc/.*$',
+            r'^/swagger\.json/?$',
+            r'^/openapi\.json/?$',
+            r'^/api/schema/.*$',
+            r'^/api/docs/?$',
             r'^/api/health/?$',
             r'^/api/swagger/?.*$',
             r'^/api/redoc/?.*$',
@@ -41,7 +48,9 @@ class JWTAuthenticationMiddleware:
             r'^/api/bus/[^/]+/?$',          
             r'^/api/bus/[^/]+/etat/?$',     
             r'^/api/bus/disponibles/?$',    
-            r'^/api/stats/?$',              
+            r'^/api/stats/?$', 
+            r'^/api/docs/.*$',
+            r'^/api/docs/redoc/?$'             
         ]
         
         is_public = False
