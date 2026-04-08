@@ -18,6 +18,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *   GET /api/users/health
  *   GET /api/avis/agence/**
  *   GET /actuator/**
+ *   
+ * Routes Swagger (sans JWT) :
+ *   /swagger-ui/**
+ *   /v3/api-docs/**
+ *   /swagger-ui.html
  */
 @Configuration
 @EnableWebSecurity
@@ -35,9 +40,15 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
+                    // Routes publiques existantes
                     "/api/users/health",
                     "/api/avis/agence/**",
-                    "/actuator/**"
+                    "/actuator/**",
+                    // Routes Swagger (publiques)
+                    "/swagger-ui/**",
+                    "/swagger-ui.html",
+                    "/v3/api-docs/**",
+                    "/v3/api-docs"
                 ).permitAll()
                 .anyRequest().authenticated()
             )

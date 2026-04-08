@@ -13,6 +13,7 @@ public class ReservationResponse {
     private Integer          nombrePlaces;
     private Double           montantTotal;
     private CanalReservation canal;
+    private String           devise;
     private Long             idVoyage;
     private Long             idVoyageur;
     private LocalDateTime    dateReservation;

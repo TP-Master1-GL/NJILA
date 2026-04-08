@@ -17,7 +17,6 @@ public class RabbitMQConfig {
     // ─── Routing keys publiées par ce service ─────────────────────────────────
     public static final String BOOKING_CREATED_KEY          = "booking.created";
     public static final String TICKET_GENERATED_KEY         = "ticket.generated";
-    public static final String FIDELITE_REWARD_KEY          = "booking.fidelite.reward";
 
     // CORRECTION UC-B4 : remboursement après annulation
     public static final String BOOKING_REFUND_REQUESTED_KEY = "booking.refund.requested";
@@ -53,12 +52,18 @@ public class RabbitMQConfig {
 
     @Bean
     public Queue paymentSuccessQueue() {
-        return QueueBuilder.durable(PAYMENT_SUCCESS_QUEUE).build();
+        return QueueBuilder.durable(PAYMENT_SUCCESS_QUEUE)
+                .withArgument("x-dead-letter-exchange", "njila.dlx")
+                .withArgument("x-dead-letter-routing-key", "payment.success.dead")
+                .build();
     }
 
     @Bean
     public Queue paymentFailedQueue() {
-        return QueueBuilder.durable(PAYMENT_FAILED_QUEUE).build();
+        return QueueBuilder.durable(PAYMENT_FAILED_QUEUE)
+                .withArgument("x-dead-letter-exchange", "njila.dlx")
+                .withArgument("x-dead-letter-routing-key", "payment.failed.dead")
+                .build();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

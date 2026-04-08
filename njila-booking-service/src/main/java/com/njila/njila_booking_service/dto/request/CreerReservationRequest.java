@@ -28,6 +28,8 @@ public class CreerReservationRequest {
 
     private Long idGuichetier;
 
+    private String devise; // Optionnel : si null, le service utilisera la valeur par défaut
+
     // Type de tarification
     @NotNull
     private TypeTarif typeTarif;   // STANDARD, GROUPE, PROMO

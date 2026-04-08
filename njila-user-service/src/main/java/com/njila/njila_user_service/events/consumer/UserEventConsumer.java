@@ -1,51 +1,39 @@
 package com.njila.njila_user_service.events.consumer;
 
+import com.njila.njila_user_service.entity.Agence;
+import com.njila.njila_user_service.entity.Filiale;
 import com.njila.njila_user_service.entity.UserProfile;
 import com.njila.njila_user_service.enums.Role;
+import com.njila.njila_user_service.repository.AgenceRepository;
+import com.njila.njila_user_service.repository.FilialeRepository;
 import com.njila.njila_user_service.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * UserEventConsumer — consommateur RabbitMQ du user-service v2.0.
- * 
- * CORRECTION : Les noms des queues ont été modifiés pour correspondre
- * à ce que l'auth-service publie.
- *
- * Queues écoutées :
- * ┌──────────────────────────────────────────────────┬─────────────────────┬────────────────────────┐
- * │ Queue                                            │ Exchange            │ Routing key            │
- * ├──────────────────────────────────────────────────┼─────────────────────┼────────────────────────┤
- * │ njila.auth.user.registered.queue                 │ njila.user.exchange │ user.registered        │
- * │ njila.auth.user.updated.queue                    │ njila.user.exchange │ user.updated           │
- * │ njila.user.agence-created.queue                  │ njila.fleet.exchange│ agence.created         │
- * │ njila.user.filiale-created.queue                 │ njila.fleet.exchange│ filiale.created        │
- * │ njila.user.reservation-created.queue             │ njila.booking.exchange│ reservation.created   │
- * └──────────────────────────────────────────────────┴─────────────────────┴────────────────────────┘
- */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class UserEventConsumer {
 
     private final UserRepository userRepository;
-    private final CacheManager   cacheManager;
+    private final AgenceRepository agenceRepository;
+    private final FilialeRepository filialeRepository;
+    private final CacheManager cacheManager;
 
-    // ── user.registered (Voyageur) ─────────────────────────────────────────
-    // CORRECTION : Queue modifiée pour correspondre à ce que l'auth-service publie
     @RabbitListener(queues = "njila.auth.user.registered.queue")
     public void handleUserRegistered(Map<String, Object> payload) {
         log.info("[CONSUMER] user.registered reçu");
         try {
-            String userId  = getString(payload, "userId");
-            String email   = getString(payload, "email");
-            String name    = getString(payload, "name");
+            String userId = getString(payload, "userId");
+            String email = getString(payload, "email");
+            String name = getString(payload, "name");
             String surname = getString(payload, "surname");
             String roleStr = getString(payload, "role");
 
@@ -56,7 +44,6 @@ public class UserEventConsumer {
 
             UUID id = UUID.fromString(userId);
 
-            // Idempotence
             if (userRepository.existsById(id)) {
                 log.warn("[CONSUMER] Profil déjà existant userId={} — ignoré", userId);
                 return;
@@ -67,7 +54,7 @@ public class UserEventConsumer {
             UserProfile profile = UserProfile.builder()
                 .idUser(id)
                 .email(email.toLowerCase().strip())
-                .name(name    != null ? name    : "")
+                .name(name != null ? name : "")
                 .surname(surname != null ? surname : "")
                 .phone(getString(payload, "phone"))
                 .adresse(getString(payload, "adresse"))
@@ -88,16 +75,14 @@ public class UserEventConsumer {
         }
     }
 
-    // ── user.updated ────────────────────────────────────────────────────────
-    // CORRECTION : Queue modifiée pour correspondre à ce que l'auth-service publie
     @RabbitListener(queues = "njila.auth.user.updated.queue")
     public void handleUserUpdated(Map<String, Object> payload) {
         log.debug("[CONSUMER] user.updated reçu");
         try {
-            String userId       = getString(payload, "userId");
-            String photoUrl     = getString(payload, "photoUrl");
+            String userId = getString(payload, "userId");
+            String photoUrl = getString(payload, "photoUrl");
             boolean emailChanged = Boolean.TRUE.equals(payload.get("emailChanged"));
-            String email         = getString(payload, "email");
+            String email = getString(payload, "email");
 
             if (userId == null) return;
 
@@ -124,38 +109,98 @@ public class UserEventConsumer {
         }
     }
 
-    // ── agence.created ──────────────────────────────────────────────────────
-
     @RabbitListener(queues = "njila.user.agence-created.queue")
+    @Transactional
     public void handleAgenceCreated(Map<String, Object> payload) {
         log.info("[CONSUMER] agence.created reçu");
+        log.debug("[CONSUMER] Payload agence: {}", payload);
         try {
-            // TODO: Implémenter la création de l'entité Agence
-            // Cette méthode est appelée par le fleet-management-service
-            log.debug("[CONSUMER] Payload agence: {}", payload);
+            String agenceId = getString(payload, "agenceId");
+            String nom = getString(payload, "nom");
+            String description = getString(payload, "description");
+
+            if (agenceId == null || nom == null) {
+                log.error("[CONSUMER] agence.created : agenceId ou nom manquant");
+                return;
+            }
+
+            UUID id = UUID.fromString(agenceId);
+
+            if (agenceRepository.existsById(id)) {
+                log.warn("[CONSUMER] Agence déjà existante id={} — ignoré", agenceId);
+                return;
+            }
+
+            Agence agence = Agence.builder()
+                .idAgence(id)
+                .nom(nom)
+                .description(description != null ? description : "")
+                .isActive(true)
+                .build();
+
+            agenceRepository.save(agence);
+            log.info("[CONSUMER] Agence créée | id={} nom={}", agenceId, nom);
+
         } catch (Exception e) {
             log.error("[CONSUMER] Erreur agence.created : {}", e.getMessage(), e);
         }
     }
 
-    // ── filiale.created ─────────────────────────────────────────────────────
-
     @RabbitListener(queues = "njila.user.filiale-created.queue")
+    @Transactional
     public void handleFilialeCreated(Map<String, Object> payload) {
         log.info("[CONSUMER] filiale.created reçu");
+        log.debug("[CONSUMER] Payload filiale: {}", payload);
         try {
-            // TODO: Implémenter la création de l'entité Filiale
-            log.debug("[CONSUMER] Payload filiale: {}", payload);
+            String filialeId = getString(payload, "filialeId");
+            String nom = getString(payload, "nom");
+            String adresse = getString(payload, "adresse");
+            String ville = getString(payload, "ville");
+            String agenceId = getString(payload, "agenceId");
+
+            if (filialeId == null || nom == null) {
+                log.error("[CONSUMER] filiale.created : filialeId ou nom manquant");
+                return;
+            }
+
+            if (agenceId == null) {
+                log.error("[CONSUMER] filiale.created : agenceId manquant");
+                return;
+            }
+
+            UUID idFiliale = UUID.fromString(filialeId);
+            UUID idAgence = UUID.fromString(agenceId);
+
+            if (filialeRepository.existsById(idFiliale)) {
+                log.warn("[CONSUMER] Filiale déjà existante id={} — ignoré", filialeId);
+                return;
+            }
+
+            if (!agenceRepository.existsById(idAgence)) {
+                log.error("[CONSUMER] Agence parente inexistante | agenceId={}", agenceId);
+                return;
+            }
+
+            Filiale filiale = Filiale.builder()
+                .idFiliale(idFiliale)
+                .nom(nom)
+                .adresse(adresse != null ? adresse : "")
+                .ville(ville != null ? ville : "")
+                .agenceId(idAgence)
+                .isActive(true)
+                .build();
+
+            filialeRepository.save(filiale);
+            log.info("[CONSUMER] Filiale créée | id={} nom={} agenceId={}", filialeId, nom, agenceId);
+
         } catch (Exception e) {
             log.error("[CONSUMER] Erreur filiale.created : {}", e.getMessage(), e);
         }
     }
 
-    // ── reservation.created ─────────────────────────────────────────────────
-
     @RabbitListener(queues = "njila.user.reservation-created.queue")
     public void handleReservationCreated(Map<String, Object> payload) {
-        log.debug("[CONSUMER] reservation.created reçu");
+        log.info("[CONSUMER] reservation.created reçu");
         try {
             // TODO: Implémenter la mise à jour de l'historique des réservations
             log.debug("[CONSUMER] Payload réservation: {}", payload);
@@ -164,8 +209,7 @@ public class UserEventConsumer {
         }
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────────────
-
+    // Helpers
     private String getString(Map<String, Object> map, String key) {
         Object val = map.get(key);
         return val instanceof String s ? s : null;

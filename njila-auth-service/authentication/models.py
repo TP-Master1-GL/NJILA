@@ -30,9 +30,18 @@ class NjilaUserManager(BaseUserManager):
         if not email:
             raise ValueError("L'email est obligatoire.")
         email = self.normalize_email(email)
-        user  = self.model(email=email, role=role, **extra_fields)
+        
+        # Filtrer les champs meta_data si présents
+        meta_data = extra_fields.pop('meta_data', None)
+        
+        user = self.model(email=email, role=role, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
+        
+        # Stocker meta_data si nécessaire (optionnel)
+        if meta_data:
+            user._meta_data = meta_data
+            
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
@@ -75,12 +84,21 @@ class NjilaUser(AbstractBaseUser):
     updated_at    = models.DateTimeField(auto_now=True)
     created_by    = models.CharField(max_length=10, default="SELF")
 
+    # Champ pour stocker les meta-données supplémentaires
+    meta_data = models.JSONField(default=dict, blank=True)
+
     objects = NjilaUserManager()
 
     USERNAME_FIELD  = "email"
     REQUIRED_FIELDS = []
 
-    
+    def __init__(self, *args, **kwargs):
+        # Extraire et stocker meta_data avant l'initialisation du modèle
+        meta_data = kwargs.pop('meta_data', None)
+        super().__init__(*args, **kwargs)
+        if meta_data and isinstance(meta_data, dict):
+            self.meta_data = meta_data
+
     @property
     def full_name(self) -> str:
         """Retourne 'name surname' ou l'email si les deux sont vides."""

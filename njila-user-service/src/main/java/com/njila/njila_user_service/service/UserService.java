@@ -42,4 +42,11 @@ public interface UserService {
     void deleteAvis(UUID userId, UUID avisId, JwtClaims caller);
 
     double getNoteMoyenne(UUID agenceId);
+    
+    // ── Gestion staff par agence/filiale ─────────────────────────────────
+    List<UserProfileResponse> listStaffByAgence(UUID agenceId, JwtClaims caller);
+
+    List<UserProfileResponse> listStaffByFiliale(UUID filialeId, JwtClaims caller);
+
+    void deleteStaff(UUID staffId, JwtClaims caller);
 }

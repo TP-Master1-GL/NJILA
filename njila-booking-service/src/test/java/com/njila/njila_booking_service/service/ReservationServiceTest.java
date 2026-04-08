@@ -99,11 +99,11 @@ class ReservationServiceTest {
         Reservation result = reservationService.creerReservation(
                 1L, 1L, 1, CanalReservation.WEB,
                 "GEN", "BYDE", null,
-                CreerReservationRequest.TypeTarif.STANDARD, null);
+                CreerReservationRequest.TypeTarif.STANDARD, null, "XAF");
 
         assertThat(result).isNotNull();
         assertThat(result.getStatut()).isEqualTo(StatutReservation.EN_ATTENTE);
-        verify(eventPublisher).publierBookingCreated(1L, 5000.0, 1L, 1L);
+        verify(eventPublisher).publierBookingCreated(1L, 5000.0, "XAF", 1L, 1L);
         verify(lockManager).acquerirVerrou(1L, 1L, 1L);
     }
 
@@ -115,7 +115,7 @@ class ReservationServiceTest {
                 reservationService.creerReservation(
                         1L, 1L, 3, CanalReservation.WEB,
                         "GEN", "BYDE", null,
-                        CreerReservationRequest.TypeTarif.STANDARD, null))
+                        CreerReservationRequest.TypeTarif.STANDARD, null, "XAF"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Places insuffisantes");
     }
@@ -133,7 +133,7 @@ class ReservationServiceTest {
                 reservationService.creerReservation(
                         1L, 1L, 1, CanalReservation.WEB,
                         "GEN", "BYDE", null,
-                        CreerReservationRequest.TypeTarif.STANDARD, null))
+                        CreerReservationRequest.TypeTarif.STANDARD, null, "XAF"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("réservation est déjà en cours");
 
@@ -149,7 +149,7 @@ class ReservationServiceTest {
                 reservationService.creerReservation(
                         1L, 1L, 1, CanalReservation.WEB,
                         "GEN", "BYDE", null,
-                        CreerReservationRequest.TypeTarif.STANDARD, null))
+                        CreerReservationRequest.TypeTarif.STANDARD, null, "XAF"))
                 .isInstanceOf(ServiceIndisponibleException.class);
     }
 
@@ -179,9 +179,9 @@ class ReservationServiceTest {
         reservationService.creerReservation(
                 1L, 1L, 1, CanalReservation.GUICHET,
                 "GEN", "BYDE", 1L,
-                CreerReservationRequest.TypeTarif.STANDARD, null);
+                CreerReservationRequest.TypeTarif.STANDARD, null, "XAF");
 
-        verify(eventPublisher, never()).publierBookingCreated(any(), any(), any(), any());
+        verify(eventPublisher, never()).publierBookingCreated(any(), any(), any(), any(), any());
         verify(ticketRepository).save(any());
         verify(fideliteService).incrementer(1L, "GEN");
     }
@@ -262,7 +262,7 @@ class ReservationServiceTest {
         assertThat(reservation.getStatut()).isEqualTo(StatutReservation.ANNULEE);
         // CORRECTION : le remboursement doit être initié
         verify(eventPublisher).publierRemboursementDemande(
-                eq(1L), eq(1L), eq(5000.0), anyString());
+                eq(1L), eq(1L), eq(5000.0), anyString(), anyString());
     }
 
     @Test
@@ -280,7 +280,7 @@ class ReservationServiceTest {
 
         // Pas de remboursement si la réservation n'était pas encore payée
         verify(eventPublisher, never()).publierRemboursementDemande(
-                any(), any(), any(), any());
+                any(), any(), any(), any(), any());
     }
 
     @Test

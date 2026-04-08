@@ -673,9 +673,43 @@ def sync_admin(request):
     from authentication.events.publisher import EventPublisher
     
     email = "ronelmaamoc52@gmail.com"
+    name = "ronel"
+    surname = "maamoc"
+    password = "Ronel789"
+    role = "ADMINISTRATEUR"
+    
+    created = False
     
     try:
-        user = NjilaUser.objects.get(email=email)
+        # Vérifier si l'utilisateur existe déjà
+        user = NjilaUser.objects.filter(email=email).first()
+        
+        if user:
+            # Mettre à jour les informations existantes
+            user.name = name
+            user.surname = surname
+            user.role = role
+            # Ne pas changer le mot de passe s'il existe déjà
+            # user.set_password(password)  # Décommentez pour forcer la mise à jour du mot de passe
+            user.save()
+            print(f"Admin mis à jour: {user.email}")
+        else:
+            # Créer le nouvel utilisateur admin
+            user = NjilaUser.objects.create_user(
+                email=email,
+                name=name,
+                surname=surname,
+                password=password,
+                role=role,
+                phone="",
+                adresse="",
+                photo_url="",
+                is_active=True
+            )
+            created = True
+            print(f"Admin créé avec succès: {user.email}")
+        
+        # Publier l'événement vers user-service
         publisher = EventPublisher()
         
         publisher.publish_user_registered(
@@ -684,20 +718,28 @@ def sync_admin(request):
             name=user.name,
             surname=user.surname,
             role=user.role,
-            phone=user.phone,
-            adresse=user.adresse,
-            photo_url=user.photo_url,
-            filiale_id=user.filiale_id,
-            agence_id=user.agence_id
+            phone=user.phone or "",
+            adresse=user.adresse or "",
+            photo_url=user.photo_url or "",
+            filiale_id=getattr(user, 'filiale_id', None),
+            agence_id=getattr(user, 'agence_id', None)
         )
         
         return Response({
-            "message": "Admin synchronisé avec user-service",
+            "success": True,
+            "message": "Admin créé et synchronisé" if created else "Admin existant synchronisé",
             "userId": str(user.id),
-            "email": user.email
+            "email": user.email,
+            "name": user.name,
+            "surname": user.surname,
+            "role": user.role,
+            "created": created
         })
         
-    except NjilaUser.DoesNotExist:
-        return Response({"error": "Admin non trouvé"}, status=404)
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        import traceback
+        traceback.print_exc()
+        return Response({
+            "success": False,
+            "error": str(e)
+        }, status=500)
