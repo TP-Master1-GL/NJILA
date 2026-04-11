@@ -19,19 +19,28 @@ public class UserProfileResponse {
     private String adresse;
     private String photoProfil;
     private Role   role;
-    private UUID   filialeId;
-    private UUID   agenceId;
+    private String userType;  // NOUVEAU : "ADMIN", "VOYAGEUR", "MANAGER_GLOBAL", "MANAGER_LOCAL", "GUICHETIER", "CHAUFFEUR"
     private boolean isActive;
 
     private LocalDateTime dateInscription;
     private LocalDateTime derniereConnexion;
 
-    private String        historiqueResa;    // Voyageur
-    private String        poste;             // Guichetier
-    private String        numeroPermis;      // Chauffeur
-    private UUID          idVoyageActuel;    // Chauffeur
-    private Boolean       disponible;        // Chauffeur
-    private LocalDateTime dateEmbauche;      // Chauffeur
-    private Integer       niveauAcces;       // Administrateur
-    private UUID          idAgenceManager;   // ManagerGlobal
+    // Voyageur
+    private String historiqueResa;
+
+    // Guichetier
+    private String poste;
+
+    // Chauffeur
+    private String numeroPermis;
+    private UUID   idVoyageActuel;
+    private Boolean disponible;
+
+    // ManagerGlobal
+    private UUID agenceId;
+
+    // ManagerLocal, Guichetier, Chauffeur
+    private UUID filialeId;
+    
+    private LocalDateTime dateEmbauche;
 }

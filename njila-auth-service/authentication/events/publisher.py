@@ -1,25 +1,3 @@
-"""
-EventPublisher — publication RabbitMQ depuis l'auth-service v2.0.
-
-Architecture des exchanges NJILA (corrigée) :
-  Chaque service possède son propre exchange. L'auth-service publie sur
-  l'exchange du service destinataire, pas sur le sien propre.
-
-  ┌─────────────────────────────────────────────────────────────────┐
-  │  Message publié par auth-service     Exchange cible             │
-  ├─────────────────────────────────────────────────────────────────┤
-  │  user.registered  (profil initial)   njila.user.exchange        │
-  │  user.updated     (email changé)     njila.user.exchange        │
-  │  password.reset   (lien email)       njila.notification.exchange│
-  │  welcome.email    (email bienvenue)  njila.notification.exchange│
-  │  subscription.check (vérif. abo.)    njila.subscribe.exchange   │
-  └─────────────────────────────────────────────────────────────────┘
-
-NOTE : staff.created n'est PLUS publié par l'auth-service.
-       Le user-service crée les staffs et publie staff.to.auth vers l'auth-service.
-
-Dead Letter Exchange : njila.dead.letter.exchange (direct)
-"""
 
 import json
 import logging
@@ -45,16 +23,7 @@ ROUTING_WELCOME_EMAIL   = "auth.user.welcome"     # email de bienvenue
 
 
 class EventPublisher:
-    """
-    Publie des événements vers les exchanges des services destinataires.
-    Une seule connexion RabbitMQ, plusieurs exchanges déclarés au démarrage.
-    Connexion lazy + reconnexion automatique. Non bloquant si RabbitMQ est down.
     
-    NOTE : L'auth-service ne publie PLUS d'événements staff.created.
-           Les comptes staff sont créés par le user-service qui publie
-           ensuite staff.to.auth vers l'auth-service.
-    """
-
     def __init__(self):
         self._lock      = threading.Lock()
         self._connection = None
@@ -106,13 +75,7 @@ class EventPublisher:
             logger.warning("[RABBITMQ] Indisponible au démarrage : %s", e)
 
     def publish(self, exchange: str, routing_key: str, payload: dict):
-        """
-        Publie un message JSON sur l'exchange spécifié.
-        Paramètres :
-          exchange    : exchange du SERVICE DESTINATAIRE
-          routing_key : clé de routage
-          payload     : données JSON sérialisables
-        """
+        
         with self._lock:
             if not self._connected:
                 self._try_connect()
@@ -157,13 +120,7 @@ class EventPublisher:
         filiale_id:    Optional[str] = None,
         agence_id:     Optional[str] = None,
     ):
-        """
-        Publie sur njila.user.exchange → user-service crée le profil initial.
-        Publie sur njila.notification.exchange → notification-service envoie l'email de bienvenue.
         
-        NOTE : Cette méthode est utilisée pour les inscriptions VOYAGEUR uniquement.
-               Pour les comptes staff, c'est le user-service qui initie la création.
-        """
         profile_payload = {
             "userId":    user_id,
             "email":     email,
@@ -202,10 +159,7 @@ class EventPublisher:
         email_changed: bool = False,
         photo_url:     Optional[str] = None,
     ):
-        """
-        Publie sur njila.user.exchange → user-service met à jour le profil.
-        Si email changé : l'auth-service s'auto-consommera pour invalider les tokens.
-        """
+        
         self.publish(
             exchange    = EXCHANGE_USER,
             routing_key = ROUTING_USER_UPDATED,

@@ -4,6 +4,14 @@ import com.njila.njila_user_service.enums.Role;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
+/**
+ * @deprecated Cette classe est dépréciée. Utilisez les requêtes spécifiques :
+ * - CreateManagerGlobalRequest pour MANAGER_GLOBAL
+ * - CreateManagerLocalRequest pour MANAGER_LOCAL  
+ * - CreateGuichetierRequest pour GUICHETIER
+ * - CreateChauffeurRequest pour CHAUFFEUR
+ */
+@Deprecated
 @Data
 public class CreateStaffRequest {
 
@@ -26,27 +34,12 @@ public class CreateStaffRequest {
     @NotNull(message = "Le rôle est obligatoire")
     private Role role;
 
-    // Adresse (optionnelle pour tous les rôles)
     @Size(max = 500, message = "L'adresse ne peut dépasser 500 caractères")
-    private String adresse;  // ← AJOUTÉ
+    private String adresse;
 
-    // Pour ManagerLocal, Guichetier, Chauffeur
-    // Pour ManagerGlobal, ce champ n'est PAS obligatoire
-    private String filialeId;  // ← Retirer @NotBlank
-
-    // Pour ManagerGlobal, ManagerLocal, Guichetier, Chauffeur (optionnel selon contexte)
+    private String filialeId;
     private String agenceId;
-
-    // Chauffeur uniquement
-    @Size(max = 50, message = "Le numéro de permis ne peut dépasser 50 caractères")
     private String numeroPermis;
-
-    // Chauffeur uniquement (format ISO: 2025-01-15T00:00:00)
-    @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$", 
-             message = "Format date invalide. Utilisez yyyy-MM-ddTHH:mm:ss")
     private String dateEmbauche;
-
-    // Guichetier uniquement
-    @Size(max = 100, message = "Le poste ne peut dépasser 100 caractères")
     private String poste;
 }

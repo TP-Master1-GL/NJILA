@@ -12,7 +12,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Configuration Spring Security — user-service.
+ * Configuration Spring Security - user-service.
  *
  * Routes publiques (sans JWT) :
  *   GET /api/users/health
@@ -40,11 +40,9 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    // Routes publiques existantes
                     "/api/users/health",
                     "/api/avis/agence/**",
                     "/actuator/**",
-                    // Routes Swagger (publiques)
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",

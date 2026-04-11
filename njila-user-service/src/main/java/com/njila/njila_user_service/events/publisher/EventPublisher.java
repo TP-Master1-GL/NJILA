@@ -9,15 +9,19 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.UUID;  // IMPORT AJOUTÉ
 
 /**
- * EventPublisher v1.4.
+ * EventPublisher v2.0.
  *
  * Événements publiés :
  *   njila.user.exchange         → user.profile.created  (confirmation vers auth)
  *   njila.user.exchange         → user.photo.updated    (sync photo → auth-service)
+ *   njila.user.exchange         → staff.to.auth         (création staff → auth-service)
  *   njila.notification.exchange → user.profile.updated
  *   njila.notification.exchange → avis.submitted
+ *   njila.notification.exchange → staff.created         (NOUVEAU)
+ *   njila.notification.exchange → staff.deleted         (NOUVEAU)
  */
 @Component
 @RequiredArgsConstructor
@@ -32,6 +36,8 @@ public class EventPublisher implements IUserObserver {
             case PROFIL_MODIFIER   -> publishProfileUpdated(event);
             case PHOTO_MISE_A_JOUR -> publishPhotoUpdated(event);
             case COMPTE_CREE       -> publishProfileCreated(event);
+            case COMPTE_SUPPRIMER  -> publishStaffDeleted(event);
+            case STAFF_CREE        -> publishStaffCreated(event);
             default -> log.debug("[PUBLISHER] Événement ignoré : {}", event.getEventType());
         }
     }
@@ -46,11 +52,6 @@ public class EventPublisher implements IUserObserver {
                 event.getPayload(), "profile.updated");
     }
 
-    /**
-     * Synchronisation photo vers auth-service.
-     * Le auth-service écoute user.photo.updated et met à jour NjilaUser.photo_url.
-     * Payload : { userId, photoUrl, emailChanged: false }
-     */
     public void publishPhotoUpdated(String userId, String photoProfil) {
         Map<String, Object> payload = Map.of(
             "userId",       userId,
@@ -79,11 +80,87 @@ public class EventPublisher implements IUserObserver {
                 payload, "avis.submitted");
     }
 
+    /**
+     * NOUVEAU: Publie un événement lors de la création d'un staff
+     */
+    public void publishStaffCreated(String userId, String email, String role, 
+                                    String agenceId, String filialeId, String createdBy) {
+        Map<String, Object> payload = Map.of(
+            "userId",     userId,
+            "email",      email,
+            "role",       role,
+            "agenceId",   agenceId != null ? agenceId : "",
+            "filialeId",  filialeId != null ? filialeId : "",
+            "createdBy",  createdBy,
+            "timestamp",  java.time.Instant.now().toString()
+        );
+        publish(RabbitMQConfig.EXCHANGE_NOTIFICATION, RabbitMQConfig.KEY_STAFF_CREATED,
+                payload, "staff.created");
+    }
+
+    private void publishStaffCreated(UserEvent event) {
+        publish(RabbitMQConfig.EXCHANGE_NOTIFICATION, RabbitMQConfig.KEY_STAFF_CREATED,
+                event.getPayload(), "staff.created");
+    }
+
+    /**
+     * NOUVEAU: Publie un événement lors de la suppression d'un staff
+     */
+    public void publishStaffDeleted(String userId, String email, String role,
+                                    String agenceId, String filialeId, String deletedBy) {
+        Map<String, Object> payload = Map.of(
+            "userId",     userId,
+            "email",      email,
+            "role",       role,
+            "agenceId",   agenceId != null ? agenceId : "",
+            "filialeId",  filialeId != null ? filialeId : "",
+            "deletedBy",  deletedBy,
+            "timestamp",  java.time.Instant.now().toString()
+        );
+        publish(RabbitMQConfig.EXCHANGE_NOTIFICATION, RabbitMQConfig.KEY_STAFF_DELETED,
+                payload, "staff.deleted");
+    }
+
+    private void publishStaffDeleted(UserEvent event) {
+        publish(RabbitMQConfig.EXCHANGE_NOTIFICATION, RabbitMQConfig.KEY_STAFF_DELETED,
+                event.getPayload(), "staff.deleted");
+    }
+
+    /**
+     * Publication vers auth-service pour création de compte staff
+     */
+    public void publishStaffToAuth(UUID userId, String email, String temporaryPassword,
+                                   String role, String name, String surname, String phone,
+                                   String adresse, String filialeId, String agenceId,
+                                   String poste, String numeroPermis) {
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("userId", userId.toString());
+        payload.put("email", email.toLowerCase().strip());
+        payload.put("passwordTemp", temporaryPassword);
+        payload.put("role", role);
+        payload.put("name", name);
+        payload.put("surname", surname);
+        payload.put("phone", phone);
+        payload.put("adresse", adresse != null && !adresse.isBlank() ? adresse : null);
+        payload.put("filialeId", filialeId != null && !filialeId.isBlank() ? filialeId : null);
+        payload.put("agenceId", agenceId != null && !agenceId.isBlank() ? agenceId : null);
+        
+        if (poste != null && !poste.isBlank()) {
+            payload.put("poste", poste);
+        }
+        if (numeroPermis != null && !numeroPermis.isBlank()) {
+            payload.put("numeroPermis", numeroPermis);
+        }
+        
+        publish(RabbitMQConfig.EXCHANGE_USER, RabbitMQConfig.KEY_STAFF_TO_AUTH,
+                payload, "staff.to.auth");
+    }
+
     private void publish(String exchange, String routingKey,
                          Map<String, Object> payload, String label) {
         try {
             rabbitTemplate.convertAndSend(exchange, routingKey, payload);
-            log.info("[PUBLISHER] {} | exchange={}", label, exchange);
+            log.info("[PUBLISHER] {} | exchange={} routingKey={}", label, exchange, routingKey);
         } catch (Exception e) {
             log.error("[PUBLISHER] Erreur {} : {}", label, e.getMessage());
         }

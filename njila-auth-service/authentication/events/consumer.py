@@ -187,27 +187,18 @@ class EventConsumer:
             "phone":         "+237XXXXXXXX",
             "filialeId":     "uuid",
             "agenceId":      "uuid",
-            "poste":         "Agent",           // optionnel (guichetier)
-            "numeroPermis":  "SN-2025-001234"   // optionnel (chauffeur)
+            "poste":         "Agent",           
+            "numeroPermis":  "SN-2025-001234"
         }
         
-        Le user-service a déjà créé le profil en base.
-        L'auth-service doit créer le compte authentifiable avec le même UUID.
+        
         """
         self._create_auth_account(data)
 
     # ── Handlers abonnement ───────────────────────────────────────────────────
 
     def _handle_subscription_expired(self, data: dict):
-        """
-        subscription.expired — payload : { agenceId, expiresAt, message? }
-
-        Actions :
-          1. Désactiver en bulk tous les users staff de l'agence (reason: SUBSCRIPTION_EXPIRED)
-          2. Invalider leurs sessions en DB
-          3. Supprimer leurs sessions Redis (blacklist implicite via is_active=False)
-          4. Log de traçabilité
-        """
+        
         agence_id = data.get("agenceId")
         if not agence_id:
             logger.error("[CONSUMER] subscription.expired : agenceId manquant")
@@ -244,17 +235,7 @@ class EventConsumer:
         )
 
     def _handle_subscription_renewed(self, data: dict):
-        """
-        subscription.renewed — payload : { agenceId, newExpiresAt }
-
-        Actions :
-          1. Réactiver en bulk tous les users staff de l'agence
-             (uniquement ceux désactivés pour SUBSCRIPTION_EXPIRED)
-          2. Log de traçabilité
-          Note : les sessions ne sont PAS recréées automatiquement.
-                 Les utilisateurs doivent se reconnecter (ce qui est normal
-                 après un renouvellement d'abonnement).
-        """
+        
         agence_id    = data.get("agenceId")
         new_expires  = data.get("newExpiresAt", "?")
 
@@ -304,7 +285,7 @@ class EventConsumer:
         adresse = data.get("adresse")
         photo_url = data.get("photoUrl")
         
-        # CORRECTION IMPORTANTE : Convertir les chaînes vides en None
+       
         filiale_id = data.get("filialeId")
         agence_id = data.get("agenceId")
         
@@ -368,8 +349,8 @@ class EventConsumer:
             adresse=adresse,
             role=role.upper(),
             photo_url=photo_url,
-            filiale_id=filiale_id,  # Maintenant None au lieu de "" ou "null"
-            agence_id=agence_id,    # Maintenant None au lieu de "" ou "null"
+            filiale_id=filiale_id,  
+            agence_id=agence_id,  
             is_active=True,
             is_verified=True,
             created_by="SYSTEM",
