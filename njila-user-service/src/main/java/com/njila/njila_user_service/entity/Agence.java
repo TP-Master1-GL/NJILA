@@ -7,13 +7,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Agence mère enregistrée dans le user-service.
- * Créée via l'événement RabbitMQ agence.created publié par le fleet-management-service.
- *
- * Utilisée pour valider l'existence d'une agence lors de la création d'un compte staff
- * ou d'une filiale.
- */
+
 @Entity
 @Table(name = "agences")
 @Getter @Setter

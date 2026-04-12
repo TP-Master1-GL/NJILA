@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 class RegisterCommand:
     email:      str
     password:   str
-    # Données d'identité — alignées avec UserProfile (user-service)
-    name:       str                   # prénom  (UserProfile.name)
-    surname:    str                   # nom     (UserProfile.surname)
-    phone:      Optional[str] = None  # téléphone
-    adresse:    Optional[str] = None  # adresse postale
+    
+    name:       str                   
+    surname:    str                   
+    phone:      Optional[str] = None  
+    adresse:    Optional[str] = None  
     role:       str = Role.VOYAGEUR
     photo_url:  Optional[str] = None
     filiale_id: Optional[str] = None
@@ -101,12 +101,7 @@ class AuthService:
     # REGISTER
     # ─────────────────────────────────────────────────────────────────────────
     def register(self, cmd: RegisterCommand) -> RegisterResult:
-        """
-        1. Vérifier unicité email
-        2. Créer NjilaUser avec toutes les données d'identité
-        3. Publier → njila.user.exchange (profil complet) + njila.notification.exchange (bienvenue)
-        4. Générer tokens + sauvegarder session
-        """
+        
         email = cmd.email.lower().strip()
 
         if self._repo.exists_by_email(email):

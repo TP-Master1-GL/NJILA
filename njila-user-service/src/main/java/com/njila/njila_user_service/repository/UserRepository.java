@@ -15,46 +15,8 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<UserProfile, UUID> {
 
     Optional<UserProfile> findByEmail(String email);
-
     boolean existsByEmail(String email);
-
     List<UserProfile> findAllByRole(Role role);
-
-    List<UserProfile> findAllByAgenceId(UUID agenceId);
-
-    List<UserProfile> findAllByFilialeId(UUID filialeId);
-
-    List<UserProfile> findAllByAgenceIdAndIsActive(UUID agenceId, boolean isActive);
-
-    List<UserProfile> findAllByFilialeIdAndRole(UUID filialeId, Role role);
-
-    @Query("SELECT u FROM UserProfile u WHERE u.filialeId = :filialeId " +
-           "AND u.role = 'CHAUFFEUR' AND u.disponible = true")
-    List<UserProfile> findChauffeursDisponibles(@Param("filialeId") UUID filialeId);
-
-    // ==================== NOUVELLES MÉTHODES POUR MANAGERGLOBAL/MANAGERLOCAL ====================
-
-    /**
-     * Récupère tous les staff d'une agence (hors VOYAGEUR et ADMIN)
-     */
-    @Query("SELECT u FROM UserProfile u WHERE u.agenceId = :agenceId " +
-           "AND u.role IN ('MANAGER_LOCAL', 'MANAGER_GLOBAL', 'GUICHETIER', 'CHAUFFEUR')")
-    List<UserProfile> findAllStaffByAgenceId(@Param("agenceId") UUID agenceId);
-
-    /**
-     * Récupère tous les staff d'une filiale
-     */
-    @Query("SELECT u FROM UserProfile u WHERE u.filialeId = :filialeId " +
-           "AND u.role IN ('MANAGER_LOCAL', 'GUICHETIER', 'CHAUFFEUR')")
-    List<UserProfile> findAllStaffByFilialeId(@Param("filialeId") UUID filialeId);
-
-    /**
-     * Vérifie si un staff appartient à une agence
-     */
-    boolean existsByIdUserAndAgenceId(UUID userId, UUID agenceId);
-
-    /**
-     * Vérifie si un staff appartient à une filiale
-     */
-    boolean existsByIdUserAndFilialeId(UUID userId, UUID filialeId);
+    
+    
 }

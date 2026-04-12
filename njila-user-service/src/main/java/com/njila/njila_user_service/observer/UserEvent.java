@@ -9,10 +9,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * UserEvent — diagramme UML.
- * Encapsule un événement interne produit par le UserService.
- */
+
 @Getter
 @Builder
 @AllArgsConstructor

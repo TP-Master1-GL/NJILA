@@ -8,30 +8,6 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * Configuration RabbitMQ — user-service v2.0.
- *
- * Flux modifiés :
- * ┌─────────────────────────────────────────────────────────────────────────┐
- * │ user-service → auth-service (création staff)                           │
- * │   Exchange: njila.user.exchange                                        │
- * │   Routing key: staff.to.auth                                           │
- * │   Queue (auth-service): njila.auth.staff-creation.queue                │
- * └─────────────────────────────────────────────────────────────────────────┘
- *
- * Queues consommées par user-service :
- * ┌──────────────────────────────────────┬─────────────────────┬────────────────────────┐
- * │ Queue                                │ Exchange            │ Routing key            │
- * ├──────────────────────────────────────┼─────────────────────┼────────────────────────┤
- * │ njila.user.registered.queue          │ njila.user.exchange │ user.registered        │
- * │ njila.user.updated.queue             │ njila.user.exchange │ user.updated           │
- * ├──────────────────────────────────────┼─────────────────────┼────────────────────────┤
- * │ njila.user.agence-created.queue      │ njila.fleet.exchange│ agence.created         │
- * │ njila.user.filiale-created.queue     │ njila.fleet.exchange│ filiale.created        │
- * ├──────────────────────────────────────┼─────────────────────┼────────────────────────┤
- * │ njila.user.reservation-created.queue │ njila.booking.exchange│ reservation.created  │
- * └──────────────────────────────────────┴─────────────────────┴────────────────────────┘
- */
 @Configuration
 public class RabbitMQConfig {
 
@@ -43,12 +19,14 @@ public class RabbitMQConfig {
     public static final String EXCHANGE_DEAD_LETTER  = "njila.dead.letter.exchange";
 
     // ── Queues consommées par user-service ─────────────────────────────────
-    public static final String QUEUE_USER_REGISTERED     = "njila.user.registered.queue";
-    public static final String QUEUE_USER_UPDATED        = "njila.user.updated.queue";
-    public static final String QUEUE_AGENCE_CREATED      = "njila.user.agence-created.queue";
-    public static final String QUEUE_FILIALE_CREATED     = "njila.user.filiale-created.queue";
-    public static final String QUEUE_RESERVATION_CREATED = "njila.user.reservation-created.queue";
-    public static final String QUEUE_DEAD_LETTER         = "njila.dead.letter.queue";
+    public static final String QUEUE_USER_REGISTERED        = "njila.user.registered.queue";
+    public static final String QUEUE_USER_UPDATED           = "njila.user.updated.queue";
+    public static final String QUEUE_AGENCE_CREATED         = "njila.user.agence-created.queue";
+    public static final String QUEUE_FILIALE_CREATED        = "njila.user.filiale-created.queue";
+    public static final String QUEUE_RESERVATION_CREATED    = "njila.user.reservation-created.queue";
+    public static final String QUEUE_NOTIFICATION_STAFF_CREATED = "njila.notification.staff.created.queue";
+    public static final String QUEUE_NOTIFICATION_STAFF_DELETED = "njila.notification.staff.deleted.queue";
+    public static final String QUEUE_DEAD_LETTER            = "njila.dead.letter.queue";
 
     // ── Queues publiées par user-service vers auth-service ─────────────────
     public static final String QUEUE_STAFF_TO_AUTH = "njila.auth.staff-creation.queue";
@@ -59,6 +37,8 @@ public class RabbitMQConfig {
     public static final String KEY_AGENCE_CREATED      = "agence.created";
     public static final String KEY_FILIALE_CREATED     = "filiale.created";
     public static final String KEY_RESERVATION_CREATED = "reservation.created";
+    public static final String KEY_STAFF_CREATED       = "staff.created";
+    public static final String KEY_STAFF_DELETED       = "staff.deleted";
 
     // ── Routing keys publiées ──────────────────────────────────────────────
     public static final String KEY_PROFILE_CREATED = "user.profile.created";
@@ -66,6 +46,10 @@ public class RabbitMQConfig {
     public static final String KEY_PROFILE_UPDATED = "user.profile.updated";
     public static final String KEY_AVIS_SUBMITTED  = "avis.submitted";
     public static final String KEY_STAFF_TO_AUTH   = "staff.to.auth";
+    
+    // AUTRES ROUTING KEYS
+    public static final String KEY_MANAGER_CREATED = "manager.created";
+    public static final String KEY_EMPLOYE_CREATED = "employe.created";
 
     // ── Exchanges beans ────────────────────────────────────────────────────
     @Bean 
@@ -120,6 +104,16 @@ public class RabbitMQConfig {
     }
     
     @Bean 
+    public Queue notificationStaffCreatedQueue() { 
+        return durableQueue(QUEUE_NOTIFICATION_STAFF_CREATED); 
+    }
+    
+    @Bean 
+    public Queue notificationStaffDeletedQueue() { 
+        return durableQueue(QUEUE_NOTIFICATION_STAFF_DELETED); 
+    }
+    
+    @Bean 
     public Queue deadLetterQueue() { 
         return QueueBuilder.durable(QUEUE_DEAD_LETTER).build(); 
     }
@@ -159,6 +153,18 @@ public class RabbitMQConfig {
     public Binding bindingReservationCreated() {
         return BindingBuilder.bind(reservationCreatedQueue())
                 .to(bookingExchange()).with(KEY_RESERVATION_CREATED);
+    }
+    
+    @Bean 
+    public Binding bindingNotificationStaffCreated() {
+        return BindingBuilder.bind(notificationStaffCreatedQueue())
+                .to(notificationExchange()).with(KEY_STAFF_CREATED);
+    }
+    
+    @Bean 
+    public Binding bindingNotificationStaffDeleted() {
+        return BindingBuilder.bind(notificationStaffDeletedQueue())
+                .to(notificationExchange()).with(KEY_STAFF_DELETED);
     }
     
     @Bean 

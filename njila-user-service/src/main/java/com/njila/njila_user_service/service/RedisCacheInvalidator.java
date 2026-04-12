@@ -7,13 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Component;
 
-/**
- * RedisCacheInvalidator — Observateur du pattern Observer.
- * Invalide le cache Redis en réaction aux événements UserService.
- *
- * Cache "profiles"   → clé = userId (TTL 10 min)
- * Cache "userLists"  → toutes les listes (TTL 5 min)
- */
+
 @Component
 @RequiredArgsConstructor
 @Slf4j

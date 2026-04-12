@@ -1,16 +1,13 @@
 package com.njila.njila_user_service.service.impl;
 
-import com.njila.njila_user_service.config.RabbitMQConfig;
-import com.njila.njila_user_service.dto.request.AvisRequest;
-import com.njila.njila_user_service.dto.request.CreateStaffRequest;
-import com.njila.njila_user_service.dto.request.UpdatePhotoRequest;
-import com.njila.njila_user_service.dto.request.UpdateProfileRequest;
+import com.njila.njila_user_service.dto.request.*;
 import com.njila.njila_user_service.dto.response.AvisResponse;
 import com.njila.njila_user_service.dto.response.UserProfileResponse;
-import com.njila.njila_user_service.entity.Agence;
 import com.njila.njila_user_service.entity.Avis;
-import com.njila.njila_user_service.entity.Filiale;
+import com.njila.njila_user_service.entity.Chauffeur;
+import com.njila.njila_user_service.entity.Guichetier;
 import com.njila.njila_user_service.entity.UserProfile;
+import com.njila.njila_user_service.entity.Voyageur;
 import com.njila.njila_user_service.enums.Role;
 import com.njila.njila_user_service.enums.UserEventType;
 import com.njila.njila_user_service.events.publisher.EventPublisher;
@@ -19,17 +16,14 @@ import com.njila.njila_user_service.middleware.JwtClaims;
 import com.njila.njila_user_service.observer.IUserObserver;
 import com.njila.njila_user_service.observer.IUserSubject;
 import com.njila.njila_user_service.observer.UserEvent;
-import com.njila.njila_user_service.repository.AgenceRepository;
-import com.njila.njila_user_service.repository.AvisRepository;
-import com.njila.njila_user_service.repository.FilialeRepository;
-import com.njila.njila_user_service.repository.UserRepository;
+import com.njila.njila_user_service.repository.*;
 import com.njila.njila_user_service.service.RedisCacheInvalidator;
 import com.njila.njila_user_service.service.RoleManager;
 import com.njila.njila_user_service.service.UserService;
+import com.njila.njila_user_service.service.impl.StaffQueryService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -39,40 +33,29 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
-/**
- * UserServiceImpl — logique métier complète v2.0.
- * 
- * Modifications majeures :
- * - createStaff() sauvegarde d'abord en base, puis publie vers auth-service
- * - Ajout de la validation Agence/Filiale avant création
- * - Génération de l'UUID côté user-service
- * - Suppression de la dépendance à l'ancien consumer staff.created
- * - Mot de passe temporaire fixé à "0000" pour les nouveaux comptes staff
- * - Ajout du champ adresse pour les staff
- * - filialeId n'est plus obligatoire pour MANAGER_GLOBAL
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserServiceImpl implements UserService, IUserSubject {
 
-    private final UserRepository      userRepository;
-    private final AvisRepository      avisRepository;
-    private final AgenceRepository    agenceRepository;
-    private final FilialeRepository   filialeRepository;
-    private final RoleManager         roleManager;
-    private final EventPublisher      eventPublisher;
+    private final UserRepository userRepository;
+    private final AvisRepository avisRepository;
+    private final AgenceRepository agenceRepository;
+    private final FilialeRepository filialeRepository;
+    private final ManagerGlobalRepository managerGlobalRepository;
+    private final ManagerLocalRepository managerLocalRepository;
+    private final GuichetierRepository guichetierRepository;
+    private final ChauffeurRepository chauffeurRepository;
+    private final RoleManager roleManager;
+    private final EventPublisher eventPublisher;
     private final RedisCacheInvalidator cacheInvalidator;
-    private final RabbitTemplate      rabbitTemplate;
-    private final CacheManager        cacheManager;
+    private final CacheManager cacheManager;
+    private final StaffQueryService staffQueryService;
 
     private final List<IUserObserver> observers = new ArrayList<>();
-
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     @PostConstruct
     public void init() {
@@ -83,55 +66,39 @@ public class UserServiceImpl implements UserService, IUserSubject {
     // ── IUserSubject ────────────────────────────────────────────────────────
 
     @Override
-    public void subscribe(IUserObserver observer) {
-        observers.add(observer);
-    }
-
+    public void subscribe(IUserObserver observer) { observers.add(observer); }
     @Override
-    public void unsubscribe(IUserObserver observer) {
-        observers.remove(observer);
-    }
-
+    public void unsubscribe(IUserObserver observer) { observers.remove(observer); }
     @Override
     public void notifyObservers(UserEvent event) {
         observers.forEach(o -> {
             try { o.onUserEvent(event); }
-            catch (Exception e) {
-                log.error("[OBSERVER] Erreur dans {} : {}",
-                    o.getClass().getSimpleName(), e.getMessage());
-            }
+            catch (Exception e) { log.error("[OBSERVER] Erreur: {}", e.getMessage()); }
         });
     }
 
-    // ── GET PROFILE ─────────────────────────────────────────────────────────
+    // ── PROFIL ──────────────────────────────────────────────────────────────
 
     @Override
     @Cacheable(value = "profiles", key = "#userId.toString()", unless = "#result == null")
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(UUID userId, JwtClaims caller) {
         roleManager.assertCanReadProfile(caller, userId);
-
         UserProfile profile = userRepository.findById(userId)
             .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
-
         return toResponse(profile);
     }
-
-    // ── UPDATE PROFILE ──────────────────────────────────────────────────────
 
     @Override
     @CacheEvict(value = "profiles", key = "#userId.toString()")
     @Transactional
-    public UserProfileResponse updateProfile(
-        UUID userId, UpdateProfileRequest request, JwtClaims caller
-    ) {
+    public UserProfileResponse updateProfile(UUID userId, UpdateProfileRequest request, JwtClaims caller) {
         roleManager.assertCanUpdateProfile(caller, userId);
 
         UserProfile profile = userRepository.findById(userId)
             .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
 
         boolean changed = false;
-
         if (request.getName() != null && !request.getName().isBlank()) {
             profile.setName(request.getName().strip());
             changed = true;
@@ -156,12 +123,7 @@ public class UserServiceImpl implements UserService, IUserSubject {
                 UserEventType.PROFIL_MODIFIER,
                 caller != null ? caller.getUserId() : null,
                 userId,
-                Map.of(
-                    "userId",  userId.toString(),
-                    "email",   profile.getEmail(),
-                    "name",    profile.getName(),
-                    "surname", profile.getSurname()
-                )
+                Map.of("userId", userId.toString(), "email", profile.getEmail())
             ));
         }
 
@@ -169,23 +131,17 @@ public class UserServiceImpl implements UserService, IUserSubject {
         return toResponse(profile);
     }
 
-    // ── UPDATE PHOTO ────────────────────────────────────────────────────────
-
     @Override
     @CacheEvict(value = "profiles", key = "#userId.toString()")
     @Transactional
-    public UserProfileResponse updatePhoto(
-        UUID userId, UpdatePhotoRequest request, JwtClaims caller
-    ) {
+    public UserProfileResponse updatePhoto(UUID userId, UpdatePhotoRequest request, JwtClaims caller) {
         roleManager.assertCanUpdateProfile(caller, userId);
 
         UserProfile profile = userRepository.findById(userId)
             .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
 
-        String oldPhoto = profile.getPhotoProfil();
         String newPhoto = request.getPhotoProfil();
-
-        if (newPhoto != null && !newPhoto.equals(oldPhoto)) {
+        if (newPhoto != null && !newPhoto.equals(profile.getPhotoProfil())) {
             profile.setPhotoProfil(newPhoto);
             userRepository.save(profile);
 
@@ -197,317 +153,35 @@ public class UserServiceImpl implements UserService, IUserSubject {
             ));
 
             eventPublisher.publishPhotoUpdated(userId.toString(), newPhoto);
-
             log.info("[SERVICE] Photo mise à jour | userId={}", userId);
         }
 
         return toResponse(profile);
     }
 
-    // ── DELETE PROFILE ──────────────────────────────────────────────────────
-
     @Override
     @CacheEvict(value = "profiles", key = "#userId.toString()")
     @Transactional
     public void deleteProfile(UUID userId, JwtClaims caller) {
         roleManager.assertCanDeleteProfile(caller);
-
         UserProfile profile = userRepository.findById(userId)
             .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
-
         userRepository.delete(profile);
-
         notifyObservers(UserEvent.of(
             UserEventType.COMPTE_SUPPRIMER,
             caller.getUserId(),
             userId,
-            Map.of("userId", userId.toString(), "email", profile.getEmail())
+            Map.of("userId", userId.toString())
         ));
-
-        log.info("[SERVICE] Profil supprimé | userId={} par admin={}", userId, caller.getUserId());
+        log.info("[SERVICE] Profil supprimé | userId={}", userId);
     }
-
-    // ── LIST USERS ──────────────────────────────────────────────────────────
 
     @Override
     @Cacheable(value = "userLists", key = "'all'")
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listUsers(JwtClaims caller) {
-        roleManager.assertCanListUsers(caller);
-        return userRepository.findAll().stream().map(this::toResponse).toList();
-    }
-
-    // ── CREATE STAFF (MODIFIÉ) ──────────────────────────────────────────────
-
-    /**
-     * Création d'un compte staff (ManagerGlobal, ManagerLocal, Guichetier, Chauffeur)
-     * 
-     * Nouveau flux :
-     * 1. Vérification des droits (Manager ou Admin)
-     * 2. Vérification email unique
-     * 3. Génération de l'UUID
-     * 4. Validation de l'existence de l'agence et/ou filiale (selon le rôle)
-     * 5. Sauvegarde IMMÉDIATE en base
-     * 6. Publication d'un événement vers auth-service avec mot de passe "0000"
-     * 7. Notification des observateurs internes
-     * 8. Invalidation du cache
-     */
-    @Override
-    @Transactional
-    public void createStaff(CreateStaffRequest request, JwtClaims caller) {
-        // 1. Vérification des droits
-        roleManager.assertCanCreateStaff(caller);
-        
-        // 2. Vérification email unique
-        String email = request.getEmail().toLowerCase().strip();
-        if (userRepository.existsByEmail(email)) {
-            throw new EmailAlreadyExistsException(email);
-        }
-        
-        // 3. Génération de l'UUID (le user-service maîtrise l'identifiant)
-        UUID newUserId = UUID.randomUUID();
-        
-        // 4. Validation des entités externes (Agence/Filiale) selon le rôle
-        validateAgenceAndFilialeByRole(request);
-        
-        // 5. Création et sauvegarde du profil en BASE (immédiat)
-        UserProfile profile = buildUserProfile(newUserId, request);
-        userRepository.save(profile);
-        
-        // 6. Publication de l'événement vers AUTH-SERVICE avec mot de passe "0000"
-        publishStaffToAuth(newUserId, request);
-        
-        // 7. Notification des observateurs internes
-        notifyObservers(UserEvent.of(
-            UserEventType.COMPTE_CREE,
-            caller.getUserId(),
-            newUserId,
-            Map.of(
-                "role", request.getRole().name(),
-                "email", email
-            )
-        ));
-        
-        // 8. Invalidation du cache des listes
-        evictUserLists();
-        
-        log.info("[SERVICE] Staff créé en base | userId={} role={} email={} crééPar={} mdpTemporaire=0000", 
-                 newUserId, request.getRole(), email, caller.getUserId());
-    }
-
-    /**
-     * Valide que l'agence et la filiale référencées existent bien en base.
-     * Les règles de validation dépendent du rôle :
-     * - MANAGER_GLOBAL : agenceId obligatoire, filialeId optionnel
-     * - MANAGER_LOCAL : agenceId et filialeId obligatoires
-     * - GUICHETIER/CHAUFFEUR : filialeId obligatoire, agenceId optionnel
-     */
-    private void validateAgenceAndFilialeByRole(CreateStaffRequest request) {
-        Role role = request.getRole();
-        
-        switch (role) {
-            case MANAGER_GLOBAL:
-                // agenceId OBLIGATOIRE, filialeId OPTIONNEL
-                if (request.getAgenceId() == null || request.getAgenceId().isBlank()) {
-                    Map<String, String> errors = new HashMap<>();
-                    errors.put("agenceId", "L'ID agence est obligatoire pour MANAGER_GLOBAL");
-                    throw new ValidationException("Données invalides", errors);
-                }
-                validateAgenceExists(request.getAgenceId());
-                // filialeId peut être null, pas de validation
-                break;
-                
-            case MANAGER_LOCAL:
-                // agenceId et filialeId OBLIGATOIRES
-                Map<String, String> errors = new HashMap<>();
-                if (request.getAgenceId() == null || request.getAgenceId().isBlank()) {
-                    errors.put("agenceId", "L'ID agence est obligatoire pour MANAGER_LOCAL");
-                }
-                if (request.getFilialeId() == null || request.getFilialeId().isBlank()) {
-                    errors.put("filialeId", "L'ID filiale est obligatoire pour MANAGER_LOCAL");
-                }
-                if (!errors.isEmpty()) {
-                    throw new ValidationException("Données invalides", errors);
-                }
-                validateAgenceExists(request.getAgenceId());
-                validateFilialeExists(request.getFilialeId());
-                break;
-                
-            case GUICHETIER:
-            case CHAUFFEUR:
-                // filialeId OBLIGATOIRE
-                if (request.getFilialeId() == null || request.getFilialeId().isBlank()) {
-                    Map<String, String> err = new HashMap<>();
-                    err.put("filialeId", "L'ID filiale est obligatoire pour " + role);
-                    throw new ValidationException("Données invalides", err);
-                }
-                validateFilialeExists(request.getFilialeId());
-                // agenceId optionnel
-                if (request.getAgenceId() != null && !request.getAgenceId().isBlank()) {
-                    validateAgenceExists(request.getAgenceId());
-                }
-                break;
-                
-            default:
-                log.warn("[SERVICE] Rôle non géré pour validation : {}", role);
-        }
-    }
-    
-    private void validateAgenceExists(String agenceIdStr) {
-        try {
-            UUID agenceId = UUID.fromString(agenceIdStr);
-            if (!agenceRepository.existsByIdAgence(agenceId)) {
-                throw new AgenceNotFoundException(agenceIdStr);
-            }
-            log.debug("[SERVICE] Agence validée : {}", agenceId);
-        } catch (IllegalArgumentException e) {
-            throw new AgenceNotFoundException("Format UUID invalide : " + agenceIdStr);
-        }
-    }
-    
-    private void validateFilialeExists(String filialeIdStr) {
-        try {
-            UUID filialeId = UUID.fromString(filialeIdStr);
-            if (!filialeRepository.existsByIdFiliale(filialeId)) {
-                throw new FilialeNotFoundException(filialeIdStr);
-            }
-            log.debug("[SERVICE] Filiale validée : {}", filialeId);
-        } catch (IllegalArgumentException e) {
-            throw new FilialeNotFoundException("Format UUID invalide : " + filialeIdStr);
-        }
-    }
-
-    /**
-     * Construit l'entité UserProfile à partir de la requête.
-     * Les champs spécifiques à chaque rôle sont initialisés.
-     */
-    private UserProfile buildUserProfile(UUID userId, CreateStaffRequest request) {
-        UserProfile.UserProfileBuilder builder = UserProfile.builder()
-            .idUser(userId)
-            .email(request.getEmail().toLowerCase().strip())
-            .name(request.getName().strip())
-            .surname(request.getSurname().strip())
-            .phone(request.getPhone())
-            .adresse(request.getAdresse())
-            .role(request.getRole())
-            .isActive(true);
-        
-        // Champs optionnels communs
-        if (request.getFilialeId() != null && !request.getFilialeId().isBlank()) {
-            builder.filialeId(UUID.fromString(request.getFilialeId()));
-        }
-        if (request.getAgenceId() != null && !request.getAgenceId().isBlank()) {
-            builder.agenceId(UUID.fromString(request.getAgenceId()));
-        }
-        
-        // Champs spécifiques selon le rôle
-        switch (request.getRole()) {
-            case GUICHETIER:
-                if (request.getPoste() != null) {
-                    builder.poste(request.getPoste());
-                }
-                break;
-                
-            case CHAUFFEUR:
-                if (request.getNumeroPermis() != null) {
-                    builder.numeroPermis(request.getNumeroPermis());
-                }
-                if (request.getDateEmbauche() != null) {
-                    try {
-                        builder.dateEmbauche(LocalDateTime.parse(request.getDateEmbauche(), DATE_FORMATTER));
-                    } catch (Exception e) {
-                        log.warn("[SERVICE] Format date embauche invalide, utilisation null");
-                    }
-                }
-                builder.disponible(true);
-                break;
-                
-            case MANAGER_GLOBAL:
-                // Le manager global est associé à une agence (celle qu'il gère)
-                if (request.getAgenceId() != null && !request.getAgenceId().isBlank()) {
-                    builder.idAgenceManager(UUID.fromString(request.getAgenceId()));
-                }
-                break;
-                
-            case MANAGER_LOCAL:
-                // Le manager local a juste une filiale et une agence parente
-                // Pas de champ spécifique supplémentaire
-                break;
-                
-            default:
-                log.warn("[SERVICE] Rôle non géré pour buildUserProfile : {}", request.getRole());
-        }
-        
-        return builder.build();
-    }
-
-    /**
-     * Publie un événement vers auth-service pour créer le compte authentifiable.
-     * Le auth-service est responsable de :
-     * - Créer NjilaUser avec le même UUID
-     * - Hasher le mot de passe temporaire "0000"
-     * - Envoyer un email de bienvenue avec le mot de passe "0000"
-     * 
-     * Le mot de passe temporaire est fixé à "0000" car celui qui crée le compte
-     * n'est pas celui qui utilisera le compte. L'utilisateur final devra modifier
-     * son mot de passe lors de sa première connexion.
-     */
-    /**
-     * Publie un événement vers auth-service pour créer le compte authentifiable.
-     */
-    private void publishStaffToAuth(UUID userId, CreateStaffRequest request) {
-        // Mot de passe temporaire fixe "0000"
-        String temporaryPassword = "0000";
-        
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("userId", userId.toString());
-        payload.put("email", request.getEmail().toLowerCase().strip());
-        payload.put("passwordTemp", temporaryPassword);
-        payload.put("role", request.getRole().name());
-        payload.put("name", request.getName());
-        payload.put("surname", request.getSurname());
-        payload.put("phone", request.getPhone());
-        
-        // IMPORTANT: Envoyer null au lieu de chaîne vide pour les UUID
-        payload.put("adresse", request.getAdresse() != null && !request.getAdresse().isBlank() 
-            ? request.getAdresse() : null);
-        
-        payload.put("filialeId", request.getFilialeId() != null && !request.getFilialeId().isBlank() 
-            ? request.getFilialeId() : null);
-        
-        payload.put("agenceId", request.getAgenceId() != null && !request.getAgenceId().isBlank() 
-            ? request.getAgenceId() : null);
-        
-        // Champs spécifiques pour le auth-service (optionnels)
-        if (request.getPoste() != null && !request.getPoste().isBlank()) {
-            payload.put("poste", request.getPoste());
-        }
-        if (request.getNumeroPermis() != null && !request.getNumeroPermis().isBlank()) {
-            payload.put("numeroPermis", request.getNumeroPermis());
-        }
-        
-        try {
-            rabbitTemplate.convertAndSend(
-                RabbitMQConfig.EXCHANGE_USER,
-                RabbitMQConfig.KEY_STAFF_TO_AUTH,
-                payload
-            );
-            log.info("[SERVICE] Événement staff.to.auth publié | userId={} role={} mdpTemporaire={}", 
-                     userId, request.getRole(), temporaryPassword);
-        } catch (Exception e) {
-            log.error("[SERVICE] Erreur publication staff.to.auth pour userId={} : {}", 
-                      userId, e.getMessage());
-        }
-    }
-    /**
-     * Invalide le cache des listes d'utilisateurs.
-     */
-    private void evictUserLists() {
-        var cache = cacheManager.getCache("userLists");
-        if (cache != null) {
-            cache.clear();
-            log.debug("[SERVICE] Cache userLists invalidé");
-        }
+        roleManager.assertIsAdmin(caller);
+        return userRepository.findAll().stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     // ── AVIS ────────────────────────────────────────────────────────────────
@@ -516,7 +190,6 @@ public class UserServiceImpl implements UserService, IUserSubject {
     @Transactional
     public AvisResponse submitAvis(UUID userId, AvisRequest request, JwtClaims caller) {
         roleManager.assertCanSubmitAvis(caller);
-
         if (caller != null && !caller.getUserId().equals(userId)) {
             throw new ForbiddenException("Vous ne pouvez soumettre un avis qu'en votre propre nom.");
         }
@@ -542,14 +215,11 @@ public class UserServiceImpl implements UserService, IUserSubject {
         avisRepository.save(avis);
 
         eventPublisher.publishAvisSubmitted(
-            userId.toString(),
-            request.getAgenceId(),
-            request.getAgenceNom(),
-            request.getNote(),
-            request.getCommentaire()
+            userId.toString(), request.getAgenceId(),
+            request.getAgenceNom(), request.getNote(), request.getCommentaire()
         );
 
-        log.info("[SERVICE] Avis soumis | userId={} agenceId={} note={}", userId, agenceId, request.getNote());
+        log.info("[SERVICE] Avis soumis | userId={}", userId);
         return toAvisResponse(avis, auteur);
     }
 
@@ -557,12 +227,10 @@ public class UserServiceImpl implements UserService, IUserSubject {
     @Transactional(readOnly = true)
     public List<AvisResponse> getUserAvis(UUID userId, JwtClaims caller) {
         roleManager.assertCanReadProfile(caller, userId);
-
         UserProfile auteur = userRepository.findById(userId)
             .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
-
         return avisRepository.findAllByAuteurIdUser(userId)
-            .stream().map(a -> toAvisResponse(a, auteur)).toList();
+            .stream().map(a -> toAvisResponse(a, auteur)).collect(Collectors.toList());
     }
 
     @Override
@@ -577,7 +245,6 @@ public class UserServiceImpl implements UserService, IUserSubject {
     public void deleteAvis(UUID userId, UUID avisId, JwtClaims caller) {
         Avis avis = avisRepository.findById(avisId)
             .orElseThrow(() -> new ProfileNotFoundException("Avis introuvable : " + avisId));
-
         roleManager.assertCanDeleteAvis(caller, avis.getAuteur().getIdUser());
         avisRepository.delete(avis);
         log.info("[SERVICE] Avis supprimé | avisId={}", avisId);
@@ -590,38 +257,220 @@ public class UserServiceImpl implements UserService, IUserSubject {
         return moyenne != null ? Math.round(moyenne * 10.0) / 10.0 : 0.0;
     }
 
-    // ── STAFF MANAGEMENT ────────────────────────────────────────────────────
-
+    // ── MANAGER GLOBAL (délégué à ManagerGlobalService) ─────────────────────
+    
     @Override
     @Transactional(readOnly = true)
-    public List<UserProfileResponse> listStaffByAgence(UUID agenceId, JwtClaims caller) {
-        roleManager.assertManagerCanManageAgence(caller, agenceId);
+    public List<UserProfileResponse> listStaffByAgence(UUID agenceId, String type, JwtClaims caller) {
         
-        List<UserProfile> staff = userRepository.findAllStaffByAgenceId(agenceId);
-        return staff.stream()
-            .map(this::toResponse)
-            .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<UserProfileResponse> listStaffByFiliale(UUID filialeId, JwtClaims caller) {
-        // Pour ManagerLocal, vérifier que la filiale est la sienne
-        // Pour ManagerGlobal, vérifier que la filiale appartient à son agence
-        if (caller.getRole() == Role.MANAGER_GLOBAL) {
-            // Vérifier que la filiale appartient bien à son agence
-            Filiale filiale = filialeRepository.findById(filialeId)
-                .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
-            roleManager.assertManagerCanManageAgence(caller, filiale.getAgenceId());
+        roleManager.assertCanViewStaffByAgence(caller, agenceId);
+        
+        List<UserProfile> staff;
+        if ("MANAGER_LOCAL".equalsIgnoreCase(type)) {
+            staff = staffQueryService.findAllManagerLocauxByAgenceId(agenceId).stream()
+                    .map(u -> (UserProfile) u)
+                    .collect(Collectors.toList());
+        } else if ("EMPLOYE".equalsIgnoreCase(type)) {
+            staff = staffQueryService.findAllEmployesByAgenceId(agenceId);
         } else {
-            roleManager.assertManagerCanManageFiliale(caller, filialeId);
+            staff = staffQueryService.findAllStaffByAgenceId(agenceId);
         }
         
-        List<UserProfile> staff = userRepository.findAllStaffByFilialeId(filialeId);
-        return staff.stream()
-            .map(this::toResponse)
-            .toList();
+        return staff.stream().map(this::toResponse).collect(Collectors.toList());
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> listEmployesByAgence(UUID agenceId, JwtClaims caller) {
+        roleManager.assertCanViewStaffByAgence(caller, agenceId);
+        return staffQueryService.findAllEmployesByAgenceId(agenceId).stream()
+            .map(this::toResponse).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> listEmployesByAgenceAndFiliale(UUID agenceId, UUID filialeId, JwtClaims caller) {
+        roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
+        
+        var filiale = filialeRepository.findById(filialeId)
+            .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
+        
+        if (!filiale.getAgenceId().equals(agenceId)) {
+            throw new ForbiddenException("Cette filiale n'appartient pas à votre agence.");
+        }
+        
+        return staffQueryService.findAllEmployesByAgenceAndFiliale(agenceId, filialeId).stream()
+            .map(this::toResponse).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void createManagerLocal(UUID agenceId, CreateManagerLocalRequest request, JwtClaims caller) {
+        roleManager.assertCanCreateStaffByManagerGlobal(caller);
+        roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
+        
+        String email = request.getEmail().toLowerCase().strip();
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(email);
+        }
+        
+        UUID filialeId = UUID.fromString(request.getFilialeId());
+        var filiale = filialeRepository.findById(filialeId)
+            .orElseThrow(() -> new FilialeNotFoundException(request.getFilialeId()));
+        
+        if (!filiale.getAgenceId().equals(agenceId)) {
+            throw new ForbiddenException("La filiale spécifiée n'appartient pas à votre agence.");
+        }
+        
+        UUID newUserId = UUID.randomUUID();
+        var managerLocal = com.njila.njila_user_service.entity.ManagerLocal.builder()
+            .idUser(newUserId)
+            .name(request.getName().strip())
+            .surname(request.getSurname().strip())
+            .email(email)
+            .phone(request.getPhone())
+            .adresse(request.getAdresse())
+            .agenceId(agenceId)
+            .filialeId(filialeId)
+            .isActive(true)
+            .build();
+        
+        managerLocalRepository.save(managerLocal);
+        evictUserLists();
+        
+        log.info("[SERVICE] ManagerLocal créé | userId={} agenceId={} filialeId={}", newUserId, agenceId, filialeId);
+    }
+
+    // ── MANAGER LOCAL (délégué) ─────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> listEmployesByFiliale(UUID filialeId, JwtClaims caller) {
+        roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
+        return staffQueryService.findAllEmployesByFilialeId(filialeId).stream()
+            .map(this::toResponse).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> listGuichetiersByFiliale(UUID filialeId, JwtClaims caller) {
+        roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
+        return staffQueryService.findAllGuichetiersByFilialeId(filialeId).stream()
+            .map(this::toResponse).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserProfileResponse> listChauffeursByFiliale(UUID filialeId, JwtClaims caller) {
+        roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
+        return staffQueryService.findAllChauffeursByFilialeId(filialeId).stream()
+            .map(this::toResponse).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void createGuichetier(UUID filialeId, CreateGuichetierRequest request, JwtClaims caller) {
+        roleManager.assertCanCreateEmployeByManagerLocal(caller);
+        roleManager.assertManagerLocalCanManageFiliale(caller, filialeId);
+        
+        String email = request.getEmail().toLowerCase().strip();
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(email);
+        }
+        
+        var filiale = filialeRepository.findById(filialeId)
+            .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
+        
+        UUID newUserId = UUID.randomUUID();
+        var guichetier = Guichetier.builder()
+            .idUser(newUserId)
+            .name(request.getName().strip())
+            .surname(request.getSurname().strip())
+            .email(email)
+            .phone(request.getPhone())
+            .adresse(request.getAdresse())
+            .agenceId(filiale.getAgenceId())
+            .filialeId(filialeId)
+            .poste(request.getPoste())
+            .isActive(true)
+            .build();
+        
+        guichetierRepository.save(guichetier);
+        evictUserLists();
+        
+        log.info("[SERVICE] Guichetier créé | userId={} filialeId={}", newUserId, filialeId);
+    }
+
+    @Override
+    @Transactional
+    public void createChauffeur(UUID filialeId, CreateChauffeurRequest request, JwtClaims caller) {
+        roleManager.assertCanCreateEmployeByManagerLocal(caller);
+        roleManager.assertManagerLocalCanManageFiliale(caller, filialeId);
+        
+        String email = request.getEmail().toLowerCase().strip();
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(email);
+        }
+        
+        var filiale = filialeRepository.findById(filialeId)
+            .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
+        
+        UUID newUserId = UUID.randomUUID();
+        var chauffeur = Chauffeur.builder()
+            .idUser(newUserId)
+            .name(request.getName().strip())
+            .surname(request.getSurname().strip())
+            .email(email)
+            .phone(request.getPhone())
+            .adresse(request.getAdresse())
+            .agenceId(filiale.getAgenceId())
+            .filialeId(filialeId)
+            .numeroPermis(request.getNumeroPermis())
+            .disponible(true)
+            .isActive(true)
+            .build();
+        
+        chauffeurRepository.save(chauffeur);
+        evictUserLists();
+        
+        log.info("[SERVICE] Chauffeur créé | userId={} filialeId={}", newUserId, filialeId);
+    }
+
+    // ── ADMIN ───────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public void createManagerGlobal(CreateManagerGlobalRequest request, JwtClaims caller) {
+        roleManager.assertIsAdmin(caller);
+        
+        String email = request.getEmail().toLowerCase().strip();
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(email);
+        }
+        
+        UUID agenceId = UUID.fromString(request.getAgenceId());
+        agenceRepository.findById(agenceId)
+            .orElseThrow(() -> new AgenceNotFoundException(request.getAgenceId()));
+        
+        UUID newUserId = UUID.randomUUID();
+        var managerGlobal = com.njila.njila_user_service.entity.ManagerGlobal.builder()
+            .idUser(newUserId)
+            .name(request.getName().strip())
+            .surname(request.getSurname().strip())
+            .email(email)
+            .phone(request.getPhone())
+            .adresse(request.getAdresse())
+            .agenceId(agenceId)
+            .isActive(true)
+            .build();
+        
+        managerGlobalRepository.save(managerGlobal);
+        evictUserLists();
+        
+        log.info("[SERVICE] ManagerGlobal créé | userId={} agenceId={}", newUserId, agenceId);
+    }
+
+    // ── SUPPRESSION STAFF ───────────────────────────────────────────────────
 
     @Override
     @Transactional
@@ -629,34 +478,40 @@ public class UserServiceImpl implements UserService, IUserSubject {
         UserProfile staff = userRepository.findById(staffId)
             .orElseThrow(() -> new ProfileNotFoundException(staffId.toString()));
         
-        // Vérifier que c'est bien un staff (pas un voyageur)
         if (staff.getRole() == Role.VOYAGEUR) {
             throw new ForbiddenException("Impossible de supprimer un compte voyageur via cette endpoint.");
         }
         
-        // Vérifier les droits
-        roleManager.assertCanDeleteStaff(caller, staff);
+        roleManager.assertCanDeleteUser(caller, staff);
         
-        // Ne pas supprimer un manager global par un manager local
         if (staff.getRole() == Role.MANAGER_GLOBAL && caller.getRole() != Role.ADMINISTRATEUR) {
             throw new ForbiddenException("Seul un Administrateur peut supprimer un ManagerGlobal.");
         }
         
         userRepository.delete(staff);
-        
-        // Invalider les caches
         evictUserLists();
-        var profileCache = cacheManager.getCache("profiles");
-        if (profileCache != null) {
-            profileCache.evict(staffId.toString());
-        }
         
-        log.info("[SERVICE] Staff supprimé | staffId={} par caller={}", staffId, caller.getUserId());
+        var profileCache = cacheManager.getCache("profiles");
+        if (profileCache != null) profileCache.evict(staffId.toString());
+        
+        log.info("[SERVICE] Staff supprimé | staffId={}", staffId);
     }
 
-    // ── Mappers ─────────────────────────────────────────────────────────────
+    // ── HELPERS ─────────────────────────────────────────────────────────────
+
+    private void evictUserLists() {
+        var cache = cacheManager.getCache("userLists");
+        if (cache != null) cache.clear();
+    }
 
     private UserProfileResponse toResponse(UserProfile p) {
+        com.njila.njila_user_service.entity.AgentFiliale agent =
+            (p instanceof com.njila.njila_user_service.entity.AgentFiliale)
+                ? (com.njila.njila_user_service.entity.AgentFiliale) p : null;
+        com.njila.njila_user_service.entity.EmployeFiliale employe =
+            (p instanceof com.njila.njila_user_service.entity.EmployeFiliale)
+                ? (com.njila.njila_user_service.entity.EmployeFiliale) p : null;
+
         return UserProfileResponse.builder()
             .idUser(p.getIdUser())
             .name(p.getName())
@@ -666,19 +521,20 @@ public class UserServiceImpl implements UserService, IUserSubject {
             .adresse(p.getAdresse())
             .photoProfil(p.getPhotoProfil())
             .role(p.getRole())
-            .filialeId(p.getFilialeId())
-            .agenceId(p.getAgenceId())
+            .userType(p.getClass().getSimpleName())
             .isActive(p.isActive())
             .dateInscription(p.getDateInscription())
             .derniereConnexion(p.getDerniereConnexion())
-            .historiqueResa(p.getHistoriqueResa())
-            .poste(p.getPoste())
-            .numeroPermis(p.getNumeroPermis())
-            .idVoyageActuel(p.getIdVoyageActuel())
-            .disponible(p.getDisponible())
-            .dateEmbauche(p.getDateEmbauche())
-            .niveauAcces(p.getNiveauAcces())
-            .idAgenceManager(p.getIdAgenceManager())
+            .agenceId(agent != null ? agent.getAgenceId() : null)
+            .filialeId(agent != null ? agent.getFilialeId() : null)
+            .poste(p instanceof com.njila.njila_user_service.entity.Guichetier
+                ? ((com.njila.njila_user_service.entity.Guichetier) p).getPoste() : null)
+            .numeroPermis(p instanceof com.njila.njila_user_service.entity.Chauffeur
+                ? ((com.njila.njila_user_service.entity.Chauffeur) p).getNumeroPermis() : null)
+            .disponible(p instanceof com.njila.njila_user_service.entity.Chauffeur
+                ? ((com.njila.njila_user_service.entity.Chauffeur) p).getDisponible() : null)
+            .dateEmbauche(employe != null ? employe.getDateEmbauche() : null)
+            .historiqueResa(p instanceof Voyageur ? ((Voyageur) p).getHistoriqueResa() : null)
             .build();
     }
 
