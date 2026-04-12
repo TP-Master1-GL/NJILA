@@ -28,6 +28,7 @@ import ManagerDashboard   from "../pages/manager/ManagerDashboard";
 import GestionFlotte      from "../pages/manager/GestionFlotte";
 import GestionVoyages     from "../pages/manager/GestionVoyages";
 import GestionChauffeurs  from "../pages/manager/GestionChauffeurs";
+import GestionFiliales    from "../pages/manager/GestionFiliales";
 import Statistiques       from "../pages/manager/Statistiques";
 
 // Admin
@@ -91,6 +92,9 @@ export default function AppRouter() {
         } />
         <Route path="/manager/chauffeurs" element={
           <ProtectedRoute><RoleGuard roles={MANAGER_ROLES}><GestionChauffeurs /></RoleGuard></ProtectedRoute>
+        } />
+        <Route path="/manager/filiales" element={
+          <ProtectedRoute><RoleGuard roles={[ROLES.MANAGER_GLOBAL]}><GestionFiliales /></RoleGuard></ProtectedRoute>
         } />
         <Route path="/manager/stats" element={
           <ProtectedRoute><RoleGuard roles={MANAGER_ROLES}><Statistiques /></RoleGuard></ProtectedRoute>

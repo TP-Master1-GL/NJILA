@@ -5,9 +5,9 @@ import { bookingService } from "../../services/bookingService";
 import PublicLayout from "../../components/layout/PublicLayout";
 import { useNavigate } from "react-router-dom";
 import {
-  Ticket, Download, XCircle, MapPin, Clock, Calendar,
-  Bus, Search, Filter, ChevronRight, CheckCircle,
-  AlertCircle, ArrowLeft, Home, User
+  Ticket, Download, XCircle, Clock, Calendar,
+  Bus, Search, ChevronRight, CheckCircle,
+  ArrowLeft, Home, User, Plus
 } from "lucide-react";
 import { formatMontant, formatDate } from "../../utils/formatters";
 import toast from "react-hot-toast";
@@ -15,11 +15,11 @@ import toast from "react-hot-toast";
 const TABS = ["Toutes", "Confirmées", "En attente", "Annulées"];
 
 const statutCfg = {
-  PAYEE:      { label: "Confirmée",   bg: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-500", icon: CheckCircle },
-  EN_ATTENTE: { label: "En attente",  bg: "bg-amber-100 text-amber-700 border-amber-200",       dot: "bg-amber-500",   icon: Clock },
-  ANNULEE:    { label: "Annulée",     bg: "bg-red-100 text-red-700 border-red-200",             dot: "bg-red-400",     icon: XCircle },
-  CONFIRMEE:  { label: "Confirmée",   bg: "bg-blue-100 text-blue-700 border-blue-200",          dot: "bg-blue-500",    icon: CheckCircle },
-  EMBARQUEE:  { label: "Embarquée",   bg: "bg-slate-100 text-slate-600 border-slate-200",       dot: "bg-slate-400",   icon: Bus },
+  PAYEE:      { label: "Confirmée",  bg: "bg-emerald-100 text-emerald-700 border-emerald-200", icon: CheckCircle },
+  EN_ATTENTE: { label: "En attente", bg: "bg-amber-100 text-amber-700 border-amber-200",       icon: Clock },
+  ANNULEE:    { label: "Annulée",    bg: "bg-red-100 text-red-700 border-red-200",             icon: XCircle },
+  CONFIRMEE:  { label: "Confirmée",  bg: "bg-blue-100 text-blue-700 border-blue-200",          icon: CheckCircle },
+  EMBARQUEE:  { label: "Embarquée",  bg: "bg-slate-100 text-slate-600 border-slate-200",       icon: Bus },
 };
 
 export default function MesReservations() {
@@ -34,7 +34,8 @@ export default function MesReservations() {
     enabled: !!user?.id,
   });
 
-  const handleAnnuler = async (id) => {
+  const handleAnnuler = async (id, e) => {
+    e.stopPropagation();
     if (!confirm("Confirmer l'annulation ?")) return;
     try {
       await bookingService.annulerReservation(id, user.id);
@@ -43,7 +44,8 @@ export default function MesReservations() {
     } catch { toast.error("Impossible d'annuler"); }
   };
 
-  const handleDownload = async (id) => {
+  const handleDownload = async (id, e) => {
+    e.stopPropagation();
     try {
       const blob = await bookingService.telechargerBilletPdf(id);
       const url = URL.createObjectURL(blob);
@@ -58,7 +60,7 @@ export default function MesReservations() {
       activeTab === "Toutes" ? true :
       activeTab === "Confirmées" ? ["PAYEE", "CONFIRMEE"].includes(r.statut) :
       activeTab === "En attente" ? r.statut === "EN_ATTENTE" :
-      activeTab === "Annulées" ? r.statut === "ANNULEE" : true;
+      r.statut === "ANNULEE";
     const matchSearch = search
       ? r.id.toString().includes(search) || r.codeFiliale?.toLowerCase().includes(search.toLowerCase())
       : true;
@@ -67,11 +69,26 @@ export default function MesReservations() {
 
   return (
     <PublicLayout>
+      <style>{`
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .page-enter { animation: fadeSlideUp .35s ease both; }
+        .item-enter { animation: fadeSlideUp .3s ease both; }
+        .card-hover { transition: transform .15s ease, box-shadow .15s ease; }
+        .card-hover:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+      `}</style>
+
       <div className="max-w-3xl mx-auto px-4 py-6 md:py-10">
 
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => navigate("/voyageur")} className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center md:hidden">
+        {/* Header avec bouton retour */}
+        <div className="page-enter flex items-center gap-4 mb-6">
+          <button
+            onClick={() => navigate("/voyageur")}
+            className="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center transition-all active:scale-90 flex-shrink-0"
+            aria-label="Retour"
+          >
             <ArrowLeft className="w-4 h-4 text-slate-600" />
           </button>
           <div className="flex-1">
@@ -80,25 +97,25 @@ export default function MesReservations() {
           </div>
           <button
             onClick={() => navigate("/recherche")}
-            className="flex items-center gap-2 bg-[#135bec] text-white text-sm font-bold px-4 py-2.5 rounded-xl"
+            className="flex items-center gap-2 bg-[#135bec] text-white text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-blue-700 transition-colors active:scale-95"
           >
-            + Nouveau
+            <Plus className="w-4 h-4" /> Nouveau
           </button>
         </div>
 
         {/* Search */}
-        <div className="relative mb-4">
+        <div className="page-enter relative mb-4" style={{ animationDelay: ".05s" }}>
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Rechercher une réservation..."
-            className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]/30 focus:border-[#135bec]"
+            className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]/30 focus:border-[#135bec] transition-all"
           />
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-none pb-1">
+        <div className="page-enter flex gap-2 mb-6 overflow-x-auto pb-1" style={{ animationDelay: ".1s" }}>
           {TABS.map(tab => {
             const count =
               tab === "Toutes" ? (reservations?.length || 0) :
@@ -109,7 +126,7 @@ export default function MesReservations() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 ${
                   activeTab === tab
                     ? "bg-[#135bec] text-white shadow-sm shadow-[#135bec]/30"
                     : "bg-slate-100 text-slate-500 hover:bg-slate-200"
@@ -118,9 +135,7 @@ export default function MesReservations() {
                 {tab}
                 <span className={`text-xs px-1.5 py-0.5 rounded-full font-extrabold ${
                   activeTab === tab ? "bg-white/25 text-white" : "bg-slate-200 text-slate-600"
-                }`}>
-                  {count}
-                </span>
+                }`}>{count}</span>
               </button>
             );
           })}
@@ -130,10 +145,10 @@ export default function MesReservations() {
         {isLoading ? (
           <div className="py-16 text-center text-slate-400">
             <div className="w-8 h-8 border-2 border-[#135bec] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm">Chargement de vos réservations...</p>
+            <p className="text-sm">Chargement...</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="py-16 text-center">
+          <div className="page-enter py-16 text-center">
             <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Ticket className="w-8 h-8 text-slate-300" />
             </div>
@@ -143,15 +158,15 @@ export default function MesReservations() {
             </p>
             <button
               onClick={() => navigate("/recherche")}
-              className="bg-[#135bec] text-white font-bold px-6 py-3 rounded-xl text-sm hover:bg-blue-700 transition-colors"
+              className="bg-[#135bec] text-white font-bold px-6 py-3 rounded-xl text-sm hover:bg-blue-700 transition-colors active:scale-95"
             >
               Rechercher un voyage
             </button>
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map(r => {
-              const cfg = statutCfg[r.statut] || { label: r.statut, bg: "bg-slate-100 text-slate-600 border-slate-200", dot: "bg-slate-400", icon: Ticket };
+            {filtered.map((r, idx) => {
+              const cfg = statutCfg[r.statut] || { label: r.statut, bg: "bg-slate-100 text-slate-600 border-slate-200", icon: Ticket };
               const StatusIcon = cfg.icon;
               const canCancel = ["EN_ATTENTE", "CONFIRMEE"].includes(r.statut);
               const canDownload = r.statut === "PAYEE";
@@ -159,20 +174,19 @@ export default function MesReservations() {
               return (
                 <div
                   key={r.id}
-                  className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
+                  className="item-enter bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden card-hover cursor-pointer"
+                  style={{ animationDelay: `${idx * 50}ms` }}
+                  onClick={() => navigate(`/voyageur/billet/${r.id}`)}
                 >
-                  {/* Top bar */}
-                  <div
-                    className="flex items-center justify-between px-4 py-3 cursor-pointer"
-                    onClick={() => navigate(`/voyageur/billet/${r.id}`)}
-                  >
+                  {/* Top */}
+                  <div className="flex items-center justify-between px-4 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-[#135bec]/10 rounded-xl flex items-center justify-center flex-shrink-0">
                         <Bus className="w-5 h-5 text-[#135bec]" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-slate-900 text-sm">#{r.id}</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-slate-900 text-sm">Réservation #{r.id}</span>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.bg}`}>
                             {cfg.label}
                           </span>
@@ -189,7 +203,7 @@ export default function MesReservations() {
                     </div>
                   </div>
 
-                  {/* Details */}
+                  {/* Date row */}
                   <div className="px-4 pb-3 flex items-center gap-4 flex-wrap text-xs text-slate-400 border-t border-slate-50 pt-2.5">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
@@ -203,19 +217,19 @@ export default function MesReservations() {
 
                   {/* Actions */}
                   {(canDownload || canCancel) && (
-                    <div className="px-4 pb-4 flex gap-2">
+                    <div className="px-4 pb-4 flex gap-2" onClick={e => e.stopPropagation()}>
                       {canDownload && (
                         <button
-                          onClick={() => handleDownload(r.id)}
-                          className="flex items-center gap-1.5 bg-[#135bec] text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors"
+                          onClick={(e) => handleDownload(r.id, e)}
+                          className="flex items-center gap-1.5 bg-[#135bec] text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors active:scale-95"
                         >
                           <Download className="w-3.5 h-3.5" /> Billet PDF
                         </button>
                       )}
                       {canCancel && (
                         <button
-                          onClick={() => handleAnnuler(r.id)}
-                          className="flex items-center gap-1.5 bg-red-50 text-red-600 text-xs font-bold px-4 py-2 rounded-xl hover:bg-red-100 transition-colors border border-red-200"
+                          onClick={(e) => handleAnnuler(r.id, e)}
+                          className="flex items-center gap-1.5 bg-red-50 text-red-600 text-xs font-bold px-4 py-2 rounded-xl hover:bg-red-100 transition-colors border border-red-200 active:scale-95"
                         >
                           <XCircle className="w-3.5 h-3.5" /> Annuler
                         </button>
@@ -228,7 +242,6 @@ export default function MesReservations() {
           </div>
         )}
 
-        {/* Mobile bottom spacer */}
         <div className="h-20 md:hidden" />
       </div>
 
@@ -236,10 +249,10 @@ export default function MesReservations() {
       <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white border-t border-slate-100 z-50">
         <div className="grid grid-cols-4 px-2">
           {[
-            { icon: Home,   label: "Accueil",  path: "/voyageur" },
-            { icon: Search, label: "Recherche",path: "/recherche" },
-            { icon: Ticket, label: "Billets",  path: "/voyageur/reservations" },
-            { icon: User,   label: "Profil",   path: "/voyageur/profil" },
+            { icon: Home,   label: "Accueil",   path: "/voyageur" },
+            { icon: Search, label: "Recherche", path: "/recherche" },
+            { icon: Ticket, label: "Billets",   path: "/voyageur/reservations" },
+            { icon: User,   label: "Profil",    path: "/voyageur/profil" },
           ].map(({ icon: Icon, label, path }) => {
             const active = window.location.pathname === path;
             return (

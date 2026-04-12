@@ -44,4 +44,14 @@ export const fleetService = {
     const { data } = await api.get("/api/fleet/filiales");
     return data;
   },
+
+  getFilialeStats: async (id) => {
+    const { data } = await api.get(`/api/fleet/filiales/${id}/stats`);
+    return data;
+  },
+
+  getBusStats: async () => {
+    const { data } = await api.get("/api/fleet/bus/stats");
+    return data;
+  },
 };

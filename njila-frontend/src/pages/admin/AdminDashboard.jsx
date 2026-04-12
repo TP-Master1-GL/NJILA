@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { subscribeService } from "../../services/subscribeService";
+import { paymentService } from "../../services/paymentService";
 import { formatMontant } from "../../utils/formatters";
 import Spinner from "../../components/ui/Spinner";
 
@@ -96,11 +97,19 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function AdminDashboard() {
-  const { data: tableau, isLoading } = useQuery({
+  const { data: tableau, isLoading: isTableauLoading } = useQuery({
     queryKey: ["admin-tableau-de-bord"],
     queryFn: subscribeService.getTableauDeBord,
   });
+  
+  const { data: payStats, isLoading: isPayLoading } = useQuery({
+    queryKey: ["admin-payment-stats"],
+    queryFn: paymentService.getStats,
+  });
+
+  const isLoading = isTableauLoading || isPayLoading;
   const resume = tableau?.resume || {};
+  const paymentResume = payStats?.resume || {};
 
   const totalRecettes = REPARTITION_PLANS.reduce((sum, p) => {
     const count = STATUT_AGENCES.find(s => s.name === "Actives")?.value || 8;
