@@ -18,6 +18,10 @@ function initDatabase(config = {}) {
 }
 
 function getSequelize() {
+    
+    if (!sequelize) {
+        return initDatabase();
+    }
     return sequelize;
 }
 
