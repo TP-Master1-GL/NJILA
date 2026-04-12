@@ -19,7 +19,7 @@ public class UserProfileResponse {
     private String adresse;
     private String photoProfil;
     private Role   role;
-    private String userType;  // NOUVEAU : "ADMIN", "VOYAGEUR", "MANAGER_GLOBAL", "MANAGER_LOCAL", "GUICHETIER", "CHAUFFEUR"
+    private String userType;
     private boolean isActive;
 
     private LocalDateTime dateInscription;

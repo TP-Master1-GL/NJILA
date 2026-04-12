@@ -16,7 +16,6 @@ public interface ManagerLocalRepository extends JpaRepository<ManagerLocal, UUID
     List<ManagerLocal> findAllByFilialeId(UUID filialeId);
     boolean existsByFilialeId(UUID filialeId);
     
-    // Requête optimisée - jointure directe
     @Query("SELECT ml FROM ManagerLocal ml WHERE ml.agenceId = :agenceId")
     List<ManagerLocal> findManagersLocauxByAgenceId(@Param("agenceId") UUID agenceId);
     

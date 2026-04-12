@@ -121,7 +121,7 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
         
         managerLocalRepository.save(managerLocal);
         
-        // 🔥 PUBLIER VERS AUTH-SERVICE
+        
         eventPublisher.publishStaffToAuth(
             newUserId, email, tempPassword,
             Role.MANAGER_LOCAL.name(),

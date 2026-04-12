@@ -7,9 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
-/**
- * Configuration Jackson — support LocalDateTime / Java 8 Date-Time API.
- */
+
 @Configuration
 public class JacksonConfig {
 

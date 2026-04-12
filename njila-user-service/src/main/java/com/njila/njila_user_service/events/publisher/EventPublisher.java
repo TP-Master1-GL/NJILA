@@ -9,20 +9,9 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
-import java.util.UUID;  // IMPORT AJOUTÉ
+import java.util.UUID;
 
-/**
- * EventPublisher v2.0.
- *
- * Événements publiés :
- *   njila.user.exchange         → user.profile.created  (confirmation vers auth)
- *   njila.user.exchange         → user.photo.updated    (sync photo → auth-service)
- *   njila.user.exchange         → staff.to.auth         (création staff → auth-service)
- *   njila.notification.exchange → user.profile.updated
- *   njila.notification.exchange → avis.submitted
- *   njila.notification.exchange → staff.created         (NOUVEAU)
- *   njila.notification.exchange → staff.deleted         (NOUVEAU)
- */
+
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -80,9 +69,7 @@ public class EventPublisher implements IUserObserver {
                 payload, "avis.submitted");
     }
 
-    /**
-     * NOUVEAU: Publie un événement lors de la création d'un staff
-     */
+    
     public void publishStaffCreated(String userId, String email, String role, 
                                     String agenceId, String filialeId, String createdBy) {
         Map<String, Object> payload = Map.of(
@@ -103,9 +90,7 @@ public class EventPublisher implements IUserObserver {
                 event.getPayload(), "staff.created");
     }
 
-    /**
-     * NOUVEAU: Publie un événement lors de la suppression d'un staff
-     */
+    
     public void publishStaffDeleted(String userId, String email, String role,
                                     String agenceId, String filialeId, String deletedBy) {
         Map<String, Object> payload = Map.of(
@@ -126,9 +111,7 @@ public class EventPublisher implements IUserObserver {
                 event.getPayload(), "staff.deleted");
     }
 
-    /**
-     * Publication vers auth-service pour création de compte staff
-     */
+   
     public void publishStaffToAuth(UUID userId, String email, String temporaryPassword,
                                    String role, String name, String surname, String phone,
                                    String adresse, String filialeId, String agenceId,

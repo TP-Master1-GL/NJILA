@@ -123,7 +123,7 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
         
         guichetierRepository.save(guichetier);
         
-        // 🔥 PUBLIER VERS AUTH-SERVICE
+        
         eventPublisher.publishStaffToAuth(
             newUserId, email, tempPassword,
             Role.GUICHETIER.name(),
@@ -184,7 +184,7 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
         
         chauffeurRepository.save(chauffeur);
         
-        // 🔥 PUBLIER VERS AUTH-SERVICE
+       
         eventPublisher.publishStaffToAuth(
             newUserId, email, tempPassword,
             Role.CHAUFFEUR.name(),

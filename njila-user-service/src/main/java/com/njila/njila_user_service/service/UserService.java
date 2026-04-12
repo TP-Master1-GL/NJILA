@@ -26,7 +26,7 @@ public interface UserService {
     void deleteAvis(UUID userId, UUID avisId, JwtClaims caller);
     double getNoteMoyenne(UUID agenceId);
     
-    // ── Gestion staff par agence/filiale (NOUVEAU) ─────────────────────────
+    // ── Gestion staff par agence/filiale ─────────────────────────
     
     // Pour ManagerGlobal
     List<UserProfileResponse> listStaffByAgence(UUID agenceId, String type, JwtClaims caller);

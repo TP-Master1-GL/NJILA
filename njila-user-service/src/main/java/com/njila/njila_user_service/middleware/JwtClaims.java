@@ -6,10 +6,7 @@ import lombok.Data;
 
 import java.util.UUID;
 
-/**
- * Données extraites du JWT par le middleware.
- * Encodées dans le token par l'auth-service.
- */
+
 @Data
 @Builder
 public class JwtClaims {

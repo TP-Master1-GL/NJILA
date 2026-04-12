@@ -8,33 +8,6 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * Configuration RabbitMQ — user-service v2.0.
- *
- * Flux modifiés :
- * ┌─────────────────────────────────────────────────────────────────────────┐
- * │ user-service → auth-service (création staff)                           │
- * │   Exchange: njila.user.exchange                                        │
- * │   Routing key: staff.to.auth                                           │
- * │   Queue (auth-service): njila.auth.staff-creation.queue                │
- * └─────────────────────────────────────────────────────────────────────────┘
- *
- * Queues consommées par user-service :
- * ┌──────────────────────────────────────────┬─────────────────────────┬────────────────────────┐
- * │ Queue                                    │ Exchange                │ Routing key            │
- * ├──────────────────────────────────────────┼─────────────────────────┼────────────────────────┤
- * │ njila.user.registered.queue              │ njila.user.exchange     │ user.registered        │
- * │ njila.user.updated.queue                 │ njila.user.exchange     │ user.updated           │
- * ├──────────────────────────────────────────┼─────────────────────────┼────────────────────────┤
- * │ njila.user.agence-created.queue          │ njila.fleet.exchange    │ agence.created         │
- * │ njila.user.filiale-created.queue         │ njila.fleet.exchange    │ filiale.created        │
- * ├──────────────────────────────────────────┼─────────────────────────┼────────────────────────┤
- * │ njila.user.reservation-created.queue     │ njila.booking.exchange  │ reservation.created    │
- * ├──────────────────────────────────────────┼─────────────────────────┼────────────────────────┤
- * │ njila.notification.staff.created.queue   │ njila.notification.exchange │ staff.created     │
- * │ njila.notification.staff.deleted.queue   │ njila.notification.exchange │ staff.deleted     │
- * └──────────────────────────────────────────┴─────────────────────────┴────────────────────────┘
- */
 @Configuration
 public class RabbitMQConfig {
 

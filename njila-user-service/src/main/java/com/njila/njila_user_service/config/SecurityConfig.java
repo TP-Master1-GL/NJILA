@@ -11,19 +11,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * Configuration Spring Security - user-service.
- *
- * Routes publiques (sans JWT) :
- *   GET /api/users/health
- *   GET /api/avis/agence/**
- *   GET /actuator/**
- *   
- * Routes Swagger (sans JWT) :
- *   /swagger-ui/**
- *   /v3/api-docs/**
- *   /swagger-ui.html
- */
+
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor

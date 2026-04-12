@@ -8,8 +8,8 @@ import java.util.UUID;
 
 @Data
 public class FilterStaffRequest {
-    private Set<Role> roles;        // MANAGER_LOCAL, GUICHETIER, CHAUFFEUR
-    private UUID filialeId;         // Filtrer par filiale
+    private Set<Role> roles;
+    private UUID filialeId;
     private Boolean isActive;
-    private Boolean disponible;     // Pour chauffeurs uniquement
+    private Boolean disponible;
 }

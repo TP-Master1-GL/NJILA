@@ -8,11 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-/**
- * Avis d'un voyageur sur une agence.
- * Note : de 1 à 5 étoiles + commentaire optionnel.
- * Contrainte : un seul avis par voyageur par agence.
- */
+
 @Entity
 @Table(
     name = "avis",

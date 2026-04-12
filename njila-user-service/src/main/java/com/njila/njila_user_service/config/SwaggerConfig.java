@@ -14,12 +14,6 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 
-/**
- * Configuration OpenAPI 3 (Swagger) pour njila-user-service.
- * 
- * URL d'accès : http://localhost:8082/swagger-ui/index.html
- * Documentation JSON : http://localhost:8082/v3/api-docs
- */
 @Configuration
 public class SwaggerConfig {
 

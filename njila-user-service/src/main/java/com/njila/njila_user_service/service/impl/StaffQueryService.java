@@ -11,10 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Service agrégateur pour les requêtes sur le staff (ManagerLocal, Guichetier, Chauffeur)
- * Optimisé pour la stratégie JOINED
- */
+
 @Service
 @RequiredArgsConstructor
 @Slf4j

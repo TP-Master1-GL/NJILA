@@ -66,7 +66,6 @@ public class AdministrateurServiceImpl implements AdministrateurService {
         
         managerGlobalRepository.save(managerGlobal);
         
-        // 🔥 PUBLIER VERS AUTH-SERVICE
         eventPublisher.publishStaffToAuth(
             newUserId, email, tempPassword,
             Role.MANAGER_GLOBAL.name(),

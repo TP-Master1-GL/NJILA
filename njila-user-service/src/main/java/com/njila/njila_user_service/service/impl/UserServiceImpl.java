@@ -258,16 +258,11 @@ public class UserServiceImpl implements UserService, IUserSubject {
     }
 
     // ── MANAGER GLOBAL (délégué à ManagerGlobalService) ─────────────────────
-    // Ces méthodes sont maintenant dans ManagerGlobalService
-    // On garde les signatures mais on délègue ou on marque @Deprecated
-
+    
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listStaffByAgence(UUID agenceId, String type, JwtClaims caller) {
-        // Délégation à ManagerGlobalService via le contexte Spring
-        // Pour éviter les dépendances circulaires, on peut soit :
-        // 1. Injecter ManagerGlobalService (attention aux cycles)
-        // 2. Utiliser directement StaffQueryService
+        
         roleManager.assertCanViewStaffByAgence(caller, agenceId);
         
         List<UserProfile> staff;

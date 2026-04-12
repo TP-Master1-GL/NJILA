@@ -6,6 +6,6 @@ public enum UserEventType {
     COMPTE_SUPPRIMER,
     PHOTO_MISE_A_JOUR,
     CHAUFFEUR_DISPO,
-    STAFF_CREE,      // NOUVEAU
-    STAFF_SUPPRIME   // NOUVEAU
+    STAFF_CREE,
+    STAFF_SUPPRIME
 }

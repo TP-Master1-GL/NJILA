@@ -14,10 +14,9 @@ EXCHANGE_SUBSCRIBE   = "njila.subscribe.exchange"
 EXCHANGE_DEAD_LETTER = "njila.dead.letter.exchange"
 
 # ── Queues consommées par l'auth-service ──────────────────────────────────────
-# CORRECTION : Ces queues doivent correspondre à ce que le user-service publie
-QUEUE_USER_REGISTERED       = "njila.user.registered.queue"        # modifié
-QUEUE_USER_UPDATED          = "njila.user.updated.queue"           # modifié
-QUEUE_STAFF_TO_AUTH         = "njila.staff.to.auth.queue"          # modifié
+QUEUE_USER_REGISTERED       = "njila.user.registered.queue"       
+QUEUE_USER_UPDATED          = "njila.user.updated.queue"          
+QUEUE_STAFF_TO_AUTH         = "njila.staff.to.auth.queue"         
 QUEUE_SUBSCRIPTION_EXPIRED  = "njila.auth.subscription.expired.queue"
 QUEUE_SUBSCRIPTION_RENEWED  = "njila.auth.subscription.renewed.queue"
 

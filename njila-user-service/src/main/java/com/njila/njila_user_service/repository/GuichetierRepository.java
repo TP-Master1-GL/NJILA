@@ -15,7 +15,6 @@ public interface GuichetierRepository extends JpaRepository<Guichetier, UUID> {
     List<Guichetier> findAllByFilialeId(UUID filialeId);
     List<Guichetier> findAllByAgenceId(UUID agenceId);
     
-    // Requêtes optimisées
     @Query("SELECT g FROM Guichetier g WHERE g.agenceId = :agenceId")
     List<Guichetier> findGuichetiersByAgenceId(@Param("agenceId") UUID agenceId);
     
