@@ -1,11 +1,11 @@
 package com.njila.njila_booking_service.service;
 
-import com.njila.njila_booking_service.client.FleetServiceClient;
-import com.njila.njila_booking_service.client.UserServiceClient;
 import com.njila.njila_booking_service.domain.entity.*;
+import com.njila.njila_booking_service.domain.entity.projection.*;
 import com.njila.njila_booking_service.domain.enums.*;
 import com.njila.njila_booking_service.dto.request.CreerReservationRequest;
 import com.njila.njila_booking_service.dto.response.ReservationStatsResponse;
+import com.njila.njila_booking_service.repository.projection.*;
 import com.njila.njila_booking_service.messaging.publisher.BookingEventPublisher;
 import com.njila.njila_booking_service.repository.*;
 import com.njila.njila_booking_service.service.factory.TicketElectroniqueFactory;
@@ -33,8 +33,12 @@ public class ReservationService {
     private final TicketNumberGenerator           ticketNumberGenerator;
     private final PdfGeneratorService             pdfGeneratorService;
     private final BookingEventPublisher           eventPublisher;
-    private final FleetServiceClient              fleetClient;
-    private final UserServiceClient               userClient;
+    
+    private final VoyageDataRepository            voyageDataRepository;
+    private final UserDataRepository              userDataRepository;
+    private final AgenceDataRepository            agenceDataRepository;
+    private final FilialeDataRepository           filialeDataRepository;
+
     private final TicketElectroniqueFactory       ticketElectroniqueFactory;
     private final TicketEmbarquementFactory       ticketEmbarquementFactory;
     private final FideliteService                 fideliteService;
@@ -59,7 +63,10 @@ public class ReservationService {
             List<CreerReservationRequest.MembreGroupeRequest> membres,
             String devise) {
 
-        if (!fleetClient.verifierDisponibilite(idVoyage, nombrePlaces)) {
+        VoyageData voyageData = voyageDataRepository.findById(idVoyage)
+                .orElseThrow(() -> new RuntimeException("Voyage introuvable : " + idVoyage));
+
+        if (voyageData.getPlacesDisponibles() < nombrePlaces) {
             throw new RuntimeException(
                     "Places insuffisantes pour le voyage " + idVoyage);
         }
@@ -85,8 +92,7 @@ public class ReservationService {
                     "Une réservation est déjà en cours pour ce voyage.");
         }
 
-        Map<String, Object> voyage   = fleetClient.getVoyage(idVoyage);
-        double prixBase = Double.parseDouble(voyage.get("prix").toString());
+        double prixBase = voyageData.getPrix();
 
         PricingStrategy strategie = switch (typeTarif) {
             case GROUPE -> prixGroupe;
@@ -96,13 +102,15 @@ public class ReservationService {
         double montantTotal = strategie.calculerPrix(saved, prixBase, nombrePlaces);
         saved.setMontantTotal(montantTotal);
 
-        Map<String, Object> voyageur = userClient.getVoyageur(idVoyageur);
+        UserData voyageur = userDataRepository.findById(idVoyageur)
+                .orElseThrow(() -> new RuntimeException("Voyageur introuvable : " + idVoyageur));
+
         PlaceReservee placeResponsable = PlaceReservee.builder()
                 .reservation(saved)
                 .idPlace(1L)
                 .prixUnitaire(prixBase)
-                .nomPassager(voyageur.get("nom") + " " + voyageur.get("surname"))
-                .telephonePassager(voyageur.get("phone").toString())
+                .nomPassager(voyageur.getNom() + " " + voyageur.getPrenom())
+                .telephonePassager(voyageur.getTelephone())
                 .aBagage(false)
                 .estResponsable(true)
                 .idVoyageur(idVoyageur)
@@ -137,7 +145,7 @@ public class ReservationService {
 
         if (canal == CanalReservation.GUICHET) {
             return confirmerReservationGuichet(
-                    saved, voyage, voyageur, idGuichetier, codeAgence, codeFiliale);
+                    saved, voyageData, voyageur, idGuichetier, codeAgence, codeFiliale);
         }
 
         eventPublisher.publierBookingCreated(
@@ -153,8 +161,8 @@ public class ReservationService {
     @Transactional
     public Reservation confirmerReservationGuichet(
             Reservation reservation,
-            Map<String, Object> voyage,
-            Map<String, Object> voyageur,
+            VoyageData voyage,
+            UserData voyageur,
             Long idGuichetier,
             String codeAgence,
             String codeFiliale) {
@@ -169,12 +177,12 @@ public class ReservationService {
                 ticketEmbarquementFactory.creerTicket(
                         reservation,
                         numeroTicket,
-                        voyageur.get("nom") + " " + voyageur.get("surname"),
-                        voyageur.get("phone").toString(),
-                        voyage.get("origine").toString(),
-                        voyage.get("destination").toString(),
-                        voyage.get("dateHeureDepart").toString().substring(0, 10),
-                        voyage.get("immatriculationBus").toString()
+                        voyageur.getNom() + " " + voyageur.getPrenom(),
+                        voyageur.getTelephone(),
+                        voyage.getOrigine(),
+                        voyage.getDestination(),
+                        voyage.getDateHeureDepart().toString().substring(0, 10),
+                        voyage.getImmatriculationBus(), agenceDataRepository.findById(codeAgence).map(AgenceData::getLogoUrl).orElse(null)
                 );
         ticket.setIdGuichetier(idGuichetier);
         ticketRepository.save(ticket);
@@ -191,12 +199,12 @@ public class ReservationService {
 
         eventPublisher.publierTicketGenerated(
                 reservation.getIdVoyageur(),
-                voyageur.get("email").toString(),
+                voyageur.getEmail(),
                 "",
                 numeroTicket,
-                voyage.get("origine").toString(),
-                voyage.get("destination").toString(),
-                voyage.get("dateHeureDepart").toString().substring(0, 10)
+                voyage.getOrigine(),
+                voyage.getDestination(),
+                voyage.getDateHeureDepart().toString().substring(0, 10)
         );
 
         log.info("[BOOKING] Billet embarquement guichet généré : {}", numeroTicket);
@@ -233,8 +241,10 @@ public class ReservationService {
         reservationRepository.save(reservation);
 
         // Récupérer infos voyage + voyageur
-        Map<String, Object> voyage   = fleetClient.getVoyage(reservation.getIdVoyage());
-        Map<String, Object> voyageur = userClient.getVoyageur(reservation.getIdVoyageur());
+        VoyageData voyage   = voyageDataRepository.findById(reservation.getIdVoyage())
+                .orElseThrow(() -> new RuntimeException("Voyage introuvable"));
+        UserData voyageur = userDataRepository.findById(reservation.getIdVoyageur())
+                .orElseThrow(() -> new RuntimeException("Voyageur introuvable"));
 
         // Générer billet d'embarquement
         String numeroTicket = ticketNumberGenerator.genererBilletEmbarquement(
@@ -244,12 +254,12 @@ public class ReservationService {
                 ticketEmbarquementFactory.creerTicket(
                         reservation,
                         numeroTicket,
-                        voyageur.get("nom") + " " + voyageur.get("surname"),
-                        voyageur.get("phone").toString(),
-                        voyage.get("origine").toString(),
-                        voyage.get("destination").toString(),
-                        voyage.get("dateHeureDepart").toString().substring(0, 10),
-                        voyage.get("immatriculationBus").toString()
+                        voyageur.getNom() + " " + voyageur.getPrenom(),
+                        voyageur.getTelephone(),
+                        voyage.getOrigine(),
+                        voyage.getDestination(),
+                        voyage.getDateHeureDepart().toString().substring(0, 10),
+                        voyage.getImmatriculationBus(), agenceDataRepository.findById(reservation.getCodeAgence()).map(AgenceData::getLogoUrl).orElse(null)
                 );
         ticket.setIdGuichetier(idGuichetier);
         ticketRepository.save(ticket);
@@ -271,12 +281,12 @@ public class ReservationService {
         // Notifier notification-service
         eventPublisher.publierTicketGenerated(
                 reservation.getIdVoyageur(),
-                voyageur.get("email").toString(),
+                voyageur.getEmail(),
                 "",
                 numeroTicket,
-                voyage.get("origine").toString(),
-                voyage.get("destination").toString(),
-                voyage.get("dateHeureDepart").toString().substring(0, 10)
+                voyage.getOrigine(),
+                voyage.getDestination(),
+                voyage.getDateHeureDepart().toString().substring(0, 10)
         );
 
         log.info("[BOOKING] Paiement espèces confirmé — réservation={} billet={}",
@@ -304,8 +314,10 @@ public class ReservationService {
             paiementRepository.save(p);
         });
 
-        Map<String, Object> voyage   = fleetClient.getVoyage(reservation.getIdVoyage());
-        Map<String, Object> voyageur = userClient.getVoyageur(reservation.getIdVoyageur());
+        VoyageData voyage = voyageDataRepository.findById(reservation.getIdVoyage())
+                .orElseThrow(() -> new RuntimeException("Voyage introuvable"));
+        UserData voyageur = userDataRepository.findById(reservation.getIdVoyageur())
+                .orElseThrow(() -> new RuntimeException("Voyageur introuvable"));
 
         String numeroTicket = ticketNumberGenerator
                 .genererBilletElectronique(
@@ -316,12 +328,13 @@ public class ReservationService {
                 ticketElectroniqueFactory.creerTicket(
                         reservation,
                         numeroTicket,
-                        voyageur.get("nom") + " " + voyageur.get("surname"),
-                        voyageur.get("phone").toString(),
-                        voyage.get("origine").toString(),
-                        voyage.get("destination").toString(),
-                        voyage.get("dateHeureDepart").toString().substring(0, 10),
-                        voyage.get("immatriculationBus").toString()
+                        voyageur.getNom() + " " + voyageur.getPrenom(),
+                        voyageur.getTelephone(),
+                        voyage.getOrigine(),
+                        voyage.getDestination(),
+                        voyage.getDateHeureDepart().toString().substring(0, 10),
+                        voyage.getImmatriculationBus(),
+                        agenceDataRepository.findById(reservation.getCodeAgence()).map(AgenceData::getLogoUrl).orElse(null)
                 );
 
         byte[] pdf = pdfGeneratorService.genererBilletElectronique(ticket);
@@ -344,12 +357,12 @@ public class ReservationService {
 
         eventPublisher.publierTicketGenerated(
                 reservation.getIdVoyageur(),
-                voyageur.get("email").toString(),
+                voyageur.getEmail(),
                 pdfBase64,
                 numeroTicket,
-                voyage.get("origine").toString(),
-                voyage.get("destination").toString(),
-                voyage.get("dateHeureDepart").toString().substring(0, 10)
+                voyage.getOrigine(),
+                voyage.getDestination(),
+                voyage.getDateHeureDepart().toString().substring(0, 10)
         );
 
         log.info("[BOOKING] Paiement confirmé — billet électronique généré : {}",
@@ -484,7 +497,8 @@ public class ReservationService {
                         ticketElec.getOrigine(),
                         ticketElec.getDestination(),
                         ticketElec.getDateDepart().toString(),
-                        ticketElec.getImmatriculationBus()
+                        ticketElec.getImmatriculationBus(),
+                        agenceDataRepository.findById(reservation.getCodeAgence()).map(AgenceData::getLogoUrl).orElse(null)
                 );
         ticketEmb.setIdTicketElectronique(ticketElec.getId());
         ticketEmb.setIdGuichetier(idGuichetier);

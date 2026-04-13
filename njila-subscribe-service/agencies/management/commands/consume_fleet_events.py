@@ -4,6 +4,8 @@ import pika
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from agencies.models import AgenceMere
+from subscriptions.models import PlanChoices, StatutAbonnement
+from subscriptions.service import SubscriptionService
 
 logger = logging.getLogger(__name__)
 
@@ -27,20 +29,20 @@ class Command(BaseCommand):
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
 
-            # 2. Configuration Fleet
-            # Exchange fleet (source)
-            FLEET_EXCHANGE = "njila.fleet.exchange"
-            channel.exchange_declare(exchange=FLEET_EXCHANGE, exchange_type="topic", durable=True)
+            # 2. Configuration Subscription (Events from Fleet)
+            # Exchange
+            EXCHANGE = settings.RABBITMQ_EXCHANGE
+            channel.exchange_declare(exchange=EXCHANGE, exchange_type="topic", durable=True)
 
             # Queue locale
             QUEUE_NAME = "subscribe.fleet.queue"
             channel.queue_declare(queue=QUEUE_NAME, durable=True)
 
             # Binding
-            ROUTING_KEY = "fleet.subscription.request"
-            channel.queue_bind(exchange=FLEET_EXCHANGE, queue=QUEUE_NAME, routing_key=ROUTING_KEY)
+            ROUTING_KEY = "subscription.request"
+            channel.queue_bind(exchange=EXCHANGE, queue=QUEUE_NAME, routing_key=ROUTING_KEY)
 
-            self.stdout.write(self.style.SUCCESS(f"[*] Attente d'événements sur {QUEUE_NAME}..."))
+            self.stdout.write(self.style.SUCCESS(f"[*] Attente d'événements sur {QUEUE_NAME} (Key: {ROUTING_KEY})..."))
 
             def callback(ch, method, properties, body):
                 try:
@@ -85,4 +87,19 @@ class Command(BaseCommand):
         )
 
         action = "créée" if created else "mise à jour"
-        self.stdout.write(self.style.SUCCESS(f"[MQ] Agence {agence_id} {action} avec succès ({agency.nom})."))
+        logger.info(f"[MQ] Agence {agence_id} {action} avec succès ({agency.nom}).")
+
+        # Vérifier si l'agence a déjà un abonnement actif
+        has_active = agency.abonnements.filter(
+            statut__in=[StatutAbonnement.ACTIVE, StatutAbonnement.TRIAL, StatutAbonnement.EXPIRING]
+        ).exists()
+
+        if created or not has_active:
+            logger.info(f"[MQ] Création d'un abonnement d'essai pour l'agence {agence_id}")
+            try:
+                SubscriptionService.souscrire(agency, PlanChoices.ESSAI)
+                self.stdout.write(self.style.SUCCESS(f"[MQ] Abonnement d'ESSAI activé pour {agency.nom}."))
+            except Exception as e:
+                logger.error(f"[MQ] Erreur lors de la création de l'abonnement d'essai : {e}")
+        else:
+            self.stdout.write(self.style.WARNING(f"[MQ] L'agence {agency.nom} possède déjà un abonnement actif."))

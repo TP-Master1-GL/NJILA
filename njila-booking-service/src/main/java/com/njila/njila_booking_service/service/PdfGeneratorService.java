@@ -42,6 +42,12 @@ public class PdfGeneratorService {
                     .setFontSize(16).setBold()
                     .setTextAlignment(TextAlignment.CENTER));
 
+            if (ticket.getLogoAgence() != null && !ticket.getLogoAgence().isEmpty()) {
+                document.add(new Paragraph("Agence : " + ticket.getReservation().getCodeAgence())
+                        .setFontSize(12).setItalic()
+                        .setTextAlignment(TextAlignment.CENTER));
+            }
+
             document.add(new Paragraph(" "));
 
             // ─── Numéro unique ────────────────────────────────────────────────

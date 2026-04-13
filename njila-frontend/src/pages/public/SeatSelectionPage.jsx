@@ -92,21 +92,21 @@ export default function SeatSelectionPage() {
               </div>
             </div>
 
-            <div className="border-2 border-gray-200 rounded-2xl p-6 max-w-sm mx-auto bg-slate-50/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex flex-col items-center gap-1">
-                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                    <Bus className="w-4 h-4 text-gray-400" />
+            <div className="border-2 border-blue-200 rounded-3xl p-10 max-w-sm mx-auto bg-slate-80/80">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex flex-col items-center gap-5">
+                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
+                    <Bus className="w-10 h-10 text-gray-400" />
                   </div>
                   <span className="text-xs text-gray-400">Chauffeur</span>
                 </div>
                 <span className="text-xs font-medium text-gray-400">AVANT →</span>
               </div>
               <div className="grid gap-2">
-                {Array.from({ length: Math.ceil(seats.length / 4) }, (_, row) => (
+                {Array.from({ length: Math.ceil(seats.length / 5) }, (_, row) => (
                   <div key={row} className="grid grid-cols-5 gap-1 items-center">
-                    {[0,1].map(col => {
-                      const seat = seats[row * 4 + col];
+                    {[0,1,2].map(col => {
+                      const seat = seats[row * 5 + col];
                       if (!seat) return <div key={col} />;
                       const selected = placesSelectionnees.some(p => p.id === seat.id);
                       return (
@@ -124,8 +124,8 @@ export default function SeatSelectionPage() {
                     <div className="flex items-center justify-center">
                       <div className="w-px h-6 bg-gray-200" />
                     </div>
-                    {[2,3].map(col => {
-                      const seat = seats[row * 4 + col];
+                    {[3,4].map(col => {
+                      const seat = seats[row * 5 + col];
                       if (!seat) return <div key={col} />;
                       const selected = placesSelectionnees.some(p => p.id === seat.id);
                       return (
