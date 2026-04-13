@@ -1,22 +1,31 @@
 package com.njila.njila_payement_service.application.events.publishers;
 
 import com.njila.njila_payement_service.domain.enumerations.Currency;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Getter
+@Setter
+
+@AllArgsConstructor
+@NoArgsConstructor
 
 public class PaymentCompletedEvent {
 
-    private int paymentId;
+    private long paymentId;
 
-    private int reservationId;
+    private long bookingId;
 
-    private int passengerId;
+    private long passengerId;
 
-    private BigDecimal amount;
+    private double amount;
 
     private Currency currency;
 
-    private LocalDate completedAt;
+    private LocalDateTime completedAt;
 }

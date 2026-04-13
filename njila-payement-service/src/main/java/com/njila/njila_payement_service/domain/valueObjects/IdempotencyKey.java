@@ -2,6 +2,7 @@ package com.njila.njila_payement_service.domain.valueObjects;
 
 
 import com.njila.njila_payement_service.domain.exceptions.InvalidIdempotencyKeyException;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -9,6 +10,7 @@ import java.time.LocalDateTime;
 
 @Getter
 @Setter
+
 
 public class IdempotencyKey {
 
@@ -34,14 +36,13 @@ public class IdempotencyKey {
 
 
     // Check if the key is well-formed.
-
     public boolean isValid(){
+
         return this.value != null && !this.value.isBlank();
     }
 
 
     // Check if two keys have the same value.
-
     public boolean equals(IdempotencyKey other) {
 
         if (other == null) {
@@ -49,4 +50,5 @@ public class IdempotencyKey {
         }
         return this.value.equals(other.value);
     }
+
 }

@@ -1,25 +1,30 @@
 package com.njila.njila_payement_service.application.services.interfaces;
 
+import com.njila.njila_payement_service.application.callbackPayload.CallbackPayload;
+import com.njila.njila_payement_service.application.dtos.requests.InitiatePaymentRequest;
+import com.njila.njila_payement_service.application.dtos.responses.InitiatePaymentResponse;
 import com.njila.njila_payement_service.domain.entities.Payment;
 import com.njila.njila_payement_service.domain.enumerations.PaymentStatus;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface PaymentService {
 
-    // To improve
+    InitiatePaymentResponse initiatePayment(InitiatePaymentRequest initRequest);
 
-    void initiatePayment();
+    void processPayment(long paymentId);
 
-    void processPayment(UUID paymentId);
+    void confirmCashPayment(long paymentId);
 
-    void confirmCashPayment(UUID paymentId);
+    void handleCallback(CallbackPayload payload);
 
-    void handleCallback();
+    PaymentStatus getPaymentStatus(long paymentId);
 
-    PaymentStatus getPaymentStatus(UUID paymentId);
+    List<Payment> getPaymentByPassenger(long passengerId);
 
-    Payment getPaymentByPassenger(int passengerId);
+    void CancelPayment(long paymentId);
+
 
 
 }

@@ -6,28 +6,28 @@ import com.njila.njila_payement_service.domain.enumerations.PaymentStatus;
 import com.njila.njila_payement_service.domain.exceptions.InvalidPaymentTransitionException;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
-import java.math.BigDecimal;
+
 import java.time.LocalDateTime;
-import java.util.UUID;
+
 
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 
+@Builder
+
 @Entity
 
 public class Payment {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID paymentId;
 
-    private BigDecimal amount;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private long paymentId;
+
+    private Double amount;
 
     @Enumerated(EnumType.STRING)
     private PaymentStatus status;
@@ -45,7 +45,13 @@ public class Payment {
     private LocalDateTime updatedAt;
 
     @Column(updatable = false)
-    private int reservationId;
+    private long bookingId;
+
+    @Column(nullable = false)
+    private long passengerId;
+
+    @Column(nullable = false)
+    private String phoneNumber;
 
     /*
     @OneToMany
@@ -55,6 +61,10 @@ public class Payment {
 
     @Column(nullable = false, unique = true)
     private String idempotencyKeyValue;
+
+    public Payment(PaymentStatus paymentStatus) {
+        this.status = paymentStatus;
+    }
 
 
     //The following methods are written to ensure the state's transition
@@ -76,6 +86,9 @@ public class Payment {
         if(this.status != PaymentStatus.PROCESSING){
             throw new InvalidPaymentTransitionException("A payment with status " + this.status + " cannot be confirmed");
         }
+
+        this.status = PaymentStatus.COMPLETED;
+        this.updatedAt = LocalDateTime.now();
     }
 
     public void initiate(){
@@ -95,6 +108,37 @@ public class Payment {
         }
 
         this.status = PaymentStatus.FAILED;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void expire(){
+
+        if(this.status != PaymentStatus.PROCESSING){
+
+            throw new InvalidPaymentTransitionException("A payment with the status " + this.status + "can't expire");
+        }
+        this.status = PaymentStatus.EXPIRED;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void refund (){
+
+        if(this.status != PaymentStatus.COMPLETED){
+
+            throw new InvalidPaymentTransitionException("A payment with the status " + this.status + "can't be refund");
+        }
+        this.status = PaymentStatus.REFUNDED;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void partialRefund (){
+
+        if(this.status != PaymentStatus.COMPLETED){
+
+            throw new InvalidPaymentTransitionException("A payment with the status " + this.status + "can't be refund");
+        }
+
+        this.status = PaymentStatus.PARTIALLY_REFUNDED;
         this.updatedAt = LocalDateTime.now();
     }
 

@@ -9,27 +9,32 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
+
 import java.time.LocalDateTime;
-import java.util.UUID;
+
+
 
 @Getter
 @Setter
 @AllArgsConstructor
-@NoArgsConstructor
+
 
 @Entity
 
 public class Transaction {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID transactionId;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private long transactionId;
 
+    // provided by Campay
+    @Column(nullable = false)
     private String providedReference;
 
-    private BigDecimal amount;
+    @Column(nullable = false)
+    private Double amount;
 
+    @Column(nullable = false)
     private String responseCode;
 
     @Enumerated(EnumType.STRING)
@@ -38,14 +43,30 @@ public class Transaction {
     @Enumerated(EnumType.STRING)
     private Currency currency;
 
+    @Column(nullable = false)
+    private String operator;
+
+    //the one we give to Campay
+    @Column(nullable = false)
+    private String ExternalRessource;
+
+    @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(nullable = false)
     private LocalDateTime updatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "payment_id", nullable = false)
     private Payment payment;
 
+
+    public Transaction(TransactionStatus transactionStatus) {
+
+        this.status = transactionStatus;
+    }
+
+    protected Transaction() {}
 
     public void markSucceed(){
 
@@ -80,9 +101,10 @@ public class Transaction {
             throw new InvalidPaymentTransitionException("Only authorized transactions can be captured");
         }
 
-        this.status = TransactionStatus.CAPTURED;
+        this.status = TransactionStatus.REVERSED;
         this.updatedAt = LocalDateTime.now();
     }
+
 
     public void authorize (){
 
@@ -104,6 +126,26 @@ public class Transaction {
         }
         this.status = TransactionStatus.TIMEOUT;
         this.updatedAt = LocalDateTime.now();
+    }
+
+    public static Transaction create(Payment payment,
+                                     String providedReference,
+                                     String externalReference,
+                                     Double amount,
+                                     Currency currency){
+
+        Transaction t = new Transaction();
+
+        t.payment = payment;
+        t.providedReference = providedReference;
+        t.ExternalRessource = externalReference;
+        t.amount = amount;
+        t.currency = currency;
+        t.status = TransactionStatus.INITIATED;
+        t.createdAt = LocalDateTime.now();
+        t.updatedAt = LocalDateTime.now();
+
+        return t;
     }
 
 }
