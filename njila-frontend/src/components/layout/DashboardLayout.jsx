@@ -1,11 +1,13 @@
 import { useState } from "react";
 import Sidebar from "./Sidebar";
-import { Menu, Bell, Search } from "lucide-react";
+import { Menu, Bell, Search, Sun, Moon } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
+import { useThemeStore } from "../../store/themeStore";
 
 export default function DashboardLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user } = useAuthStore();
+  const { darkMode, toggleDarkMode } = useThemeStore();
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -30,9 +32,21 @@ export default function DashboardLayout({ children }) {
           <div className="flex-1" />
 
           <div className="flex items-center gap-2">
-            <button className="relative w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors">
-              <Bell className="w-4 h-4 text-slate-500" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
+            <button
+              onClick={toggleDarkMode}
+              className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              title={darkMode ? "Mode clair" : "Mode sombre"}
+            >
+              {darkMode ? (
+                <Sun className="w-4 h-4 text-yellow-500" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              )}
+            </button>
+
+            <button className="relative w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+              <Bell className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-800" />
             </button>
 
             <div className="flex items-center gap-2 ml-1">

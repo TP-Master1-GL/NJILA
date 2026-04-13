@@ -14,8 +14,11 @@ import lombok.*;
 @Builder
 public class AgenceData {
     @Id
-    private String code;
+    private String id; // This will map to agence_id (UUID)
     private String nom;
-    private String ville;
+    private String adresse;
+    private String telephone;
+    private String emailOfficiel;
+    private String statutGlobal;
     private String logoUrl;
 }

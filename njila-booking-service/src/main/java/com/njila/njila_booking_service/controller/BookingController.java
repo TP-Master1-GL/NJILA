@@ -76,7 +76,7 @@ public class BookingController {
     @GetMapping("/voyage/{voyageId}")
     @Operation(summary = "Réservations d'un voyage", description = "Liste toutes les réservations associées à un voyage spécifique.")
     public ResponseEntity<List<ReservationResponse>> getReservationsVoyage(
-            @PathVariable Long voyageId) {
+            @PathVariable String voyageId) {
         return ResponseEntity.ok(
                 reservationService.getReservationsVoyage(voyageId)
                         .stream()
@@ -92,7 +92,7 @@ public class BookingController {
     @GetMapping("/history/{userId}")
     @Operation(summary = "Historique d'un voyageur", description = "Liste l'historique des réservations pour un utilisateur donné.")
     public ResponseEntity<List<ReservationResponse>> getHistorique(
-            @PathVariable Long userId) {
+            @PathVariable String userId) {
         return ResponseEntity.ok(
                 reservationService.getReservationsVoyageur(userId)
                         .stream()
@@ -115,7 +115,7 @@ public class BookingController {
     @GetMapping("/stats/{filialeId}")
     @Operation(summary = "Statistiques des réservations", description = "Retourne les métriques agrégées des réservations pour une filiale.")
     public ResponseEntity<ReservationStatsResponse> getStats(
-            @PathVariable Long filialeId,
+            @PathVariable String filialeId,
             @RequestParam String codeFiliale) {
 
         ReservationStatsResponse stats =
@@ -147,7 +147,7 @@ public class BookingController {
     @Operation(summary = "Annuler une réservation", description = "Annule une réservation existante en respectant les conditions (délai, statut).")
     public ResponseEntity<ReservationResponse> annuler(
             @PathVariable Long id,
-            @RequestParam Long idUtilisateur) {
+            @RequestParam String idUtilisateur) {
         return ResponseEntity.ok(
                 toResponse(reservationService.annulerReservation(id, idUtilisateur))
         );
@@ -295,8 +295,8 @@ public class BookingController {
     @PostMapping("/depart/cloturer")
     @Operation(summary = "Clôturer le départ", description = "Clôture le départ d'un voyage après validation de tous les billets.")
     public ResponseEntity<Map<String, Object>> cloturerDepart(
-            @RequestParam Long idVoyage,
-            @RequestParam Long idManager) {
+            @RequestParam String idVoyage,
+            @RequestParam String idManager) {
 
         Map<String, Object> resultat =
                 reservationService.cloturerDepart(idVoyage, idManager);
@@ -311,7 +311,7 @@ public class BookingController {
     @GetMapping("/fidelite/{idVoyageur}")
     @Operation(summary = "Compteur de fidélité", description = "Récupère le statut de fidélité et le nombre de voyages d'un client.")
     public ResponseEntity<Map<String, Object>> getFidelite(
-            @PathVariable Long idVoyageur,
+            @PathVariable String idVoyageur,
             @RequestParam String codeAgence) {
 
         int nombreVoyages   = fideliteService.getNombreVoyages(idVoyageur, codeAgence);

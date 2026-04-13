@@ -14,8 +14,8 @@ public class ReservationResponse {
     private Double           montantTotal;
     private CanalReservation canal;
     private String           devise;
-    private Long             idVoyage;
-    private Long             idVoyageur;
+    private String           idVoyage;
+    private String           idVoyageur;
     private LocalDateTime    dateReservation;
     private String           codeAgence;
     private String           codeFiliale;

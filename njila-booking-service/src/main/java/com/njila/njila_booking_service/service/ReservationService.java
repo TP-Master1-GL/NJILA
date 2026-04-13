@@ -52,13 +52,13 @@ public class ReservationService {
 
     @Transactional
     public Reservation creerReservation(
-            Long idVoyage,
-            Long idVoyageur,
+            String idVoyage,
+            String idVoyageur,
             int nombrePlaces,
             CanalReservation canal,
             String codeAgence,
             String codeFiliale,
-            Long idGuichetier,
+            String idGuichetier,
             CreerReservationRequest.TypeTarif typeTarif,
             List<CreerReservationRequest.MembreGroupeRequest> membres,
             String devise) {
@@ -163,7 +163,7 @@ public class ReservationService {
             Reservation reservation,
             VoyageData voyage,
             UserData voyageur,
-            Long idGuichetier,
+            String idGuichetier,
             String codeAgence,
             String codeFiliale) {
 
@@ -223,7 +223,7 @@ public class ReservationService {
 
     @Transactional
     public TicketEmbarquement confirmerPaiementEspeces(
-            Long bookingId, Long idGuichetier, Double montantEncaisse) {
+            Long bookingId, String idGuichetier, Double montantEncaisse) {
 
         Reservation reservation = reservationRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException(
@@ -406,7 +406,7 @@ public class ReservationService {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Transactional
-    public Reservation annulerReservation(Long bookingId, Long idUtilisateur) {
+    public Reservation annulerReservation(Long bookingId, String idUtilisateur) {
 
         Reservation reservation = reservationRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException(
@@ -464,7 +464,7 @@ public class ReservationService {
 
     @Transactional
     public TicketEmbarquement convertirBilletElectronique(
-            String numeroTicketElec, Long idGuichetier) {
+            String numeroTicketElec, String idGuichetier) {
 
         Ticket ticketBase = ticketRepository.findByNumeroTicket(numeroTicketElec)
                 .orElseThrow(() -> new RuntimeException(
@@ -529,7 +529,7 @@ public class ReservationService {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Transactional
-    public Ticket validerBilletDepart(String numeroBillet, Long idManager) {
+    public Ticket validerBilletDepart(String numeroBillet, String idManager) {
 
         Ticket ticket = ticketRepository.findByNumeroTicket(numeroBillet)
                 .orElseThrow(() -> new RuntimeException(
@@ -576,7 +576,7 @@ public class ReservationService {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Transactional
-    public Map<String, Object> cloturerDepart(Long idVoyage, Long idManager) {
+    public Map<String, Object> cloturerDepart(String idVoyage, String idManager) {
 
         List<Reservation> reservations = reservationRepository.findByIdVoyage(idVoyage);
 
@@ -683,11 +683,11 @@ public class ReservationService {
                         "Réservation introuvable : " + id));
     }
 
-    public List<Reservation> getReservationsVoyage(Long idVoyage) {
+    public List<Reservation> getReservationsVoyage(String idVoyage) {
         return reservationRepository.findByIdVoyage(idVoyage);
     }
 
-    public List<Reservation> getReservationsVoyageur(Long idVoyageur) {
+    public List<Reservation> getReservationsVoyageur(String idVoyageur) {
         return reservationRepository.findByIdVoyageur(idVoyageur);
     }
 }

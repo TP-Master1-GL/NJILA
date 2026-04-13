@@ -18,7 +18,7 @@ public class BookingEventPublisher {
     // ─── Déclenche le paiement après création réservation ─────────────────────
 
     public void publierBookingCreated(Long bookingId, Double montant, String devise,
-            Long voyageurId, Long voyageId) {
+            String voyageurId, String voyageId) {
         Map<String, Object> payload = Map.of(
                 "bookingId",  bookingId,
                 "montant",    montant,
@@ -36,7 +36,7 @@ public class BookingEventPublisher {
 
     // ─── Notifie notification-service après génération du billet ──────────────
 
-    public void publierTicketGenerated(Long userId, String email,
+    public void publierTicketGenerated(String userId, String email,
                                        String billetPdfBase64, String numeroTicket,
                                        String origine, String destination,
                                        String dateDepart) {
@@ -64,7 +64,7 @@ public class BookingEventPublisher {
     // Le payment-service écoute booking.refund.requested pour exécuter
     // le remboursement via l'opérateur (MTN Money, Orange Money…).
 
-    public void publierRemboursementDemande(Long bookingId, Long voyageurId,
+    public void publierRemboursementDemande(Long bookingId, String voyageurId,
                                             Double montant, String devise, String motif) {
         Map<String, Object> payload = Map.of(
                 "bookingId",  bookingId,
@@ -88,7 +88,7 @@ public class BookingEventPublisher {
     // voyage, un événement est émis pour que fleet-service marque le voyage
     // comme "PARTI" et que notification-service envoie un récapitulatif.
 
-    public void publierDepartVoyage(Long voyageId, Long idManager,
+    public void publierDepartVoyage(String voyageId, String idManager,
                                     int passagersEmbarques, int placesTotales) {
         Map<String, Object> payload = Map.of(
                 "voyageId",           voyageId,

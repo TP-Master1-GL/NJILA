@@ -16,7 +16,7 @@ public class TicketEmbarquement extends Ticket {
     private Long idTicketElectronique;
 
     // Guichetier qui a émis ce billet
-    private Long idGuichetier;
+    private String idGuichetier;
 
     @Override
     public String genererNumeroTicket() {

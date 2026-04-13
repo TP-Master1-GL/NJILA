@@ -14,7 +14,12 @@ import lombok.*;
 @Builder
 public class FilialeData {
     @Id
-    private String code;
+    private String id; // map to filiale_id (UUID)
+    private String agenceId;
     private String nom;
-    private String pays;
+    private String code;
+    private String ville;
+    private String adresse;
+    private String telephone;
+    private String email;
 }

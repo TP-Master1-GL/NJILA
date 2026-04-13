@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import AppRouter from "./router/AppRouter";
+import { useEffect } from "react";
+import { useThemeStore } from "./store/themeStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,6 +15,16 @@ const queryClient = new QueryClient({
 });
 
 export default function App() {
+  const { darkMode } = useThemeStore();
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [darkMode]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AppRouter />

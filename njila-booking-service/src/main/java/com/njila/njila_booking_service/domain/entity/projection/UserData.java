@@ -14,10 +14,14 @@ import lombok.*;
 @Builder
 public class UserData {
     @Id
-    private Long id;
+    private String id; // map to userId (UUID)
     private String nom;
-    private String prenom;
+    private String prenom; // maps to surname
     private String telephone;
     private String email;
+    private String adresse;
+    private String photoUrl;
     private String role;
+    private String agenceId;
+    private String filialeId;
 }

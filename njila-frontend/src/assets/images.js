@@ -1,3 +1,5 @@
+import AUTH_BG from "./concept-abstrait-du-systeme-controle-acces.png";
+
 // Image assets — using Unsplash for demo
 export const IMAGES = {
   DOUALA:     "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
@@ -13,4 +15,5 @@ export const IMAGES = {
   AGENCY_1:    "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&q=80",
   AGENCY_2:    "https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=600&q=80",
   AGENCY_3:    "https://images.unsplash.com/photo-1464219789935-c2d9d9aba644?w=600&q=80",
+  AUTH_BG,
 };

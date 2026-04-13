@@ -42,7 +42,7 @@ export default function SearchResultsPage() {
       `}</style>
 
       {/* Barre de recherche */}
-      <div className="bg-white border-b border-gray-200 py-4 sticky top-16 z-40">
+      <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 py-4 sticky top-16 z-40">
         <div className="max-w-7xl mx-auto px-4 flex items-center gap-3 flex-wrap">
           {/* Bouton retour */}
           <button
@@ -54,7 +54,7 @@ export default function SearchResultsPage() {
             </div>
           </button>
 
-          <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-xl text-sm">
+          <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-4 py-2 rounded-xl text-sm text-slate-700 dark:text-slate-200">
             <MapPin className="w-4 h-4 text-primary-600" />
             <span className="font-semibold">{recherche.origine}</span>
             <ArrowRight className="w-4 h-4 text-gray-400" />
@@ -80,12 +80,71 @@ export default function SearchResultsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8 flex gap-8">
+        {/* Filtres mobile toggle */}
+        <div className="lg:hidden fixed bottom-6 right-6 z-50">
+          <Button
+            onClick={() => setShowFilters(true)}
+            className="rounded-full shadow-2xl p-4 h-auto aspect-square flex items-center justify-center gap-2"
+          >
+            <SlidersHorizontal className="w-6 h-6" />
+            <span className="font-bold pr-2">Filtres</span>
+          </Button>
+        </div>
+
+        {/* Overlay Filtres Mobile */}
+        {showFilters && (
+          <div className="fixed inset-0 z-[60] lg:hidden">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFilters(false)} />
+            <div className="absolute bottom-0 inset-x-0 bg-white rounded-t-3xl p-6 shadow-2xl animate-fade-in-up">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-xl font-black text-gray-900">Affiner les résultats</h3>
+                <button onClick={() => setShowFilters(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <ArrowRight className="w-6 h-6 rotate-90" />
+                </button>
+              </div>
+              
+              <div className="space-y-8 pb-8">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Classe</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {["all", "VIP", "CLASSIC"].map(c => (
+                      <button key={c} onClick={() => setFiltres(f => ({ ...f, classe: c }))}
+                        className={`py-3 rounded-xl text-sm font-bold border transition-all ${
+                          filtres.classe === c ? "bg-primary-600 text-white border-primary-600 shadow-lg shadow-primary-600/20" : "border-gray-200 text-gray-600"
+                        }`}>
+                        {c === "all" ? "Tous" : c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Heure de départ</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[["Matin", "morning"], ["Après-midi", "afternoon"], ["Soir", "evening"], ["Nuit", "night"]].map(([l, v]) => (
+                      <button key={v} onClick={() => setFiltres(f => ({ ...f, heure: v }))}
+                        className={`py-3 rounded-xl text-sm font-bold border transition-all ${
+                          filtres.heure === v ? "bg-primary-600 text-white border-primary-600 shadow-lg shadow-primary-600/20" : "border-gray-200 text-gray-600"
+                        }`}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              <Button onClick={() => setShowFilters(false)} className="w-full py-4 text-lg">
+                Voir les {filtered.length} résultats
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Filtres desktop */}
         <aside className="w-64 flex-shrink-0 hidden lg:block">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 sticky top-36">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-6 sticky top-36">
             <div className="flex items-center gap-2 mb-6">
-              <SlidersHorizontal className="w-4 h-4 text-gray-600" />
-              <h3 className="font-bold text-gray-900">Filtres</h3>
+              <SlidersHorizontal className="w-4 h-4 text-gray-600 dark:text-slate-400" />
+              <h3 className="font-bold text-gray-900 dark:text-slate-100">Filtres</h3>
               <button className="ml-auto text-xs text-primary-600 hover:underline" onClick={() => setFiltres({ classe: "all", heure: "all" })}>Effacer</button>
             </div>
             <div className="space-y-6">
@@ -156,53 +215,58 @@ export default function SearchResultsPage() {
                 {filtered.map((voyage, idx) => (
                   <div
                     key={voyage.id}
-                    className="trip-card card-enter bg-white rounded-2xl border border-gray-200 p-6"
+                    className="trip-card card-enter bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-6"
                     style={{ animationDelay: `${idx * 50}ms` }}
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="w-12 h-12 bg-primary-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                          <span className="text-primary-600 font-extrabold text-xs">{voyage.codeAgence || "AG"}</span>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                      <div className="flex items-start gap-4 flex-1 w-full">
+                        <div className="w-14 h-14 bg-primary-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+                          <span className="text-primary-600 font-black text-sm">{voyage.codeAgence || "AG"}</span>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <p className="font-bold text-gray-900">{voyage.agenceNom || "Agence"}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-3 flex-wrap">
+                            <p className="font-bold text-gray-900 dark:text-slate-100 truncate">{voyage.agenceNom || "Agence"}</p>
                             <Badge variant={voyage.type === "VIP" ? "primary" : "gray"}>{voyage.type || "CLASSIC"}</Badge>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 bg-yellow-50 px-2 py-0.5 rounded-lg">
                               <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                              <span className="text-xs text-gray-500">4.5</span>
+                              <span className="text-[10px] font-bold text-yellow-700">4.5</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-2xl font-extrabold text-gray-900">{voyage.heureDepart?.slice(11,16) || "—"}</span>
-                            <div className="flex items-center gap-1 text-gray-400 text-xs">
-                              <div className="w-12 h-px bg-gray-300" />
-                              <span>Direct</span>
-                              <div className="w-12 h-px bg-gray-300" />
+                          <div className="flex items-center gap-2 sm:gap-6">
+                            <div className="text-center sm:text-left">
+                              <span className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-slate-100 leading-none">{voyage.heureDepart?.slice(11,16) || "—"}</span>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">Départ</p>
                             </div>
-                            <span className="text-2xl font-extrabold text-gray-900">{voyage.heureArrivee?.slice(11,16) || "—"}</span>
+                            <div className="flex-1 flex items-center gap-2 max-w-[80px]">
+                              <div className="h-px bg-gray-200 flex-1" />
+                              <Clock className="w-3 h-3 text-gray-300" />
+                              <div className="h-px bg-gray-200 flex-1" />
+                            </div>
+                            <div className="text-center sm:text-left">
+                              <span className="text-2xl sm:text-3xl font-black text-gray-900 leading-none">{voyage.heureArrivee?.slice(11,16) || "—"}</span>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">Arrivée</p>
+                            </div>
                           </div>
-                          <p className="text-xs text-gray-400 mt-1">{voyage.origine} → {voyage.destination}</p>
+                          <div className="mt-4 flex items-center gap-2 text-xs text-gray-500">
+                            <MapPin className="w-3 h-3" />
+                            <span className="truncate">{voyage.origine} → {voyage.destination}</span>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs text-gray-400 mb-1">À partir de</p>
-                        <p className="text-2xl font-extrabold text-primary-600">{formatMontant(voyage.prix || 5000)}</p>
-                        {voyage.placesDisponibles <= 5 ? (
-                          <p className="text-xs text-red-500 flex items-center gap-1 justify-end mt-1">
-                            <Users className="w-3 h-3" /> Plus que {voyage.placesDisponibles} places !
-                          </p>
-                        ) : (
-                          <p className="text-xs text-emerald-600 flex items-center gap-1 justify-end mt-1">
-                            <Users className="w-3 h-3" /> {voyage.placesDisponibles} places
-                          </p>
-                        )}
-                        <button
-                          onClick={() => handleBook(voyage)}
-                          className="mt-3 w-full bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-1"
-                        >
-                          Réserver <ArrowRight className="w-4 h-4" />
-                        </button>
+
+                      <div className="w-full sm:w-auto p-4 sm:p-0 bg-gray-50 sm:bg-transparent rounded-xl flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-4 border sm:border-0 border-gray-100">
+                        <div className="text-left sm:text-right">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase mb-0.5">Prix par siège</p>
+                          <p className="text-2xl font-black text-primary-600 leading-tight">{formatMontant(voyage.prix || 5000)}</p>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <button
+                            onClick={() => handleBook(voyage)}
+                            className="bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm px-6 py-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-primary-600/20"
+                          >
+                            Réserver <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

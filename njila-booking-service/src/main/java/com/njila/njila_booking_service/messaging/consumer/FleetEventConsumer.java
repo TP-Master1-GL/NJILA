@@ -39,16 +39,20 @@ public class FleetEventConsumer {
 
     private void handleJourneyEvent(Map<String, Object> event) {
         Map<String, Object> data = (Map<String, Object>) event.get("data");
+        String id = data.getOrDefault("Id_voyage", data.getOrDefault("id", "")).toString();
+        
         VoyageData voyage = VoyageData.builder()
-                .id(Long.valueOf(data.get("id").toString()))
-                .origine(data.get("origine").toString())
-                .destination(data.get("destination").toString())
-                .dateHeureDepart(LocalDateTime.parse(data.get("dateHeureDepart").toString()))
-                .prix(Double.valueOf(data.get("prix").toString()))
-                .placesDisponibles(Integer.valueOf(data.get("placesDisponibles").toString()))
-                .immatriculationBus(data.get("immatriculationBus").toString())
-                .codeAgence(data.get("codeAgence").toString())
-                .codeFiliale(data.get("codeFiliale").toString())
+                .id(id)
+                .origine(data.getOrDefault("Origine", data.getOrDefault("origine", "")).toString())
+                .destination(data.getOrDefault("Destination", data.getOrDefault("destination", "")).toString())
+                .dateHeureDepart(LocalDateTime.parse(data.get("DateHeureDepart") != null ? data.get("DateHeureDepart").toString() : data.get("dateHeureDepart").toString()))
+                .prix(Double.valueOf(data.getOrDefault("Prix", data.getOrDefault("prix", "0.0")).toString()))
+                .placesDisponibles(Integer.valueOf(data.getOrDefault("PlacesDisponibles", data.getOrDefault("placesDisponibles", "0")).toString()))
+                .immatriculationBus(data.getOrDefault("ImmatriculationBus", data.getOrDefault("immatriculationBus", "")).toString())
+                .typeVoyage(data.getOrDefault("TypeVoyage", data.getOrDefault("typeVoyage", "")).toString())
+                .status(data.getOrDefault("StatutVoyage", data.getOrDefault("status", "OUVERT")).toString())
+                .codeAgence(data.getOrDefault("Id_agence", data.getOrDefault("codeAgence", "")).toString())
+                .codeFiliale(data.getOrDefault("Id_filiale", data.getOrDefault("codeFiliale", "")).toString())
                 .build();
         voyageRepository.save(voyage);
         log.info("[FLEET-SYNC] Voyage synchronisé ID={}", voyage.getId());
@@ -56,24 +60,36 @@ public class FleetEventConsumer {
 
     private void handleAgencyEvent(Map<String, Object> event) {
         Map<String, Object> data = (Map<String, Object>) event.get("data");
+        String id = data.getOrDefault("Id_agence", data.getOrDefault("id", data.getOrDefault("code", ""))).toString();
+        
         AgenceData agence = AgenceData.builder()
-                .code(data.get("code").toString())
-                .nom(data.get("nom").toString())
-                .ville(data.get("ville").toString())
-                .logoUrl(data.get("logoUrl") != null ? data.get("logoUrl").toString() : null)
+                .id(id)
+                .nom(data.getOrDefault("Nom", data.getOrDefault("nom", "")).toString())
+                .adresse(data.getOrDefault("Adresse", data.getOrDefault("adresse", "")).toString())
+                .telephone(data.getOrDefault("Telephone", data.getOrDefault("telephone", "")).toString())
+                .emailOfficiel(data.getOrDefault("EmailOfficiel", data.getOrDefault("emailOfficiel", "")).toString())
+                .statutGlobal(data.getOrDefault("StatutGlobal", data.getOrDefault("statutGlobal", "ACTIF")).toString())
+                .logoUrl(data.get("logoUrl") != null ? data.get("logoUrl").toString() : (data.get("LogoUrl") != null ? data.get("LogoUrl").toString() : null))
                 .build();
         agenceRepository.save(agence);
-        log.info("[FLEET-SYNC] Agence synchronisée Code={}", agence.getCode());
+        log.info("[FLEET-SYNC] Agence synchronisée ID={}", agence.getId());
     }
 
     private void handleSubsidiaryEvent(Map<String, Object> event) {
         Map<String, Object> data = (Map<String, Object>) event.get("data");
+        String id = data.getOrDefault("Id_filiale", data.getOrDefault("id", data.getOrDefault("code", ""))).toString();
+        
         FilialeData filiale = FilialeData.builder()
-                .code(data.get("code").toString())
-                .nom(data.get("nom").toString())
-                .pays(data.get("pays").toString())
+                .id(id)
+                .agenceId(data.getOrDefault("Id_agence", "").toString())
+                .nom(data.getOrDefault("Nom", data.getOrDefault("nom", "")).toString())
+                .code(data.getOrDefault("Code", data.getOrDefault("code", "")).toString())
+                .ville(data.getOrDefault("Ville", data.getOrDefault("ville", "")).toString())
+                .adresse(data.getOrDefault("Adresse", data.getOrDefault("adresse", "")).toString())
+                .telephone(data.getOrDefault("Telephone", "").toString())
+                .email(data.getOrDefault("Email", "").toString())
                 .build();
         filialeRepository.save(filiale);
-        log.info("[FLEET-SYNC] Filiale synchronisée Code={}", filiale.getCode());
+        log.info("[FLEET-SYNC] Filiale synchronisée ID={}", filiale.getId());
     }
 }

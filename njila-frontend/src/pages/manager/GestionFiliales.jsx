@@ -47,57 +47,119 @@ export default function GestionFiliales() {
     managerNom: "", managerPrenom: "", managerEmail: "", managerTelephone: "",
   });
 
+  const agenceId = user?.agenceId;
   const planActuel = user?.plan || "MENSUEL";
   const limiteFililaes = PLANS_LIMITES[planActuel] || 3;
 
   const { data: filiales, isLoading } = useQuery({
-    queryKey: ["filiales"],
-    queryFn: filialeService.getFiliales,
+    queryKey: ["filiales", agenceId],
+    queryFn: () => filialeService.getFiliales({ agence_id: agenceId }),
+    enabled: !!agenceId,
     retry: 1,
-    // Fallback sur données mock si API indisponible
-    placeholderData: MOCK_FILIALES,
   });
 
   const filialeListe = filiales?.length ? filiales : MOCK_FILIALES;
 
   const { mutate: creerFiliale, isPending } = useMutation({
-    mutationFn: filialeService.creerFiliale,
+    mutationFn: (payload) => filialeService.creerFiliale({ ...payload, agence: agenceId }),
     onSuccess: () => {
       toast.success("Filiale créée avec succès !");
       qc.invalidateQueries({ queryKey: ["filiales"] });
       setIsModalOpen(false);
-      setForm({ nom: "", ville: "Douala", adresse: "", managerNom: "", managerPrenom: "", managerEmail: "", managerTelephone: "" });
+      setForm({ nom: "", code: "", ville: "Douala", adresse: "", managerNom: "", managerPrenom: "", managerEmail: "", managerTelephone: "" });
     },
-    onError: () => toast.error("Erreur lors de la création de la filiale."),
+    onError: (err) => toast.error(err.response?.data?.error || "Erreur lors de la création de la filiale."),
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.nom || !form.managerEmail) return toast.error("Nom et email manager requis.");
+    if (!form.nom || !form.managerEmail || !form.code) return toast.error("Nom, Code et email manager requis.");
     creerFiliale(form);
   };
 
   const totalRecettes = filialeListe.reduce((s, f) => s + (f.recettes || 0), 0);
+  const totalBus = filialeListe.reduce((s, f) => s + (f.nb_bus || 0), 0);
 
-  // Génération rapport PDF
+  // Génération rapport PDF enrichi
   const handlePDF = () => {
+    const maxRecettes = Math.max(...filialeListe.map(f => f.recettes || 1), 1);
+    
+    const svgChart = filialeListe.map((f, i) => {
+      const h = ((f.recettes || 0) / maxRecettes) * 80;
+      const x = i * 60 + 50;
+      return `
+        <rect x="${x}" y="${100 - h}" width="30" height="${h}" fill="#135bec" rx="3" />
+        <text x="${x + 15}" y="115" font-size="8" text-anchor="middle" transform="rotate(-30, ${x + 15}, 115)">${f.nom.slice(0, 10)}</text>
+      `;
+    }).join("");
+
     const content = `
-      <html><head><title>Rapport Filiales – ${user?.agenceNom || "Mon Agence"}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;font-size:12px}
-      h1{color:#135bec}table{width:100%;border-collapse:collapse}
-      th,td{border:1px solid #e2e8f0;padding:8px;text-align:left}
-      th{background:#135bec;color:white}</style></head><body>
-      <h1>Rapport des Filiales</h1>
-      <p>Agence : ${user?.agenceNom || "—"} | Date : ${new Date().toLocaleDateString("fr-FR")}</p>
-      <p>Total recettes : ${formatMontant(totalRecettes)}</p>
-      <table><tr><th>Filiale</th><th>Ville</th><th>Manager</th><th>Bus</th><th>Voyages</th><th>Taux</th><th>Recettes</th></tr>
-      ${filialeListe.map(f => `<tr><td>${f.nom}</td><td>${f.ville}</td><td>${f.manager||"—"}</td><td>${f.bus}</td><td>${f.voyages}</td><td>${f.taux}%</td><td>${formatMontant(f.recettes)}</td></tr>`).join("")}
-      </table></body></html>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Rapport Analytique - ${user?.agenceNom || "NJILA"}</title>
+        <style>
+          body { font-family: 'Inter', sans-serif; padding: 40px; color: #1e293b; background: #fff; }
+          .header { border-bottom: 2px solid #f1f5f9; pb: 20px; mb: 30px; display: flex; justify-content: space-between; }
+          .brand { color: #135bec; font-size: 24px; font-weight: 800; }
+          .stats-grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 15px; margin: 30px 0; }
+          .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 12px; }
+          .stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; }
+          .stat-value { font-size: 18px; font-weight: 800; color: #0f172a; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background: #f8fafc; text-align: left; padding: 12px; font-size: 11px; color: #64748b; border-bottom: 1px solid #e2e8f0; }
+          td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+          .chart-box { border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; margin: 30px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div><div class="brand">NJILA</div><p style="font-size:12px; color:#64748b">Système de gestion interurbain</p></div>
+          <div style="text-align:right"><h1>Rapport Agence</h1><p>${new Date().toLocaleDateString("fr-FR")}</p></div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Total Filiales</div><div class="stat-value">${filialeListe.length}</div></div>
+          <div class="stat-card"><div class="stat-label">Bus en service</div><div class="stat-value">${totalBus}</div></div>
+          <div class="stat-card"><div class="stat-label">Recettes totales</div><div class="stat-value">${formatMontant(totalRecettes)}</div></div>
+          <div class="stat-card"><div class="stat-label">Performance</div><div class="stat-value">+12.5%</div></div>
+        </div>
+
+        <div class="chart-box">
+          <h3 style="margin-top:0">Recettes par filiale (Vue comparative)</h3>
+          <svg width="600" height="150" viewBox="0 0 600 150">
+            <line x1="40" y1="100" x2="560" y2="100" stroke="#e2e8f0" stroke-width="1" />
+            ${svgChart}
+          </svg>
+        </div>
+
+        <h2>Détails par filiale</h2>
+        <table>
+          <thead>
+            <tr><th>Nom</th><th>Ville</th><th>Email</th><th>Bus</th><th>Voyages</th><th>Recettes</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            ${filialeListe.map(f => `
+              <tr>
+                <td><strong>${f.nom}</strong></td>
+                <td>${f.ville}</td>
+                <td>${f.email || "—"}</td>
+                <td>${f.nb_bus || 0}</td>
+                <td>${f.voyages || 0}</td>
+                <td>${formatMontant(f.recettes || 0)}</td>
+                <td style="color: ${f.est_active !== false ? '#10b981' : '#dc2626'} font-weight:bold">${f.est_active !== false ? "Active" : "Inactive"}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+        <p style="margin-top:40px; font-size:10px; color:#94a3b8; text-align:center">Document confidentiel généré automatiquement par NJILA Cloud</p>
+      </body>
+      </html>
     `;
     const win = window.open("", "_blank");
     win.document.write(content);
     win.document.close();
-    win.print();
+    setTimeout(() => win.print(), 500);
   };
 
   return (

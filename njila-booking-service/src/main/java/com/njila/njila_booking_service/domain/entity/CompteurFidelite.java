@@ -17,7 +17,7 @@ public class CompteurFidelite {
     private Long id;
 
     @Column(name = "id_voyageur", nullable = false)
-    private Long idVoyageur;
+    private String idVoyageur;
 
     @Column(name = "code_agence", nullable = false)
     private String codeAgence;

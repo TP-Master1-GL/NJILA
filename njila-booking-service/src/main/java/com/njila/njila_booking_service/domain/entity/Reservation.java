@@ -39,13 +39,13 @@ public class Reservation {
 
     // ─── Références externes (IDs des autres services) ────────────────────────
     @Column(nullable = false)
-    private Long idVoyage;
+    private String idVoyage;
 
     @Column(nullable = false)
-    private Long idVoyageur;
+    private String idVoyageur;
 
     // Null si réservation en ligne
-    private Long idGuichetier;
+    private String idGuichetier;
 
     // Code agence mère ex: GEN, BNM — pour génération numéro billet
     @Column(nullable = false)

@@ -18,7 +18,7 @@ public class HistoriqueReservation {
     @JoinColumn(name = "id_reservation", nullable = false)
     private Reservation reservation;
 
-    private Long idUtilisateur;
+    private String idUtilisateur;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -36,7 +36,7 @@ public class HistoriqueReservation {
 
     public static HistoriqueReservation creer(Reservation reservation,
                                                 TypeAction action,
-                                                Long idUtilisateur,
+                                                String idUtilisateur,
                                                 String details) {
         return HistoriqueReservation.builder()
                 .reservation(reservation)

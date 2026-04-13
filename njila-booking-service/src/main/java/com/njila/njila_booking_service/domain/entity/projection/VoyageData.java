@@ -16,13 +16,15 @@ import java.time.LocalDateTime;
 @Builder
 public class VoyageData {
     @Id
-    private Long id;
+    private String id; // map to voyage_id (UUID)
     private String origine;
     private String destination;
     private LocalDateTime dateHeureDepart;
     private Double prix;
     private Integer placesDisponibles;
     private String immatriculationBus;
+    private String typeVoyage;
+    private String status;
     private String codeAgence;
     private String codeFiliale;
 }

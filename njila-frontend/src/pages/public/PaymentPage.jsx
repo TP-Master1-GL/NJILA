@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle, Download, Printer, Share2, Phone } from "lucide-react";
+import { CheckCircle, Download, Printer, Share2, Phone, ArrowLeft } from "lucide-react";
 import { useBookingStore } from "../../store/bookingStore";
 import { useAuthStore } from "../../store/authStore";
 import { bookingService } from "../../services/bookingService";
@@ -159,8 +159,25 @@ export default function PaymentPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-4 py-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 transition-colors group"
+          >
+            <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 rounded-xl flex items-center justify-center transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </div>
+            <span className="text-sm font-semibold">Retour à l'étape précédente</span>
+          </button>
+          <div className="text-sm font-medium text-gray-700 dark:text-slate-200 hidden sm:block">
+            Paiement sécurisé
+          </div>
+        </div>
+      </div>
+
       {/* Stepper */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+      <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-4 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-center gap-4">
           {[["1", "Sélection"], ["2", "Passager"], ["3", "Paiement & Billet"]].map(([n, l], i) => (
             <div key={n} className="flex items-center gap-2">

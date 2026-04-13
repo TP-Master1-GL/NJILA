@@ -56,9 +56,9 @@ class ReservationServiceTest {
     @BeforeEach
     void setUp() {
         voyageData = VoyageData.builder()
-                .id(1L)
+                .id("voyage-1")
                 .prix(5000.0)
-                .origine("YaoundÃ©")
+                .origine("Yaoundé")
                 .destination("Douala")
                 .dateHeureDepart(LocalDateTime.parse("2026-04-01T08:00:00"))
                 .immatriculationBus("LT-1234-A")
@@ -66,7 +66,7 @@ class ReservationServiceTest {
                 .build();
 
         userData = UserData.builder()
-                .id(1L)
+                .id("user-1")
                 .nom("NGUEMBU")
                 .prenom("John")
                 .email("john@njila.cm")
@@ -77,7 +77,7 @@ class ReservationServiceTest {
 
     private Reservation buildReservation() {
         return Reservation.builder()
-                .idVoyage(1L).idVoyageur(1L)
+                .idVoyage("voyage-1").idVoyageur("user-1")
                 .nombrePlaces(1).canal(CanalReservation.WEB)
                 .codeAgence("GEN").codeFiliale("BYDE")
                 .statut(StatutReservation.EN_ATTENTE)
@@ -95,32 +95,32 @@ class ReservationServiceTest {
         Reservation saved = buildReservation();
         saved.setId(1L);
 
-        when(voyageDataRepository.findById(1L)).thenReturn(Optional.of(voyageData));
+        when(voyageDataRepository.findById("voyage-1")).thenReturn(Optional.of(voyageData));
         when(reservationRepository.save(any())).thenReturn(saved);
-        when(lockManager.acquerirVerrou(1L, 1L, 1L)).thenReturn(true);
-        when(userDataRepository.findById(1L)).thenReturn(Optional.of(userData));
+        when(lockManager.acquerirVerrou("voyage-1", "user-1", 1L)).thenReturn(true);
+        when(userDataRepository.findById("user-1")).thenReturn(Optional.of(userData));
         when(prixStandard.calculerPrix(any(), eq(5000.0), eq(1))).thenReturn(5000.0);
         when(historiqueRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         Reservation result = reservationService.creerReservation(
-                1L, 1L, 1, CanalReservation.WEB,
+                "voyage-1", "user-1", 1, CanalReservation.WEB,
                 "GEN", "BYDE", null,
                 CreerReservationRequest.TypeTarif.STANDARD, null, "XAF");
 
         assertThat(result).isNotNull();
         assertThat(result.getStatut()).isEqualTo(StatutReservation.EN_ATTENTE);
-        verify(eventPublisher).publierBookingCreated(1L, 5000.0, "XAF", 1L, 1L);
-        verify(lockManager).acquerirVerrou(1L, 1L, 1L);
+        verify(eventPublisher).publierBookingCreated(1L, 5000.0, "XAF", "user-1", "voyage-1");
+        verify(lockManager).acquerirVerrou("voyage-1", "user-1", 1L);
     }
 
     @Test
     void creerReservation_placesInsuffisantes_leveException() {
         voyageData.setPlacesDisponibles(2);
-        when(voyageDataRepository.findById(1L)).thenReturn(Optional.of(voyageData));
+        when(voyageDataRepository.findById("voyage-1")).thenReturn(Optional.of(voyageData));
 
         assertThatThrownBy(() ->
                 reservationService.creerReservation(
-                        1L, 1L, 3, CanalReservation.WEB,
+                        "voyage-1", "user-1", 3, CanalReservation.WEB,
                         "GEN", "BYDE", null,
                         CreerReservationRequest.TypeTarif.STANDARD, null, "XAF"))
                 .isInstanceOf(RuntimeException.class)
@@ -132,17 +132,17 @@ class ReservationServiceTest {
         Reservation saved = buildReservation();
         saved.setId(1L);
 
-        when(voyageDataRepository.findById(1L)).thenReturn(Optional.of(voyageData));
+        when(voyageDataRepository.findById("voyage-1")).thenReturn(Optional.of(voyageData));
         when(reservationRepository.save(any())).thenReturn(saved);
         when(lockManager.acquerirVerrou(any(), any(), any())).thenReturn(false);
 
         assertThatThrownBy(() ->
                 reservationService.creerReservation(
-                        1L, 1L, 1, CanalReservation.WEB,
+                        "voyage-1", "user-1", 1, CanalReservation.WEB,
                         "GEN", "BYDE", null,
                         CreerReservationRequest.TypeTarif.STANDARD, null, "XAF"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("rÃ©servation est dÃ©jÃ  en cours");
+                .hasMessageContaining("réservation est déjà en cours");
 
         verify(reservationRepository).delete(saved);
     }
@@ -153,10 +153,10 @@ class ReservationServiceTest {
         saved.setId(1L);
         saved.setCanal(CanalReservation.GUICHET);
 
-        when(voyageDataRepository.findById(1L)).thenReturn(Optional.of(voyageData));
+        when(voyageDataRepository.findById("voyage-1")).thenReturn(Optional.of(voyageData));
         when(reservationRepository.save(any())).thenReturn(saved);
         when(lockManager.acquerirVerrou(any(), any(), any())).thenReturn(true);
-        when(userDataRepository.findById(1L)).thenReturn(Optional.of(userData));
+        when(userDataRepository.findById("user-1")).thenReturn(Optional.of(userData));
         when(prixStandard.calculerPrix(any(), anyDouble(), anyInt())).thenReturn(5000.0);
         when(historiqueRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(ticketNumberGenerator.genererBilletEmbarquement("GEN", "BYDE"))
@@ -170,13 +170,13 @@ class ReservationServiceTest {
         when(ticketRepository.save(any())).thenReturn(ticketEmb);
 
         reservationService.creerReservation(
-                1L, 1L, 1, CanalReservation.GUICHET,
-                "GEN", "BYDE", 1L,
+                "voyage-1", "user-1", 1, CanalReservation.GUICHET,
+                "GEN", "BYDE", "guichet-1",
                 CreerReservationRequest.TypeTarif.STANDARD, null, "XAF");
 
         verify(eventPublisher, never()).publierBookingCreated(any(), any(), any(), any(), any());
         verify(ticketRepository).save(any());
-        verify(fideliteService).incrementer(1L, "GEN");
+        verify(fideliteService).incrementer("user-1", "GEN");
     }
 
     // âââ confirmerPaiementEspeces (CORRECTION PATCH /confirm) âââââââââââââââââ
@@ -189,8 +189,8 @@ class ReservationServiceTest {
 
         when(reservationRepository.findById(1L)).thenReturn(Optional.of(reservation));
         when(reservationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(voyageDataRepository.findById(1L)).thenReturn(Optional.of(voyageData));
-        when(userDataRepository.findById(1L)).thenReturn(Optional.of(userData));
+        when(voyageDataRepository.findById("voyage-1")).thenReturn(Optional.of(voyageData));
+        when(userDataRepository.findById("user-1")).thenReturn(Optional.of(userData));
         when(ticketNumberGenerator.genererBilletEmbarquement("GEN", "BYDE"))
                 .thenReturn("GEN-EMB-20260321-BYDE-000001");
 
@@ -203,11 +203,11 @@ class ReservationServiceTest {
         when(historiqueRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         TicketEmbarquement result = reservationService
-                .confirmerPaiementEspeces(1L, 99L, 5000.0);
+                .confirmerPaiementEspeces(1L, "guichet-1", 5000.0);
 
         assertThat(result.getNumeroTicket()).isEqualTo("GEN-EMB-20260321-BYDE-000001");
         assertThat(reservation.getStatut()).isEqualTo(StatutReservation.PAYEE);
-        verify(fideliteService).incrementer(1L, "GEN");
+        verify(fideliteService).incrementer("user-1", "GEN");
         verify(eventPublisher).publierTicketGenerated(
                 any(), any(), any(), any(), any(), any(), any());
     }
@@ -221,7 +221,7 @@ class ReservationServiceTest {
         when(reservationRepository.findById(1L)).thenReturn(Optional.of(reservation));
 
         assertThatThrownBy(() ->
-                reservationService.confirmerPaiementEspeces(1L, 99L, 5000.0))
+                reservationService.confirmerPaiementEspeces(1L, "guichet-1", 5000.0))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("EN_ATTENTE");
     }
@@ -231,7 +231,7 @@ class ReservationServiceTest {
         when(reservationRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                reservationService.confirmerPaiementEspeces(99L, 1L, 5000.0))
+                reservationService.confirmerPaiementEspeces(99L, "user-1", 5000.0))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("introuvable");
     }
@@ -250,11 +250,11 @@ class ReservationServiceTest {
         when(paiementRepository.findByReservationId(1L)).thenReturn(Optional.empty());
         when(historiqueRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        reservationService.annulerReservation(1L, 1L);
+        reservationService.annulerReservation(1L, "user-1");
 
         assertThat(reservation.getStatut()).isEqualTo(StatutReservation.ANNULEE);
         verify(eventPublisher).publierRemboursementDemande(
-                eq(1L), eq(1L), eq(5000.0), anyString(), anyString());
+                eq(1L), eq("user-1"), eq(5000.0), anyString(), anyString());
     }
 
     // âââ validerBilletDepart â NOUVEAU UC-B7 âââââââââââââââââââââââââââââââââ
@@ -278,7 +278,7 @@ class ReservationServiceTest {
         when(historiqueRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         Ticket result = reservationService.validerBilletDepart(
-                "GEN-EMB-20260401-BYDE-000001", 10L);
+                "GEN-EMB-20260401-BYDE-000001", "manager-1");
 
         assertThat(result.getStatut()).isEqualTo(StatutTicket.EMBARQUEE);
         assertThat(result.getUtilise()).isTrue();
@@ -301,15 +301,15 @@ class ReservationServiceTest {
         r3.setStatut(StatutReservation.ANNULEE);
         r3.setNombrePlaces(1);
 
-        when(reservationRepository.findByIdVoyage(1L))
+        when(reservationRepository.findByIdVoyage("voyage-1"))
                 .thenReturn(List.of(r1, r2, r3));
 
-        Map<String, Object> result = reservationService.cloturerDepart(1L, 10L);
+        Map<String, Object> result = reservationService.cloturerDepart("voyage-1", "manager-1");
 
         assertThat(result.get("passagersEmbarques")).isEqualTo(2L);
         assertThat(result.get("statut")).isEqualTo("DEPART_CLOTURE");
 
-        verify(eventPublisher).publierDepartVoyage(eq(1L), eq(10L), eq(2), anyInt());
+        verify(eventPublisher).publierDepartVoyage(eq("voyage-1"), eq("manager-1"), eq(2), anyInt());
     }
 
     // getStatsFiliale â€” CORRECTION stats
@@ -345,8 +345,8 @@ class ReservationServiceTest {
         when(reservationRepository.findById(1L)).thenReturn(Optional.of(reservation));
         when(reservationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(paiementRepository.findByReservationId(1L)).thenReturn(Optional.empty());
-        when(voyageDataRepository.findById(1L)).thenReturn(Optional.of(voyageData));
-        when(userDataRepository.findById(1L)).thenReturn(Optional.of(userData));
+        when(voyageDataRepository.findById("voyage-1")).thenReturn(Optional.of(voyageData));
+        when(userDataRepository.findById("user-1")).thenReturn(Optional.of(userData));
         when(ticketNumberGenerator.genererBilletElectronique("GEN", "BYDE"))
                 .thenReturn("GEN-WEB-20260321-BYDE-000001");
 
@@ -368,8 +368,8 @@ class ReservationServiceTest {
         reservationService.confirmerApresPaiement(1L, "TXN-001");
 
         assertThat(reservation.getStatut()).isEqualTo(StatutReservation.PAYEE);
-        verify(fideliteService).incrementer(1L, "GEN");
-        verify(lockManager).libererVerrou(1L, 1L);
+        verify(fideliteService).incrementer("user-1", "GEN");
+        verify(lockManager).libererVerrou("voyage-1", "user-1");
     }
 
     //  Helpers 

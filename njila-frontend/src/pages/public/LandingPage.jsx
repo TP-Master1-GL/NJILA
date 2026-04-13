@@ -93,18 +93,39 @@ export default function LandingPage() {
             </div>
 
             {/* Mobile burger */}
-            <button onClick={() => setNavOpen(!navOpen)} className="md:hidden p-2">
-              <span className="material-icons text-slate-600">{navOpen ? "close" : "menu"}</span>
+            <button onClick={() => setNavOpen(!navOpen)} className="md:hidden p-2 text-[#135bec] hover:bg-slate-50 rounded-lg transition-colors">
+              <span className="material-icons">{navOpen ? "close" : "menu"}</span>
             </button>
           </div>
         </div>
-        {navOpen && (
-          <div className="md:hidden bg-white border-t border-slate-100 px-4 py-4 space-y-3">
-            <Link to="/recherche" className="block text-sm font-medium text-slate-700 py-2">Trajets</Link>
-            <Link to="/login"     className="block text-sm font-medium text-slate-700 py-2">Se connecter</Link>
-            <Link to="/register"  className="block w-full text-center bg-[#135bec] text-white font-bold py-3 rounded-lg">S'inscrire</Link>
+
+        {/* Mobile menu content overlay */}
+        <div className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out bg-white border-t border-slate-100 ${navOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}>
+          <div className="px-4 py-6 space-y-4">
+            <Link to="/recherche" onClick={() => setNavOpen(false)} className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all">
+              <span className="material-icons text-xl text-slate-400">directions_bus</span> Trajets
+            </Link>
+            <a href="#agences" onClick={() => setNavOpen(false)} className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all">
+              <span className="material-icons text-xl text-slate-400">business</span> Agences
+            </a>
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              {isAuthenticated ? (
+                <button onClick={() => { logout(); setNavOpen(false); }} className="w-full flex items-center gap-3 text-sm font-bold text-red-500 p-2">
+                  <span className="material-icons">logout</span> Déconnexion
+                </button>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setNavOpen(false)} className="block w-full text-center text-sm font-bold text-slate-700 py-3 rounded-xl border border-slate-200">
+                    Se connecter
+                  </Link>
+                  <Link to="/register" onClick={() => setNavOpen(false)} className="block w-full text-center text-sm font-bold bg-[#135bec] text-white py-4 rounded-xl shadow-lg shadow-[#135bec]/20">
+                    S'inscrire gratuitement
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </nav>
 
       {/* ── HERO ────────────────────────────────────────────────────────── */}
