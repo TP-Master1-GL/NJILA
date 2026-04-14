@@ -102,6 +102,18 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
         Filiale filiale = filialeRepository.findById(filialeId)
             .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
 
+        // ✅ VÉRIFICATION POUR MANAGER_GLOBAL : la filiale doit appartenir à son agence
+        if (caller.getRole() == Role.MANAGER_GLOBAL) {
+            if (caller.getAgenceId() == null) {
+                throw new ForbiddenException("ManagerGlobal sans agence associée.");
+            }
+            if (!filiale.getAgenceId().equals(caller.getAgenceId())) {
+                throw new ForbiddenException("Cette filiale n'appartient pas à votre agence.");
+            }
+            log.info("[MANAGER_LOCAL] ManagerGlobal crée un guichetier | mgAgenceId={} filialeAgenceId={}", 
+                     caller.getAgenceId(), filiale.getAgenceId());
+        }
+
         UUID newUserId = UUID.randomUUID();
         String tempPassword = "0000";
 
@@ -152,11 +164,12 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
             filiale.getAgenceId().toString(),
             filialeId.toString(),
             caller.getUserId().toString(),
-            getCallerFullName(caller)          // ← corrigé
+            getCallerFullName(caller)
         );
 
-        log.info("[MANAGER_LOCAL] Guichetier créé | userId={} filialeId={} agenceId={} par ml={}",
-                 newUserId, filialeId, filiale.getAgenceId(), caller.getUserId());
+        log.info("[MANAGER_LOCAL] Guichetier créé | userId={} filialeId={} agenceId={} par {}={}",
+                 newUserId, filialeId, filiale.getAgenceId(),
+                 caller.getRole(), caller.getUserId());
     }
 
     // ── CRÉATION CHAUFFEUR ──────────────────────────────────────────────────
@@ -174,6 +187,18 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
 
         Filiale filiale = filialeRepository.findById(filialeId)
             .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
+
+        // ✅ VÉRIFICATION POUR MANAGER_GLOBAL : la filiale doit appartenir à son agence
+        if (caller.getRole() == Role.MANAGER_GLOBAL) {
+            if (caller.getAgenceId() == null) {
+                throw new ForbiddenException("ManagerGlobal sans agence associée.");
+            }
+            if (!filiale.getAgenceId().equals(caller.getAgenceId())) {
+                throw new ForbiddenException("Cette filiale n'appartient pas à votre agence.");
+            }
+            log.info("[MANAGER_LOCAL] ManagerGlobal crée un chauffeur | mgAgenceId={} filialeAgenceId={}", 
+                     caller.getAgenceId(), filiale.getAgenceId());
+        }
 
         UUID newUserId = UUID.randomUUID();
         String tempPassword = "0000";
@@ -220,17 +245,18 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
         notificationEventPublisher.publishStaffCreated(
             newUserId.toString(),
             email,
-            Role.CHAUFFEUR.name(),              // ← corrigé (était GUICHETIER)
+            Role.CHAUFFEUR.name(),
             request.getName().strip(),
             request.getSurname().strip(),
             filiale.getAgenceId().toString(),
             filialeId.toString(),
             caller.getUserId().toString(),
-            getCallerFullName(caller)            // ← corrigé
+            getCallerFullName(caller)
         );
 
-        log.info("[MANAGER_LOCAL] Chauffeur créé | userId={} filialeId={} agenceId={} par ml={}",
-                 newUserId, filialeId, filiale.getAgenceId(), caller.getUserId());
+        log.info("[MANAGER_LOCAL] Chauffeur créé | userId={} filialeId={} agenceId={} par {}={}",
+                 newUserId, filialeId, filiale.getAgenceId(),
+                 caller.getRole(), caller.getUserId());
     }
 
     // ── SUPPRESSION EMPLOYÉ ─────────────────────────────────────────────────
@@ -249,7 +275,8 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
         roleManager.assertCanDeleteUser(caller, employe);
         userRepository.delete(employe);
 
-        log.info("[MANAGER_LOCAL] Employé supprimé | employeId={} par ml={}", employeId, caller.getUserId());
+        log.info("[MANAGER_LOCAL] Employé supprimé | employeId={} par {}={}", 
+                 employeId, caller.getRole(), caller.getUserId());
     }
 
     // ── MAPPER ──────────────────────────────────────────────────────────────

@@ -26,6 +26,15 @@ public class Agence {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "adresse", length = 500)
+    private String adresse;
+
+    @Column(name = "telephone", length = 50)
+    private String telephone;
+
+    @Column(name = "email_officiel", length = 200)
+    private String emailOfficiel;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean isActive = true;

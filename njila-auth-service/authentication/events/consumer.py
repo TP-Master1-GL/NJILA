@@ -66,8 +66,8 @@ class EventConsumer:
                         username=getattr(settings, "RABBITMQ_USER", "guest"),
                         password=getattr(settings, "RABBITMQ_PASS", "guest"),
                     ),
-                    heartbeat=30,  # ← 30 secondes au lieu de 600
-                    blocked_connection_timeout=30,  # ← 30 secondes
+                    heartbeat=30,
+                    blocked_connection_timeout=30,
                     connection_attempts=3,
                     retry_delay=2,
                 )
@@ -92,8 +92,8 @@ class EventConsumer:
                     (QUEUE_USER_REGISTERED, EXCHANGE_USER, "user.registered"),
                     (QUEUE_USER_UPDATED,    EXCHANGE_USER, "user.updated"),
                     (QUEUE_STAFF_TO_AUTH,   EXCHANGE_USER, "staff.to.auth"),
-                    (QUEUE_SUBSCRIPTION_EXPIRED, EXCHANGE_SUBSCRIBE, "subscription.expired"),
-                    (QUEUE_SUBSCRIPTION_RENEWED, EXCHANGE_SUBSCRIBE, "subscription.renewed"),
+                    (QUEUE_SUBSCRIPTION_EXPIRED, EXCHANGE_SUBSCRIBE, "subscribe.expired"),
+                    (QUEUE_SUBSCRIPTION_RENEWED, EXCHANGE_SUBSCRIBE, "subscribe.activated"),
                 ]
 
                 for queue_name, exchange, routing_key in queues:
@@ -130,7 +130,6 @@ class EventConsumer:
                 if self._should_run:
                     logger.info("[CONSUMER] Reconnexion dans 5 secondes...")
                     time.sleep(5)
-                # Continue la boucle
 
     def _dispatch(self, ch, method, properties, body):
         routing_key = method.routing_key
@@ -150,9 +149,9 @@ class EventConsumer:
                 self._handle_user_updated(data)
             elif routing_key == "staff.to.auth":      
                 self._handle_staff_to_auth(data)
-            elif routing_key == "subscription.expired":
+            elif routing_key == "subscribe.expired":      # ✅ CORRIGÉ
                 self._handle_subscription_expired(data)
-            elif routing_key == "subscription.renewed":
+            elif routing_key == "subscribe.activated":    # ✅ CORRIGÉ
                 self._handle_subscription_renewed(data)
             else:
                 logger.warning("[CONSUMER] Routing key inconnue : %s", routing_key)
@@ -197,13 +196,18 @@ class EventConsumer:
     # ── Handlers abonnement ───────────────────────────────────────────────────
 
     def _handle_subscription_expired(self, data: dict):
+        """
+        Gère l'expiration d'un abonnement.
+        Routing key attendue: subscribe.expired
+        """
         agence_id = data.get("agenceId")
         if not agence_id:
-            logger.error("[CONSUMER] subscription.expired : agenceId manquant")
+            logger.error("[CONSUMER] subscribe.expired : agenceId manquant")
             return
 
-        expires_at = data.get("expiresAt", "?")
-        message    = data.get("message", "Abonnement expiré")
+        date_expiration = data.get("dateExpiration", "?")
+        plan = data.get("plan", "?")
+        agence_nom = data.get("agenceNom", "?")
 
         repo  = AuthRepository()
         cache = RedisSessionCache()
@@ -212,8 +216,8 @@ class EventConsumer:
 
         if not user_ids:
             logger.info(
-                "[CONSUMER] subscription.expired | agence=%s — aucun user actif à désactiver",
-                agence_id,
+                "[CONSUMER] subscribe.expired | agence=%s (%s) — aucun user actif à désactiver",
+                agence_id, agence_nom,
             )
             return
 
@@ -224,18 +228,25 @@ class EventConsumer:
             cache.delete_refresh_token(user_id)
 
         logger.info(
-            "[CONSUMER] subscription.expired | agence=%s | %d users désactivés "
-            "| expiresAt=%s | %s",
-            agence_id, len(user_ids), expires_at, message,
+            "[CONSUMER] subscribe.expired | agence=%s (%s) | %d users désactivés "
+            "| dateExpiration=%s | plan=%s",
+            agence_id, agence_nom, len(user_ids), date_expiration, plan,
         )
 
     def _handle_subscription_renewed(self, data: dict):
-        agence_id    = data.get("agenceId")
-        new_expires  = data.get("newExpiresAt", "?")
-
+        """
+        Gère l'activation ou le renouvellement d'un abonnement.
+        Routing key attendue: subscribe.activated
+        """
+        agence_id = data.get("agenceId")
         if not agence_id:
-            logger.error("[CONSUMER] subscription.renewed : agenceId manquant")
+            logger.error("[CONSUMER] subscribe.activated : agenceId manquant")
             return
+
+        date_expiration = data.get("dateExpiration", "?")
+        plan = data.get("plan", "?")
+        agence_nom = data.get("agenceNom", "?")
+        cle_activation = data.get("cleActivation", "?")
 
         repo = AuthRepository()
 
@@ -243,15 +254,15 @@ class EventConsumer:
 
         if not user_ids:
             logger.info(
-                "[CONSUMER] subscription.renewed | agence=%s — aucun user à réactiver",
-                agence_id,
+                "[CONSUMER] subscribe.activated | agence=%s (%s) — aucun user à réactiver",
+                agence_id, agence_nom,
             )
             return
 
         logger.info(
-            "[CONSUMER] subscription.renewed | agence=%s | %d users réactivés "
-            "| newExpiresAt=%s",
-            agence_id, len(user_ids), new_expires,
+            "[CONSUMER] subscribe.activated | agence=%s (%s) | %d users réactivés "
+            "| dateExpiration=%s | plan=%s | cleActivation=%s",
+            agence_id, agence_nom, len(user_ids), date_expiration, plan, cle_activation,
         )
 
     # ── Helper création compte ────────────────────────────────────────────────
@@ -342,5 +353,5 @@ class EventConsumer:
         
         logger.info(
             "[CONSUMER] Compte auth créé | userId=%s email=%s role=%s filiale_id=%s agence_id=%s",
-            final_user_id, email, role, filiale_id, agence_id
+            final_user_id, email, role, filiale_id, agence_id,
         )

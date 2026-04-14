@@ -37,6 +37,16 @@ public class Filiale {
     @Column(name = "agence_id", nullable = false)
     private UUID agenceId;
 
+    // ✅ NOUVEAUX CHAMPS (sans modifier les existants)
+    @Column(name = "code", length = 50)
+    private String code;
+
+    @Column(name = "telephone", length = 50)
+    private String telephone;
+
+    @Column(name = "email", length = 200)
+    private String email;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean isActive = true;
