@@ -17,6 +17,7 @@ import com.njila.njila_user_service.repository.UserRepository;
 import com.njila.njila_user_service.service.ManagerGlobalService;
 import com.njila.njila_user_service.service.RoleManager;
 import com.njila.njila_user_service.events.publisher.EventPublisher;
+import com.njila.njila_user_service.events.publisher.NotificationEventPublisher;
 import com.njila.njila_user_service.service.impl.StaffQueryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,12 +40,22 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
     private final RoleManager roleManager;
     private final StaffQueryService staffQueryService;
     private final EventPublisher eventPublisher;
+    private final NotificationEventPublisher notificationEventPublisher;
+
+    // ── helper ──────────────────────────────────────────────────────────────
+    private String getCallerFullName(JwtClaims caller) {
+        return userRepository.findById(caller.getUserId())
+            .map(u -> u.getName() + " " + u.getSurname())
+            .orElse("Manager");
+    }
+
+    // ── LISTE STAFF ─────────────────────────────────────────────────────────
 
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listStaffByAgence(UUID agenceId, String type, JwtClaims caller) {
         roleManager.assertCanViewStaffByAgence(caller, agenceId);
-        
+
         List<UserProfile> staff;
         if ("MANAGER_LOCAL".equalsIgnoreCase(type)) {
             staff = staffQueryService.findAllManagerLocauxByAgenceId(agenceId).stream()
@@ -55,7 +66,7 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
         } else {
             staff = staffQueryService.findAllStaffByAgenceId(agenceId);
         }
-        
+
         return staff.stream().map(this::toResponse).collect(Collectors.toList());
     }
 
@@ -72,41 +83,43 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listEmployesByAgenceAndFiliale(UUID agenceId, UUID filialeId, JwtClaims caller) {
         roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
-        
+
         Filiale filiale = filialeRepository.findById(filialeId)
             .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
-        
+
         if (!filiale.getAgenceId().equals(agenceId)) {
             throw new ForbiddenException("Cette filiale n'appartient pas à votre agence.");
         }
-        
+
         return staffQueryService.findAllEmployesByAgenceAndFiliale(agenceId, filialeId).stream()
             .map(this::toResponse)
             .collect(Collectors.toList());
     }
+
+    // ── CRÉATION MANAGER LOCAL ──────────────────────────────────────────────
 
     @Override
     @Transactional
     public ManagerLocalResponse createManagerLocal(UUID agenceId, CreateManagerLocalRequest request, JwtClaims caller) {
         roleManager.assertCanCreateStaffByManagerGlobal(caller);
         roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
-        
+
         String email = request.getEmail().toLowerCase().strip();
         if (userRepository.existsByEmail(email)) {
             throw new EmailAlreadyExistsException(email);
         }
-        
+
         UUID filialeId = UUID.fromString(request.getFilialeId());
         Filiale filiale = filialeRepository.findById(filialeId)
             .orElseThrow(() -> new FilialeNotFoundException(request.getFilialeId()));
-        
+
         if (!filiale.getAgenceId().equals(agenceId)) {
             throw new ForbiddenException("La filiale spécifiée n'appartient pas à votre agence.");
         }
-        
+
         UUID newUserId = UUID.randomUUID();
         String tempPassword = "0000";
-        
+
         ManagerLocal managerLocal = ManagerLocal.builder()
             .idUser(newUserId)
             .name(request.getName().strip())
@@ -118,10 +131,9 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
             .filialeId(filialeId)
             .isActive(true)
             .build();
-        
+
         managerLocalRepository.save(managerLocal);
-        
-        
+
         eventPublisher.publishStaffToAuth(
             newUserId, email, tempPassword,
             Role.MANAGER_LOCAL.name(),
@@ -131,15 +143,29 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
             request.getAdresse(),
             filialeId.toString(),
             agenceId.toString(),
-            null,  // poste
-            null   // numeroPermis
+            null,
+            null
         );
-        
-        log.info("[MANAGER_GLOBAL] ManagerLocal créé | userId={} agenceId={} filialeId={} par mg={}", 
+
+        notificationEventPublisher.publishStaffCreated(
+            newUserId.toString(),
+            email,
+            Role.MANAGER_LOCAL.name(),
+            request.getName().strip(),
+            request.getSurname().strip(),
+            agenceId.toString(),
+            filialeId.toString(),
+            caller.getUserId().toString(),
+            getCallerFullName(caller)          // ← corrigé
+        );
+
+        log.info("[MANAGER_GLOBAL] ManagerLocal créé | userId={} agenceId={} filialeId={} par mg={}",
                  newUserId, agenceId, filialeId, caller.getUserId());
-        
+
         return toManagerLocalResponse(managerLocal);
     }
+
+    // ── SUPPRESSION STAFF ───────────────────────────────────────────────────
 
     @Override
     @Transactional
@@ -147,13 +173,15 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
     public void deleteStaff(UUID staffId, JwtClaims caller) {
         UserProfile staff = userRepository.findById(staffId)
             .orElseThrow(() -> new RuntimeException("Staff non trouvé"));
-        
+
         roleManager.assertCanDeleteUser(caller, staff);
         userRepository.delete(staff);
-        
+
         log.info("[MANAGER_GLOBAL] Staff supprimé | staffId={} par mg={}", staffId, caller.getUserId());
     }
-    
+
+    // ── MAPPERS ─────────────────────────────────────────────────────────────
+
     private UserProfileResponse toResponse(UserProfile p) {
         return UserProfileResponse.builder()
             .idUser(p.getIdUser())
@@ -169,7 +197,7 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
             .derniereConnexion(p.getDerniereConnexion())
             .build();
     }
-    
+
     private ManagerLocalResponse toManagerLocalResponse(ManagerLocal ml) {
         return ManagerLocalResponse.builder()
             .idUser(ml.getIdUser())
@@ -186,7 +214,4 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
             .derniereConnexion(ml.getDerniereConnexion())
             .build();
     }
-
-     
-
 }

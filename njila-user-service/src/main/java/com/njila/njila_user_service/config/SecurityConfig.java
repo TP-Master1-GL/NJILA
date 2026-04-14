@@ -27,15 +27,24 @@ public class SecurityConfig {
                 sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
+                // Chemins publics (sans authentification)
                 .requestMatchers(
+                    // Monitoring & documentation
                     "/api/users/health",
-                    "/api/avis/agence/**",
                     "/actuator/**",
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
-                    "/v3/api-docs"
+                    "/v3/api-docs",
+                    
+                    // Avis publics
+                    "/api/avis/agence/**",
+                    
+                    "/api/agences-filiales/**"
+                    
                 ).permitAll()
+                
+                // Toutes les autres requêtes nécessitent une authentification
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtMiddleware, UsernamePasswordAuthenticationFilter.class);

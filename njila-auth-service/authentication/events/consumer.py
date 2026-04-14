@@ -1,6 +1,7 @@
 import json
 import logging
 import threading
+import time
 from typing import List
 
 from authentication.repositories.auth_repository import AuthRepository
@@ -16,7 +17,7 @@ EXCHANGE_DEAD_LETTER = "njila.dead.letter.exchange"
 # ── Queues consommées par l'auth-service ──────────────────────────────────────
 QUEUE_USER_REGISTERED       = "njila.user.registered.queue"       
 QUEUE_USER_UPDATED          = "njila.user.updated.queue"          
-QUEUE_STAFF_TO_AUTH         = "njila.staff.to.auth.queue"         
+QUEUE_STAFF_TO_AUTH         = "njila.auth.staff-creation.queue"        
 QUEUE_SUBSCRIPTION_EXPIRED  = "njila.auth.subscription.expired.queue"
 QUEUE_SUBSCRIPTION_RENEWED  = "njila.auth.subscription.renewed.queue"
 
@@ -25,92 +26,111 @@ MAX_RETRIES = 5
 
 
 class EventConsumer:
-    """Consommateur RabbitMQ en thread daemon."""
+    """Consommateur RabbitMQ en thread daemon avec reconnexion automatique."""
 
     def __init__(self):
         self._thread = None
+        self._should_run = True
+        self._connection = None
+        self._channel = None
 
     def start(self):
         self._thread = threading.Thread(
-            target = self._run,
-            daemon = True,
-            name   = "njila-auth-rabbitmq-consumer",
+            target=self._run,
+            daemon=True,
+            name="njila-auth-rabbitmq-consumer",
         )
         self._thread.start()
         logger.info("[CONSUMER] Thread RabbitMQ démarré")
 
+    def stop(self):
+        """Arrête proprement le consumer."""
+        self._should_run = False
+        if self._connection and self._connection.is_open:
+            self._connection.close()
+
     def _run(self):
-        try:
-            import pika
-            from django.conf import settings
+        """Boucle principale avec reconnexion automatique."""
+        while self._should_run:
+            try:
+                import pika
+                from django.conf import settings
 
-            params = pika.ConnectionParameters(
-                host                       = getattr(settings, "RABBITMQ_HOST",  "localhost"),
-                port                       = int(getattr(settings, "RABBITMQ_PORT", 5672)),
-                virtual_host               = getattr(settings, "RABBITMQ_VHOST", "/"),
-                credentials                = pika.PlainCredentials(
-                    username = getattr(settings, "RABBITMQ_USER", "guest"),
-                    password = getattr(settings, "RABBITMQ_PASS", "guest"),
-                ),
-                heartbeat                  = 600,
-                blocked_connection_timeout = 300,
-            )
-            connection = pika.BlockingConnection(params)
-            channel    = connection.channel()
+                logger.info("[CONSUMER] Tentative de connexion à RabbitMQ...")
 
-            # ── Déclarer tous les exchanges ───────────────────────────────────
-            for exchange, ex_type in [
-                (EXCHANGE_USER,        "topic"),
-                (EXCHANGE_SUBSCRIBE,   "topic"),
-                (EXCHANGE_DEAD_LETTER, "direct"),
-            ]:
-                channel.exchange_declare(
-                    exchange      = exchange,
-                    exchange_type = ex_type,
-                    durable       = True,
+                params = pika.ConnectionParameters(
+                    host=getattr(settings, "RABBITMQ_HOST", "localhost"),
+                    port=int(getattr(settings, "RABBITMQ_PORT", 5672)),
+                    virtual_host=getattr(settings, "RABBITMQ_VHOST", "/"),
+                    credentials=pika.PlainCredentials(
+                        username=getattr(settings, "RABBITMQ_USER", "guest"),
+                        password=getattr(settings, "RABBITMQ_PASS", "guest"),
+                    ),
+                    heartbeat=30,  # ← 30 secondes au lieu de 600
+                    blocked_connection_timeout=30,  # ← 30 secondes
+                    connection_attempts=3,
+                    retry_delay=2,
                 )
+                
+                self._connection = pika.BlockingConnection(params)
+                self._channel = self._connection.channel()
 
-            # ── Déclarer et lier les queues ───────────────────────────────────
-            queues = [
-                # Messages du user-service → auth (CORRIGÉ)
-                (QUEUE_USER_REGISTERED, EXCHANGE_USER, "user.registered"),
-                (QUEUE_USER_UPDATED,    EXCHANGE_USER, "user.updated"),
-                (QUEUE_STAFF_TO_AUTH,   EXCHANGE_USER, "staff.to.auth"),
-                # Messages du subscribe-service → auth
-                (QUEUE_SUBSCRIPTION_EXPIRED, EXCHANGE_SUBSCRIBE, "subscription.expired"),
-                (QUEUE_SUBSCRIPTION_RENEWED, EXCHANGE_SUBSCRIBE, "subscription.renewed"),
-            ]
+                # ── Déclarer tous les exchanges ───────────────────────────────────
+                for exchange, ex_type in [
+                    (EXCHANGE_USER,        "topic"),
+                    (EXCHANGE_SUBSCRIBE,   "topic"),
+                    (EXCHANGE_DEAD_LETTER, "direct"),
+                ]:
+                    self._channel.exchange_declare(
+                        exchange=exchange,
+                        exchange_type=ex_type,
+                        durable=True,
+                    )
 
-            for queue_name, exchange, routing_key in queues:
-                channel.queue_declare(
-                    queue     = queue_name,
-                    durable   = True,
-                    arguments = {
-                        "x-dead-letter-exchange":    EXCHANGE_DEAD_LETTER,
-                        "x-dead-letter-routing-key": "dead.letter",
-                        "x-message-ttl":             86400000,
-                    },
-                )
-                channel.queue_bind(
-                    queue       = queue_name,
-                    exchange    = exchange,
-                    routing_key = routing_key,
-                )
-                channel.basic_consume(
-                    queue               = queue_name,
-                    on_message_callback = self._dispatch,
-                    auto_ack            = False,
-                )
-                logger.info(
-                    "[CONSUMER] Écoute  queue=%-48s  exchange=%-28s  key=%s",
-                    queue_name, exchange, routing_key,
-                )
+                # ── Déclarer et lier les queues ───────────────────────────────────
+                queues = [
+                    (QUEUE_USER_REGISTERED, EXCHANGE_USER, "user.registered"),
+                    (QUEUE_USER_UPDATED,    EXCHANGE_USER, "user.updated"),
+                    (QUEUE_STAFF_TO_AUTH,   EXCHANGE_USER, "staff.to.auth"),
+                    (QUEUE_SUBSCRIPTION_EXPIRED, EXCHANGE_SUBSCRIBE, "subscription.expired"),
+                    (QUEUE_SUBSCRIPTION_RENEWED, EXCHANGE_SUBSCRIBE, "subscription.renewed"),
+                ]
 
-            channel.basic_qos(prefetch_count=1)
-            channel.start_consuming()
+                for queue_name, exchange, routing_key in queues:
+                    self._channel.queue_declare(
+                        queue=queue_name,
+                        durable=True,
+                        arguments={
+                            "x-dead-letter-exchange":    EXCHANGE_DEAD_LETTER,
+                            "x-dead-letter-routing-key": "dead.letter",
+                            "x-message-ttl":             86400000,
+                        },
+                    )
+                    self._channel.queue_bind(
+                        queue=queue_name,
+                        exchange=exchange,
+                        routing_key=routing_key,
+                    )
+                    self._channel.basic_consume(
+                        queue=queue_name,
+                        on_message_callback=self._dispatch,
+                        auto_ack=False,
+                    )
+                    logger.info(
+                        "[CONSUMER] Écoute  queue=%-48s  exchange=%-28s  key=%s",
+                        queue_name, exchange, routing_key,
+                    )
 
-        except Exception as e:
-            logger.error("[CONSUMER] Erreur connexion RabbitMQ : %s", e)
+                self._channel.basic_qos(prefetch_count=1)
+                logger.info("[CONSUMER] Connecté à RabbitMQ, démarrage consommation...")
+                self._channel.start_consuming()
+
+            except Exception as e:
+                logger.error("[CONSUMER] Connexion perdue: %s", e)
+                if self._should_run:
+                    logger.info("[CONSUMER] Reconnexion dans 5 secondes...")
+                    time.sleep(5)
+                # Continue la boucle
 
     def _dispatch(self, ch, method, properties, body):
         routing_key = method.routing_key
@@ -154,7 +174,6 @@ class EventConsumer:
         if role == "VOYAGEUR":
             self._create_auth_account(data)
         else:
-            # Pour les autres rôles, le user-service les crée via staff.to.auth
             logger.debug("[CONSUMER] user.registered ignoré pour rôle=%s", role)
 
     def _handle_user_updated(self, data: dict):
@@ -172,32 +191,12 @@ class EventConsumer:
         logger.info("[CONSUMER] Tokens invalidés (email changé) — user=%s", user_id)
 
     def _handle_staff_to_auth(self, data: dict):
-        """
-        staff.to.auth — NOUVEAU HANDLER
-        
-        Payload reçu du user-service :
-        {
-            "userId":        "uuid",
-            "email":         "user@njila.com",
-            "passwordTemp":  "0000",
-            "role":          "GUICHETIER|CHAUFFEUR|MANAGER_LOCAL|MANAGER_GLOBAL",
-            "name":          "Prénom",
-            "surname":       "Nom",
-            "phone":         "+237XXXXXXXX",
-            "filialeId":     "uuid",
-            "agenceId":      "uuid",
-            "poste":         "Agent",           
-            "numeroPermis":  "SN-2025-001234"
-        }
-        
-        
-        """
+        """Création d'un compte staff depuis user-service."""
         self._create_auth_account(data)
 
     # ── Handlers abonnement ───────────────────────────────────────────────────
 
     def _handle_subscription_expired(self, data: dict):
-        
         agence_id = data.get("agenceId")
         if not agence_id:
             logger.error("[CONSUMER] subscription.expired : agenceId manquant")
@@ -209,7 +208,6 @@ class EventConsumer:
         repo  = AuthRepository()
         cache = RedisSessionCache()
 
-        # ① Désactiver les users en base (bulk UPDATE)
         user_ids = repo.deactivate_agence_users(agence_id)
 
         if not user_ids:
@@ -219,10 +217,8 @@ class EventConsumer:
             )
             return
 
-        # ② Invalider les sessions en DB
         repo.invalidate_sessions_by_user_ids(user_ids)
 
-        # ③ Supprimer les sessions Redis pour chaque utilisateur
         for user_id in user_ids:
             cache.delete_all_user_sessions(user_id)
             cache.delete_refresh_token(user_id)
@@ -234,7 +230,6 @@ class EventConsumer:
         )
 
     def _handle_subscription_renewed(self, data: dict):
-        
         agence_id    = data.get("agenceId")
         new_expires  = data.get("newExpiresAt", "?")
 
@@ -244,7 +239,6 @@ class EventConsumer:
 
         repo = AuthRepository()
 
-        # Réactiver en base (bulk UPDATE)
         user_ids = repo.reactivate_agence_users(agence_id)
 
         if not user_ids:
@@ -263,9 +257,7 @@ class EventConsumer:
     # ── Helper création compte ────────────────────────────────────────────────
 
     def _create_auth_account(self, data: dict):
-        """
-        Crée un compte auth depuis un événement externe.
-        """
+        """Crée un compte auth depuis un événement externe."""
         from authentication.models import NjilaUser
         from django.core.validators import validate_email
         from django.core.exceptions import ValidationError
@@ -277,29 +269,24 @@ class EventConsumer:
         user_id = data.get("userId")
         password = data.get("passwordTemp", "0000")
         
-        # Données d'identité
         name = data.get("name", "")
         surname = data.get("surname", "")
         phone = data.get("phone")
         adresse = data.get("adresse")
         photo_url = data.get("photoUrl")
         
-       
         filiale_id = data.get("filialeId")
         agence_id = data.get("agenceId")
         
-        # Si filiale_id est une chaîne vide ou "null", le mettre à None
         if filiale_id == "" or filiale_id == "null" or filiale_id is None:
             filiale_id = None
         elif filiale_id:
             try:
-                # Valider que c'est un UUID valide
                 uuid.UUID(filiale_id)
             except ValueError:
                 logger.warning("[CONSUMER] filialeId invalide: %s", filiale_id)
                 filiale_id = None
         
-        # Si agence_id est une chaîne vide ou "null", le mettre à None
         if agence_id == "" or agence_id == "null" or agence_id is None:
             agence_id = None
         elif agence_id:
@@ -309,7 +296,6 @@ class EventConsumer:
                 logger.warning("[CONSUMER] agenceId invalide: %s", agence_id)
                 agence_id = None
         
-        # Champs spécifiques
         poste = data.get("poste")
         numero_permis = data.get("numeroPermis")
 
@@ -317,22 +303,18 @@ class EventConsumer:
             logger.error("[CONSUMER] Création compte impossible : email manquant")
             return
 
-        # Validation email
         try:
             validate_email(email)
         except ValidationError:
             logger.error("[CONSUMER] Email invalide : %s", email)
             return
 
-        # Vérifier si le compte existe déjà
         if repo.exists_by_email(email):
             logger.warning("[CONSUMER] Compte déjà existant pour %s — ignoré", email)
             return
 
-        # Générer user_id si non fourni
         final_user_id = user_id or str(uuid.uuid4())
 
-        # Construction des meta_data
         meta_data = {}
         if poste:
             meta_data["poste"] = poste
