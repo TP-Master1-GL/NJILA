@@ -2,14 +2,15 @@ import api from "./axios";
 
 export const searchService = {
   rechercherVoyages: async ({ origine, destination, date, nombrePlaces = 1 }) => {
-    const { data } = await api.get("/api/search/voyages", {
+    const { data } = await api.get("/api/fleet/voyages/recherche", {
       params: { origine, destination, date, nombrePlaces },
     });
     return data;
   },
 
   getVilles: async () => {
-    const { data } = await api.get("/api/search/villes");
+    // Dans NJILA, les villes sont déduites des trajets existants
+    const { data } = await api.get("/api/fleet/trajets");
     return data;
   },
 

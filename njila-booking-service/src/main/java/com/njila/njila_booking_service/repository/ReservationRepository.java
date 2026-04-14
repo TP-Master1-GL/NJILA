@@ -12,14 +12,14 @@ import java.util.List;
 @Repository
 public interface ReservationRepository extends JpaRepository<Reservation, Long> {
 
-    List<Reservation> findByIdVoyage(Long idVoyage);
+    List<Reservation> findByIdVoyage(String idVoyage);
 
-    List<Reservation> findByIdVoyageur(Long idVoyageur);
+    List<Reservation> findByIdVoyageur(String idVoyageur);
 
-    List<Reservation> findByIdVoyageAndStatut(Long idVoyage, StatutReservation statut);
+    List<Reservation> findByIdVoyageAndStatut(String idVoyage, StatutReservation statut);
 
     boolean existsByIdVoyageurAndIdVoyageAndStatutIn(
-            Long idVoyageur, Long idVoyage, List<StatutReservation> statuts);
+            String idVoyageur, String idVoyage, List<StatutReservation> statuts);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Requêtes pour les stats filiale — GET /api/bookings/stats/{filialeId}

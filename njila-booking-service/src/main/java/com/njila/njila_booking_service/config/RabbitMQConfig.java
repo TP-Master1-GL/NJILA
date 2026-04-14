@@ -13,6 +13,8 @@ public class RabbitMQConfig {
     // ─── Exchanges ────────────────────────────────────────────────────────────
     public static final String BOOKING_EXCHANGE = "njila.booking.exchange";
     public static final String PAYMENT_EXCHANGE = "njila.payment.exchange";
+    public static final String FLEET_EXCHANGE   = "njila.fleet.exchange";
+    public static final String USER_EXCHANGE    = "njila.user.exchange";
 
     // ─── Routing keys publiées par ce service ─────────────────────────────────
     public static final String BOOKING_CREATED_KEY          = "booking.created";
@@ -27,10 +29,14 @@ public class RabbitMQConfig {
     // ─── Routing keys consommées par ce service ───────────────────────────────
     public static final String PAYMENT_CONFIRMED_KEY = "payment.confirmed";
     public static final String PAYMENT_FAILED_KEY    = "payment.failed";
+    public static final String FLEET_SYNC_KEY        = "fleet.#";
+    public static final String USER_SYNC_KEY         = "user.#";
 
     // ─── Noms des queues consommées ───────────────────────────────────────────
     public static final String PAYMENT_SUCCESS_QUEUE = "njila.payment.success.queue";
     public static final String PAYMENT_FAILED_QUEUE  = "njila.payment.failed.queue";
+    public static final String FLEET_SYNC_QUEUE      = "njila.booking.sync.fleet.queue";
+    public static final String USER_SYNC_QUEUE       = "njila.booking.sync.user.queue";
 
     // ─────────────────────────────────────────────────────────────────────────
     // EXCHANGES
@@ -44,6 +50,16 @@ public class RabbitMQConfig {
     @Bean
     public TopicExchange paymentExchange() {
         return new TopicExchange(PAYMENT_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public TopicExchange fleetExchange() {
+        return new TopicExchange(FLEET_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public TopicExchange userExchange() {
+        return new TopicExchange(USER_EXCHANGE, true, false);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -66,6 +82,16 @@ public class RabbitMQConfig {
                 .build();
     }
 
+    @Bean
+    public Queue fleetSyncQueue() {
+        return QueueBuilder.durable(FLEET_SYNC_QUEUE).build();
+    }
+
+    @Bean
+    public Queue userSyncQueue() {
+        return QueueBuilder.durable(USER_SYNC_QUEUE).build();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // BINDINGS
     // ─────────────────────────────────────────────────────────────────────────
@@ -84,6 +110,22 @@ public class RabbitMQConfig {
                 .bind(paymentFailedQueue())
                 .to(paymentExchange())
                 .with(PAYMENT_FAILED_KEY);
+    }
+
+    @Bean
+    public Binding fleetSyncBinding() {
+        return BindingBuilder
+                .bind(fleetSyncQueue())
+                .to(fleetExchange())
+                .with(FLEET_SYNC_KEY);
+    }
+
+    @Bean
+    public Binding userSyncBinding() {
+        return BindingBuilder
+                .bind(userSyncQueue())
+                .to(userExchange())
+                .with(USER_SYNC_KEY);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

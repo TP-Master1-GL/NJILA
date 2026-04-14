@@ -38,7 +38,7 @@ public class PlaceReservee {
     private Boolean estResponsable = false;
 
     // Renseigné uniquement pour le responsable (idVoyageur du user-service)
-    private Long idVoyageur;
+    private String idVoyageur;
 
     @OneToOne(mappedBy = "placeReservee", cascade = CascadeType.ALL)
     private BagageDetails bagageDetails;

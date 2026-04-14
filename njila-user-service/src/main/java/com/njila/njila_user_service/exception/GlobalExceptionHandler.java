@@ -48,8 +48,54 @@ public class GlobalExceptionHandler {
             .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(AgenceNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAgenceNotFound(AgenceNotFoundException ex) {
+        log.warn("[USER] Agence introuvable : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(FilialeNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleFilialeNotFound(FilialeNotFoundException ex) {
+        log.warn("[USER] Filiale introuvable : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(StaffNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleStaffNotFound(StaffNotFoundException ex) {
+        log.warn("[USER] Staff introuvable : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(UnauthorizedRoleHierarchyException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorizedRoleHierarchy(UnauthorizedRoleHierarchyException ex) {
+        log.warn("[USER] Hiérarchie des rôles non respectée : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidInheritanceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidInheritance(InvalidInheritanceException ex) {
+        log.warn("[USER] Héritage invalide : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(ValidationException ex) {
+        log.warn("[USER] Validation échouée : {}", ex.getErrors());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiResponse.<Map<String, String>>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .data(ex.getErrors())
+                .build());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleMethodArgumentNotValid(
         MethodArgumentNotValidException ex
     ) {
         Map<String, String> errors = new HashMap<>();

@@ -1,22 +1,23 @@
 from rest_framework import serializers
 from authentication.models import Role
+import uuid
 
 
 class RegisterSerializer(serializers.Serializer):
     email   = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True)
 
-    name    = serializers.CharField(max_length=100)             # prénom
-    surname = serializers.CharField(max_length=100)             # nom de famille
-    phone   = serializers.CharField(max_length=20,  required=False, allow_null=True, default=None)
-    adresse = serializers.CharField(max_length=500, required=False, allow_null=True, default=None)
+    name    = serializers.CharField(max_length=100)            
+    surname = serializers.CharField(max_length=100)            
+    phone   = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True, default=None)
+    adresse = serializers.CharField(max_length=500, required=False, allow_blank=True, allow_null=True, default=None)
 
     role = serializers.ChoiceField(
         choices=[c[0] for c in Role.choices], default=Role.VOYAGEUR,
     )
-    photo_url  = serializers.CharField(required=False, allow_null=True, default=None)
-    filiale_id = serializers.UUIDField(required=False, allow_null=True, default=None)
-    agence_id  = serializers.UUIDField(required=False, allow_null=True, default=None)
+    photo_url  = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
+    filiale_id = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
+    agence_id  = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
 
     def validate_password(self, value):
         if len(value) < 8:
@@ -34,6 +35,26 @@ class RegisterSerializer(serializers.Serializer):
         if not value.strip():
             raise serializers.ValidationError("Le nom ne peut pas être vide.")
         return value.strip()
+
+    def validate_filiale_id(self, value):
+        """Convertit les chaînes vides en None et valide les UUID"""
+        if not value or value == "":
+            return None
+        try:
+            uuid.UUID(value)
+            return value
+        except ValueError:
+            raise serializers.ValidationError("Format d'UUID invalide.")
+
+    def validate_agence_id(self, value):
+        """Convertit les chaînes vides en None et valide les UUID"""
+        if not value or value == "":
+            return None
+        try:
+            uuid.UUID(value)
+            return value
+        except ValueError:
+            raise serializers.ValidationError("Format d'UUID invalide.")
 
 
 class LoginSerializer(serializers.Serializer):

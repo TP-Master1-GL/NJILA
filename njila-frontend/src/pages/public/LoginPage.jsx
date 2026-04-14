@@ -10,6 +10,7 @@ import Input from "../../components/ui/Input";
 import { useAuth } from "../../hooks/useAuth";
 import { IMAGES } from "../../assets/images";
 
+
 const schema = z.object({
   email: z.string().min(1, "Email ou téléphone requis"),
   password: z.string().min(6, "Minimum 6 caractères"),
@@ -20,6 +21,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const location = useLocation();
   const [showPass, setShowPass] = useState(false);
+
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { remember: false },
@@ -72,9 +74,14 @@ export default function LoginPage() {
 
       {/* ── Droite — formulaire ── */}
       <div className="flex-1 flex items-center justify-center p-8 bg-white relative overflow-hidden">
+        {/* Image de fond abstraite */}
+        <div className="absolute inset-0 opacity-[0.9] pointer-events-none">
+          <img src={IMAGES.AUTH_BG} alt="" className="w-full h-full object-cover" />
+        </div>
+
         {/* Filigrane bus très léger */}
-        <div className="absolute bottom-0 right-0 opacity-[0.04] pointer-events-none">
-          <img src={IMAGES.BUS_HIGHWAY} alt="" className="w-96 h-auto" />
+        <div className="absolute bottom-4 right-4 opacity-[0.03] pointer-events-none">
+          <img src={IMAGES.BUS_HIGHWAY} alt="" className="w-64 h-auto" />
         </div>
 
         <div className="w-full max-w-md relative z-10">
@@ -85,8 +92,8 @@ export default function LoginPage() {
 
           <div className="mb-8">
             <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Bienvenue sur NJILA</h2>
-            <p className="text-slate-500">Connectez-vous pour gérer vos trajets et réservations.</p>
-            {from && <p className="mt-2 text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">Connectez-vous pour continuer votre réservation</p>}
+            <p className="text-slate-500 text-[#0a0a0a]">Connectez-vous pour gérer vos trajets et réservations.</p>
+            {from && <p className="mt-2 text-sm  color-text-blue-500 bg-amber-50 px-3 py-2 rounded-lg">Connectez-vous pour continuer votre réservation</p>}
           </div>
 
           <form onSubmit={handleSubmit(login)} className="space-y-5">
@@ -100,13 +107,15 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-sm font-medium text-slate-700">Mot de passe</label>
-                <a href="#" className="text-xs text-[#135bec] hover:underline font-medium">Mot de passe oublié ?</a>
+                <a href="#" className="text-xs text-[#13ec1e] hover:underline font-medium">Mot de passe oublié ?</a>
               </div>
               <div className="relative">
                 <input
                   type={showPass ? "text" : "password"}
                   placeholder="••••••••"
                   className={`w-full px-4 py-2.5 rounded-lg border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#135bec] focus:border-transparent transition-all pr-11 ${errors.password ? "border-red-400" : "border-slate-200"}`}
+                  onFocus={() => { }}
+                  onBlur={() => { }}
                   {...register("password")}
                 />
                 <button type="button" onClick={() => setShowPass(!showPass)}
@@ -119,11 +128,11 @@ export default function LoginPage() {
 
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" className="rounded border-slate-300 text-[#135bec]" {...register("remember")} />
-              <span className="text-sm text-slate-600">Se souvenir de moi</span>
+              <span className="text-sm text-[#0a0a0a] text-slate-600">Se souvenir de moi</span>
             </label>
 
             <button type="submit" disabled={isSubmitting}
-              className="w-full h-12 bg-[#135bec] hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#135bec]/25 flex items-center justify-center gap-2 text-sm">
+              className="w-full h-12 bg-[#139cec] hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#135bec]/25 flex items-center justify-center gap-2 text-sm">
               {isSubmitting ? (
                 <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4" />
@@ -135,35 +144,18 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Social login */}
-          <div className="mt-6">
-            <div className="relative flex items-center">
-              <div className="flex-1 border-t border-slate-200" />
-              <span className="mx-4 text-xs text-slate-400 uppercase tracking-wider">ou continuer avec</span>
-              <div className="flex-1 border-t border-slate-200" />
-            </div>
-            <div className="grid grid-cols-1 gap-3 mt-4">
-              {[
-                { icon: "https://www.google.com/favicon.ico", label: "Google" },
-              ].map(({ icon, label }) => (
-                <button key={label} className="flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-                  <img src={icon} alt={label} className="w-4 h-4" />
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          
 
-          <p className="text-center text-sm text-slate-500 mt-6">
+          <p className="text-center  text-[#0a0a0a] color-red-500 text-sm text-slate-500 mt-6">
             Pas encore de compte ?{" "}
-            <Link to="/register" className="text-[#135bec] font-bold hover:underline">S'inscrire</Link>
+            <Link to="/register" className="text-[#b82a3d] font-bold hover:underline">S'inscrire</Link>
           </p>
 
           {/* Liens légaux */}
           <div className="flex items-center justify-center gap-4 mt-8 text-xs text-slate-400">
-            <a href="#" className="hover:text-slate-600">Conditions</a>
+            <a href="#" className="hover:text-slate-600 text-[#0a0a0a]">Conditions</a>
             <span>·</span>
-            <a href="#" className="hover:text-slate-600">Confidentialité</a>
+            <a href="#" className="hover:text-slate-600 text-[#0a0a0a]">Confidentialité</a>
             <span>·</span>
             <span>🇨🇲 Cameroun</span>
           </div>

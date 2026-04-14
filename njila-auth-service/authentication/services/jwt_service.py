@@ -1,15 +1,3 @@
-"""
-JwtTokenService — génération et validation des JWT NJILA.
-
-Correspond à la classe JwtTokenService du diagramme UML :
-  + generate(payload: string): string
-  + validate(in token: string): boolean
-  + decode(in token: string): string
-  + generatePair(payload: string): string
-
-Le payload JWT encode :
-  userId, role, filialeId, agenceId, sessionId, iat, exp
-"""
 
 import uuid
 import logging
@@ -29,7 +17,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class TokenPayload:
-    """Données encodées dans le JWT — diagramme UML TokenPayload."""
+    
     user_id:    str
     role:       str
     session_id: str

@@ -30,15 +30,15 @@ class ReservationLockManagerTest {
     void acquerirVerrou_succes() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.setIfAbsent(
-                "njila:booking:lock:1:1", "100",
+                "njila:booking:lock:voyage-1:user-1", "100",
                 Duration.ofMinutes(10)))
                 .thenReturn(true);
 
-        boolean result = lockManager.acquerirVerrou(1L, 1L, 100L);
+        boolean result = lockManager.acquerirVerrou("voyage-1", "user-1", 100L);
 
         assertThat(result).isTrue();
         verify(valueOperations).setIfAbsent(
-                "njila:booking:lock:1:1", "100",
+                "njila:booking:lock:voyage-1:user-1", "100",
                 Duration.ofMinutes(10));
     }
 
@@ -48,32 +48,32 @@ class ReservationLockManagerTest {
         when(valueOperations.setIfAbsent(any(), any(), any()))
                 .thenReturn(false);
 
-        boolean result = lockManager.acquerirVerrou(1L, 1L, 100L);
+        boolean result = lockManager.acquerirVerrou("voyage-1", "user-1", 100L);
 
         assertThat(result).isFalse();
     }
 
     @Test
     void libererVerrou_supprimeLaCle() {
-        lockManager.libererVerrou(1L, 1L);
-        verify(redisTemplate).delete("njila:booking:lock:1:1");
+        lockManager.libererVerrou("voyage-1", "user-1");
+        verify(redisTemplate).delete("njila:booking:lock:voyage-1:user-1");
     }
 
     @Test
     void verifierVerrou_cleExistante_retourneTrue() {
-        when(redisTemplate.hasKey("njila:booking:lock:1:1")).thenReturn(true);
-        assertThat(lockManager.verifierVerrou(1L, 1L)).isTrue();
+        when(redisTemplate.hasKey("njila:booking:lock:voyage-1:user-1")).thenReturn(true);
+        assertThat(lockManager.verifierVerrou("voyage-1", "user-1")).isTrue();
     }
 
     @Test
     void verifierVerrou_cleAbsente_retourneFalse() {
-        when(redisTemplate.hasKey("njila:booking:lock:1:1")).thenReturn(false);
-        assertThat(lockManager.verifierVerrou(1L, 1L)).isFalse();
+        when(redisTemplate.hasKey("njila:booking:lock:voyage-1:user-1")).thenReturn(false);
+        assertThat(lockManager.verifierVerrou("voyage-1", "user-1")).isFalse();
     }
 
     @Test
     void getCleVerrou_formatCorrect() {
-        String cle = lockManager.getCleVerrou(5L, 10L);
-        assertThat(cle).isEqualTo("njila:booking:lock:5:10");
+        String cle = lockManager.getCleVerrou("voyage-5", "user-10");
+        assertThat(cle).isEqualTo("njila:booking:lock:voyage-5:user-10");
     }
 }

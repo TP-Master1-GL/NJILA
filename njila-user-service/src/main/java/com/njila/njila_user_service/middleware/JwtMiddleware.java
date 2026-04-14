@@ -23,13 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Filtre JWT du user-service.
- *
- * Lit le Bearer token, valide la signature HMAC-SHA256 avec la clé
- * partagée avec l'auth-service, extrait les claims et les injecte
- * dans le SecurityContext et dans les attributs de la requête.
- */
+
 @Component
 @Slf4j
 public class JwtMiddleware extends OncePerRequestFilter {

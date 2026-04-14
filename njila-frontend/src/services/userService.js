@@ -2,12 +2,12 @@ import api from "./axios";
 
 export const userService = {
   getProfil: async (id) => {
-    const { data } = await api.get(`/api/users/${id}/profile`);
+    const { data } = await api.get(`/api/users/${id}`);
     return data;
   },
 
   updateProfil: async (id, payload) => {
-    const { data } = await api.patch(`/api/users/${id}/profile`, payload);
+    const { data } = await api.put(`/api/users/${id}`, payload);
     return data;
   },
 

@@ -5,10 +5,11 @@ import com.njila.njila_booking_service.domain.entity.Ticket;
 
 public abstract class TicketFactory {
 
-    public abstract Ticket creerTicket(Reservation reservation,String numeroTicket,String nomVoyageur,
-                                    String telephoneVoyageur,
-                                    String origine,
-                                    String destination,
-                                    String dateDepart,
-                                    String immatriculationBus);
+    public abstract Ticket creerTicket(Reservation reservation, String numeroTicket, String nomVoyageur,
+                                        String telephoneVoyageur,
+                                        String origine,
+                                        String destination,
+                                        String dateDepart,
+                                        String immatriculationBus,
+                                        String logoAgence);
 }

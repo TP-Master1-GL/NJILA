@@ -31,7 +31,7 @@ class PricingStrategyTest {
         promo    = new PrixPromoStrategy(fideliteService);
 
         reservation = Reservation.builder()
-                .idVoyageur(1L)
+                .idVoyageur("user-1")
                 .codeAgence("GEN")
                 .canal(CanalReservation.WEB)
                 .build();
@@ -76,22 +76,22 @@ class PricingStrategyTest {
 
     @Test
     void promo_voyageGratuit_retourneZero() {
-        when(fideliteService.estVoyageGratuit(1L, "GEN")).thenReturn(true);
+        when(fideliteService.estVoyageGratuit("user-1", "GEN")).thenReturn(true);
         double result = promo.calculerPrix(reservation, 5000.0, 1);
         assertThat(result).isEqualTo(0.0);
     }
 
     @Test
     void promo_pasVoyageGratuit_retournePrixNormal() {
-        when(fideliteService.estVoyageGratuit(1L, "GEN")).thenReturn(false);
+        when(fideliteService.estVoyageGratuit("user-1", "GEN")).thenReturn(false);
         double result = promo.calculerPrix(reservation, 5000.0, 2);
         assertThat(result).isEqualTo(10000.0);
     }
 
     @Test
     void promo_appelFideliteService() {
-        when(fideliteService.estVoyageGratuit(1L, "GEN")).thenReturn(false);
+        when(fideliteService.estVoyageGratuit("user-1", "GEN")).thenReturn(false);
         promo.calculerPrix(reservation, 5000.0, 1);
-        verify(fideliteService).estVoyageGratuit(1L, "GEN");
+        verify(fideliteService).estVoyageGratuit("user-1", "GEN");
     }
 }

@@ -8,11 +8,11 @@ import java.util.List;
 @Data
 public class CreerReservationRequest {
 
-    @NotNull
-    private Long idVoyage;
+    @NotBlank
+    private String idVoyage;
 
-    @NotNull
-    private Long idVoyageur;   // Responsable du groupe (celui avec la CNI)
+    @NotBlank
+    private String idVoyageur;   // Responsable du groupe (celui avec la CNI)
 
     @NotNull @Min(1) @Max(50)
     private Integer nombrePlaces;
@@ -26,7 +26,7 @@ public class CreerReservationRequest {
     @NotBlank
     private String codeFiliale;
 
-    private Long idGuichetier;
+    private String idGuichetier;
 
     private String devise; // Optionnel : si null, le service utilisera la valeur par défaut
 

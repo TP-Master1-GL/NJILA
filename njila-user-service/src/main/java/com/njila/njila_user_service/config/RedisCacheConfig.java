@@ -17,10 +17,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 import java.time.Duration;
 import java.util.Map;
 
-/**
- * Configuration cache Redis — v1.4.1
- * Correctif : ObjectMapper avec JavaTimeModule pour supporter LocalDateTime.
- */
+
 @Configuration
 @EnableCaching
 public class RedisCacheConfig {
@@ -28,7 +25,6 @@ public class RedisCacheConfig {
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
 
-        // ObjectMapper configuré pour supporter LocalDateTime
         ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)

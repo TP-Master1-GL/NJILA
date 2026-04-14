@@ -1,4 +1,8 @@
 from django.apps import AppConfig
+import logging
+import time
+
+logger = logging.getLogger(__name__)
 
 
 class AuthenticationConfig(AppConfig):
@@ -10,7 +14,7 @@ class AuthenticationConfig(AppConfig):
         
         import os
         
-        # Créer le compte administrateur par défaut
+        # Créer ou récupérer le compte administrateur par défaut
         self._create_or_update_admin_user()
 
         if os.environ.get("RUN_MAIN") == "true":
@@ -19,107 +23,110 @@ class AuthenticationConfig(AppConfig):
                 consumer = EventConsumer()
                 consumer.start()
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "[APP] Impossible de démarrer le consommateur RabbitMQ : %s", e
-                )
+                logger.warning("[APP] Impossible de démarrer le consommateur RabbitMQ : %s", e)
 
         try:
             from django.conf import settings
             from auth_config.cloud import register_to_eureka
             
             port = getattr(settings, 'SERVER_PORT', 8081)
-            import logging
-            logging.getLogger(__name__).info(
-                "[APP] Enregistrement sur Eureka avec le port %s", port
-            )
+            logger.info("[APP] Enregistrement sur Eureka avec le port %s", port)
             register_to_eureka(port)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
-                "[APP] Impossible de s'enregistrer sur Eureka : %s", e
-            )
+            logger.warning("[APP] Impossible de s'enregistrer sur Eureka : %s", e)
 
     def _create_or_update_admin_user(self):
-        """Crée ou met à jour le compte administrateur par défaut."""
+        """Crée ou récupère le compte administrateur et le synchronise avec user-service."""
         from authentication.models import NjilaUser, Role
-        import logging
+        from django.contrib.auth.hashers import check_password
 
-        logger = logging.getLogger(__name__)
-        
         email = "ronelmaamoc52@gmail.com"
-        user_created = False
+        admin_password = "Ronel789"
+        admin_name = "Ronel"
+        admin_surname = "Maamoc"
         
+        user_created_or_updated = False
+        user = None
+
         try:
             # Chercher l'utilisateur existant
             user = NjilaUser.objects.filter(email=email).first()
             
             if user:
-                # Si l'utilisateur existe mais n'est pas admin, le mettre à jour
+                # Vérifier si l'utilisateur est déjà administrateur
+                needs_update = False
+                
                 if user.role != Role.ADMINISTRATEUR:
                     user.role = Role.ADMINISTRATEUR
+                    needs_update = True
+                    logger.warning(f"[APP] ⚠ Compte {email} : VOYAGEUR → ADMINISTRATEUR")
+                
+                if not user.is_staff:
                     user.is_staff = True
+                    needs_update = True
+                
+                if not user.is_verified:
                     user.is_verified = True
-                    user.name = "Ronel"
-                    user.surname = "Maamoc"
-                    user.set_password("Ronel789")
+                    needs_update = True
+                
+                if user.name != admin_name or user.surname != admin_surname:
+                    user.name = admin_name
+                    user.surname = admin_surname
+                    needs_update = True
+                
+                # Vérifier le mot de passe
+                if not check_password(admin_password, user.password):
+                    user.set_password(admin_password)
+                    needs_update = True
+                    logger.info(f"[APP] Mot de passe réinitialisé pour {email}")
+                
+                if needs_update:
                     user.save()
-                    user_created = True
-                    logger.warning(f"[APP] ⚠️ Compte {email} mis à jour : VOYAGEUR → ADMINISTRATEUR")
-                    logger.info(f"[APP]    → Mot de passe: Ronel789")
+                    user_created_or_updated = True
+                    logger.info(f"[APP] Compte administrateur mis à jour : {email}")
                 else:
-                    # Vérifier que le mot de passe est correct
-                    from django.contrib.auth.hashers import check_password
-                    if not check_password("Ronel789", user.password):
-                        user.set_password("Ronel789")
-                        user.save()
-                        user_created = True
-                        logger.info(f"[APP] Mot de passe réinitialisé pour {email}")
-                    else:
-                        logger.debug(f"[APP] Compte administrateur existe déjà : {email}")
+                    logger.debug(f"[APP] Compte administrateur existe déjà et est à jour : {email}")
             else:
-                # Créer un nouvel admin
+                # Créer un nouvel administrateur
                 user = NjilaUser(
                     email       = email,
-                    name        = "Ronel",
-                    surname     = "Maamoc",
+                    name        = admin_name,
+                    surname     = admin_surname,
                     role        = Role.ADMINISTRATEUR,
                     is_active   = True,
                     is_verified = True,
                     is_staff    = True,
                     created_by  = "SYSTEM",
                 )
-                user.set_password("Ronel789")
+                user.set_password(admin_password)
                 user.save()
-                user_created = True
+                user_created_or_updated = True
                 
                 logger.info("=" * 60)
                 logger.info("[APP] ✅ Compte administrateur créé avec succès !")
                 logger.info(f"[APP]    Email: {email}")
-                logger.info(f"[APP]    Mot de passe: Ronel789")
+                logger.info(f"[APP]    Mot de passe: {admin_password}")
                 logger.info(f"[APP]    ID: {user.id}")
                 logger.info("=" * 60)
             
-            # Si le compte a été créé ou modifié, synchroniser avec user-service
-            if user_created:
+            if user and user_created_or_updated:
+                self._sync_admin_with_user_service(user)
+            elif user:
+                
                 self._sync_admin_with_user_service(user)
                 
         except Exception as e:
-            logger.error(f"[APP] ❌ Erreur création admin: {e}", exc_info=True)
+            logger.error(f"[APP]  Erreur création/récupération admin: {e}", exc_info=True)
     
     def _sync_admin_with_user_service(self, user):
         """Synchronise le compte admin avec le user-service via RabbitMQ."""
         from authentication.events.publisher import EventPublisher
-        import logging
-        
-        logger = logging.getLogger(__name__)
         
         try:
             publisher = EventPublisher()
             
-            # Attendre un peu que RabbitMQ soit prêt
-            import time
-            time.sleep(100)
+            
+            time.sleep(10)
             
             publisher.publish_user_registered(
                 user_id=str(user.id),
@@ -127,14 +134,14 @@ class AuthenticationConfig(AppConfig):
                 name=user.name,
                 surname=user.surname,
                 role=user.role,
-                phone=user.phone,
-                adresse=user.adresse,
-                photo_url=user.photo_url,
-                filiale_id=user.filiale_id,
-                agence_id=user.agence_id
+                phone=user.phone or "",
+                adresse=user.adresse or "",
+                photo_url=user.photo_url or "",
+                filiale_id=None,
+                agence_id=None
             )
             
-            logger.info(f"[APP] ✅ Admin synchronisé avec user-service : {user.email}")
+            logger.info(f"[APP]  Admin synchronisé avec user-service : {user.email}")
             
         except Exception as e:
-            logger.warning(f"[APP] ⚠️ Impossible de synchroniser l'admin: {e}")
+            logger.warning(f"[APP]  Impossible de synchroniser l'admin avec user-service: {e}")

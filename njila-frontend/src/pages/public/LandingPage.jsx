@@ -93,18 +93,39 @@ export default function LandingPage() {
             </div>
 
             {/* Mobile burger */}
-            <button onClick={() => setNavOpen(!navOpen)} className="md:hidden p-2">
-              <span className="material-icons text-slate-600">{navOpen ? "close" : "menu"}</span>
+            <button onClick={() => setNavOpen(!navOpen)} className="md:hidden p-2 text-[#135bec] hover:bg-slate-50 rounded-lg transition-colors">
+              <span className="material-icons">{navOpen ? "close" : "menu"}</span>
             </button>
           </div>
         </div>
-        {navOpen && (
-          <div className="md:hidden bg-white border-t border-slate-100 px-4 py-4 space-y-3">
-            <Link to="/recherche" className="block text-sm font-medium text-slate-700 py-2">Trajets</Link>
-            <Link to="/login"     className="block text-sm font-medium text-slate-700 py-2">Se connecter</Link>
-            <Link to="/register"  className="block w-full text-center bg-[#135bec] text-white font-bold py-3 rounded-lg">S'inscrire</Link>
+
+        {/* Mobile menu content overlay */}
+        <div className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out bg-white border-t border-slate-100 ${navOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}>
+          <div className="px-4 py-6 space-y-4">
+            <Link to="/recherche" onClick={() => setNavOpen(false)} className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all">
+              <span className="material-icons text-xl text-slate-400">directions_bus</span> Trajets
+            </Link>
+            <a href="#agences" onClick={() => setNavOpen(false)} className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all">
+              <span className="material-icons text-xl text-slate-400">business</span> Agences
+            </a>
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              {isAuthenticated ? (
+                <button onClick={() => { logout(); setNavOpen(false); }} className="w-full flex items-center gap-3 text-sm font-bold text-red-500 p-2">
+                  <span className="material-icons">logout</span> Déconnexion
+                </button>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setNavOpen(false)} className="block w-full text-center text-sm font-bold text-slate-700 py-3 rounded-xl border border-slate-200">
+                    Se connecter
+                  </Link>
+                  <Link to="/register" onClick={() => setNavOpen(false)} className="block w-full text-center text-sm font-bold bg-[#135bec] text-white py-4 rounded-xl shadow-lg shadow-[#135bec]/20">
+                    S'inscrire gratuitement
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </nav>
 
       {/* ── HERO ────────────────────────────────────────────────────────── */}
@@ -204,6 +225,37 @@ export default function LandingPage() {
             </form>
           </div>
         </div>
+
+      {/* ── Bus en mouvement ── */}
+      <div className="relative w-full mt-8 h-20 overflow-hidden pointer-events-none select-none">
+        {/* Route */}
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-slate-300/20 rounded-t-2xl" />
+        {/* Tirets de la route */}
+        <div className="absolute bottom-2 left-0 flex gap-8 animate-road-dash" style={{ width: "200%" }}>
+          {Array.from({ length: 24 }).map((_, i) => (
+            <div key={i} className="flex-shrink-0 w-12 h-1 bg-[#135bec]/25 rounded-full" />
+          ))}
+        </div>
+        {/* Le bus SVG NJILA qui traverse l'écran */}
+        <div className="absolute bottom-5 animate-drive-bus">
+          <svg viewBox="0 0 130 48" className="w-40 h-auto drop-shadow-2xl" fill="none">
+            <rect x="2" y="10" width="120" height="30" rx="7" fill="#135bec"/>
+            <rect x="8" y="3" width="108" height="13" rx="4" fill="#0d47c7"/>
+            <rect x="15" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="38" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="61" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="84" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="102" y="20" width="14" height="18" rx="2" fill="#1e40af"/>
+            <rect x="2" y="27" width="120" height="3" rx="1" fill="#fde68a"/>
+            <circle cx="24" cy="40" r="8" fill="#1e293b"/>
+            <circle cx="24" cy="40" r="3.5" fill="#94a3b8"/>
+            <circle cx="96" cy="40" r="8" fill="#1e293b"/>
+            <circle cx="96" cy="40" r="3.5" fill="#94a3b8"/>
+            <rect x="114" y="14" width="7" height="5" rx="1" fill="#fef08a"/>
+            <text x="35" y="24" fontFamily="Arial" fontSize="9" fill="white" fontWeight="bold" letterSpacing="1">NJILA</text>
+          </svg>
+        </div>
+      </div>
       </section>
 
       {/* ── STATS ───────────────────────────────────────────────────────── */}
