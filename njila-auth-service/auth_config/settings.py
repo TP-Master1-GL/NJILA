@@ -75,7 +75,7 @@ DATABASES = {
         "USER":     _get("db.user",     "DB_USER",     default="njila"),
         "PASSWORD": _get("db.password", "DB_PASSWORD", default="njila2026"),
         "HOST":     _get("db.host",     "DB_HOST",     default="localhost"),
-        "PORT":     5432,  # Valeur directe
+        "PORT":     5433,  # Valeur directe
     }
 }
 
