@@ -1,0 +1,28 @@
+Name                                                                                           Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------------------------------------------------------------
+authentication/__init__.py                                                                         0      0   100%
+authentication/admin.py                                                                           34      4    88%   38, 42, 53, 57
+authentication/apps.py                                                                            16      7    56%   16-22
+authentication/events/__init__.py                                                                  0      0   100%
+authentication/events/consumer.py                                                                142     94    34%   62-68, 71-141, 144-175, 180-183, 187-197, 200, 216-217, 229-233, 265-266, 274-278, 293-334
+authentication/events/publisher.py                                                                59     22    63%   99-101, 111-138, 157-174, 196, 212, 234
+authentication/middleware/__init__.py                                                              0      0   100%
+authentication/middleware/auth_middleware.py                                                      85     51    40%   42-48, 51, 54, 67-68, 75-95, 102-106, 109, 119, 124, 132, 140, 150, 163-165, 181-199
+authentication/migrations/0001_initial.py                                                          8      0   100%
+authentication/migrations/0002_njilauser_deactivation_reason_njilauser_photo_url_and_more.py       4      0   100%
+authentication/migrations/0003_njilauser_adresse_njilauser_name_njilauser_phone_and_more.py        4      0   100%
+authentication/migrations/__init__.py                                                              0      0   100%
+authentication/models.py                                                                         125     28    78%   60-66, 69-72, 151-153, 156-159, 162-164, 184, 195, 223-224, 227-228, 231
+authentication/repositories/__init__.py                                                            0      0   100%
+authentication/repositories/auth_repository.py                                                    86     16    81%   37-38, 56, 69-76, 143, 170-173
+authentication/serializers/__init__.py                                                             0      0   100%
+authentication/serializers/auth_serializers.py                                                    78     21    73%   32-36, 39-41, 44-46, 67-71, 88-90, 104-106, 109-111
+authentication/services/__init__.py                                                                0      0   100%
+authentication/services/auth_service.py                                                          195     30    85%   158-159, 185, 222, 239-241, 251, 284-301, 321-334, 354-355, 363
+authentication/services/jwt_service.py                                                            76     19    75%   42, 45, 73, 94-99, 119-124, 133-134, 155-156
+authentication/services/redis_cache.py                                                            67     43    36%   22-33, 37-43, 46-53, 56-63, 66, 71-72, 76, 81, 84, 87-88, 93, 96, 99
+authentication/tests.py                                                                          382      0   100%
+authentication/utils/__init__.py                                                                   0      0   100%
+authentication/views.py                                                                          177    118    33%   69, 85-117, 141-171, 192-204, 214-226, 241-253, 265-280, 290-293, 308-347, 357-372, 382-390, 410-423
+----------------------------------------------------------------------------------------------------------------------------
+TOTAL                                                                                           1538    453    71%

@@ -1,0 +1,22 @@
+# Maven
+**/target/
+**/.mvn/wrapper/maven-wrapper.jar
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/venv/
+**/*.egg-info/
+**/.env
+
+# Node.js
+**/node_modules/
+**/.env
+
+# IDE
+**/.idea/
+**/.vscode/
+**/*.iml
+
+# Logs
+**/*.log
