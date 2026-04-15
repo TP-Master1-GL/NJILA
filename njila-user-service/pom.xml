@@ -152,6 +152,7 @@
   </dependencyManagement>
 
   <build>
+    <finalName>njila-user-service</finalName>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>

@@ -1,0 +1,687 @@
+version: '3.8'
+
+services:
+  njila-conf-service:
+    build:
+      context: ./njila-conf-service
+    container_name: njila-conf-service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_APPLICATION_NAME=njila-conf-service
+      - SERVER_PORT=8080
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_URI=https://github.com/TP-Master1-GL/njila-cloud-conf
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL=main
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_SEARCH_PATHS=njila-cloud-conf
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_SKIP_SSL_VALIDATION=true
+      - GIT_SSL_NO_VERIFY=true
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_FORCE_PULL=false
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_REFRESH_RATE=5
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || curl -f http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  njila-registry-service:
+    build:
+      context: ./njila-registry-service
+    container_name: njila-registry-service
+    depends_on:
+      - njila-conf-service
+    ports:
+      - "8761:8761"
+    environment:
+      - SPRING_APPLICATION_NAME=njila-registry-service
+      - SPRING_CLOUD_CONFIG_URI=http://njila-conf-service:8080/
+      - SPRING_CONFIG_IMPORT=configserver:http://njila-conf-service:8080/
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-registry-service:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    
+  njila-proxy-service:
+    build:
+      context: ./njila-proxy-service
+    container_name: njila-proxy-service
+    depends_on:
+        - njila-conf-service
+        - njila-registry-service
+    ports:
+        - "8888:8888"
+    environment:
+        - SPRING_APPLICATION_NAME=njila-proxy-service
+        - SPRING_CLOUD_CONFIG_URI=http://njila-conf-service:8080/
+        - SPRING_CONFIG_IMPORT=configserver:http://njila-conf-service:8080/
+        - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://njila-registry-service:8761/eureka/
+        - SPRING_CLOUD_CONFIG_ENABLED=true
+        - EUREKA_CLIENT_ENABLED=true
+        - EUREKA_INSTANCE_PREFER_IP_ADDRESS=false
+        - EUREKA_INSTANCE_HOSTNAME=njila-proxy-service
+        - EUREKA_CLIENT_FETCH_REGISTRY=true
+        - EUREKA_CLIENT_REGISTER_WITH_EUREKA=true
+        - EUREKA_INSTANCE_APPNAME=njila-PROXY-SERVICE
+        - EUREKA_CLIENT_INITIAL-INSTANCE-INFO-REPLICATION-INTERVAL-SECONDS=5
+        - EUREKA_INSTANCE_LEASE-RENEWAL-INTERVAL-IN-SECONDS=5
+        - EUREKA_INSTANCE_LEASE-EXPIRATION-DURATION-IN-SECONDS=10
+        - EUREKA_INSTANCE_INSTANCE-ID=njila-proxy-service:8082
+        - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5174
+        - CORS_ALLOWED_METHODS=GET,POST,PUT,PATCH,DELETE,OPTIONS
+
+    networks:
+      - njila-network
+
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-proxy-service:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  
+  njila-auth-db:
+    image: postgres:15-alpine
+    container_name: njila-auth-db
+    environment:
+      - POSTGRES_USER=njila
+      - POSTGRES_PASSWORD=njila2026
+      - POSTGRES_DB=njila_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - njila-postgres-data:/var/lib/postgresql/data
+    networks:
+      - njila-network
+
+  njila-auth-service:
+    build:
+      context: ./njila-auth-service
+      dockerfile: Dockerfile
+      
+    container_name: njila-auth-service
+    depends_on:
+      - njila-conf-service
+      - njila-registry-service
+      - njila-auth-db
+    ports:
+      - "8081:8081"
+    environment:
+      - DJANGO_SETTINGS_MODULE=njila_auth.settings
+      - DEBUG=TRUE
+      
+      # Configuration Eureka CORRIGÉE
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://njila-registry-service:8761/eureka/
+      - EUREKA_CLIENT_ENABLED=true
+      - EUREKA_CLIENT_REGISTERWITH_EUREKA=true
+      - EUREKA_CLIENT_FETCHREGISTRY=true
+      
+      # Instance configuration
+      - EUREKA_INSTANCE_INSTANCEID=njila-auth-service:8081
+      - EUREKA_INSTANCE_APP=NJILA-AUTH-SERVICE
+      - EUREKA_INSTANCE_HOSTNAME=njila-auth-service
+      - EUREKA_INSTANCE_PORT=8081
+      - EUREKA_INSTANCE_PREFERIPADDRESS=false
+      
+      # Autres variables
+      - SECRET_KEY=terra-order-secret-key-2024-change-in-production
+      - DATABASE_URL=postgres://njila:njila2026@njila-auth-db:5432/njila_db
+      - SERVICE_NAME=njila-auth-service
+      - SERVICE_PORT=8081
+      
+      # RabbitMQ
+      - RABBITMQ_HOST=njila-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_EXCHANGE=njila-auth-exchange
+
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-auth-service:8081/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+    networks:
+      - njila-network
+    
+    njila-fleet-db:
+      image: postgres:15-alpine
+      container_name: njila-fleet-db
+      environment:
+        - POSTGRES_USER=njila
+        - POSTGRES_PASSWORD=njila2026
+        - POSTGRES_DB=njila_fleet_db
+      ports:
+        - "5435:5432"
+      volumes:
+        - njila-fleet-data:/var/lib/postgresql/data
+      networks:
+        - njila-network
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://njila-fleet-db:5432/health/"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 60s
+      restart: unless-stopped
+    
+  njila-fleet-service:
+    build:
+      context: ./njila-fleet-service
+      dockerfile: Dockerfile
+      
+    container_name: njila-fleet-service
+    depends_on:
+      - njila-conf-service
+      - njila-registry-service
+      - njila-fleet-db
+    ports:
+      - "8088:8088"
+    environment:
+      - DJANGO_SETTINGS_MODULE=njila_fleet.settings
+      - DEBUG=TRUE
+      
+      # Configuration Eureka CORRIGÉE
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://njila-registry-service:8761/eureka/
+      - EUREKA_CLIENT_ENABLED=true
+      - EUREKA_CLIENT_REGISTERWITH_EUREKA=true
+      - EUREKA_CLIENT_FETCHREGISTRY=true
+      
+      # Instance configuration
+      - EUREKA_INSTANCE_INSTANCEID=njila-fleet-service:8088
+      - EUREKA_INSTANCE_APP=NJILA-FLEET-SERVICE
+      - EUREKA_INSTANCE_HOSTNAME=njila-fleet-service
+      - EUREKA_INSTANCE_PORT=8088
+      - EUREKA_INSTANCE_PREFERIPADDRESS=false
+      
+      # Autres variables
+      - SECRET_KEY=njila-fleet-secret-key-2026-change-in-production
+      - DATABASE_URL=postgres://njila:njila2026@njila-fleet-db:5432/njila_fleet_db
+      - SERVICE_NAME=njila-fleet-service
+      - SERVICE_PORT=8088
+      
+      # RabbitMQ
+      - RABBITMQ_HOST=njila-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_EXCHANGE=njila-fleet-exchange
+
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-fleet-service:8088/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+    networks:
+      - njila-network
+  
+  njila-subcribe-db:
+    image: postgres:15-alpine
+    container_name: njila-subcribe-db
+    environment:
+      - POSTGRES_USER=njila
+      - POSTGRES_PASSWORD=njila2026
+      - POSTGRES_DB=njila_subcribe_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - njila-subcribe-data:/var/lib/postgresql/data
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-subcribe-db:5432/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+  
+  njila-subcribe-service:
+    build:
+      context: ./njila-subcribe-service
+      dockerfile: Dockerfile
+    container_name: njila-subcribe-service
+    depends_on:
+      - njila-conf-service
+      - njila-registry-service
+      - njila-subcribe-db
+    ports:
+      - "8089:8089"
+    environment:
+      - DJANGO_SETTINGS_MODULE=njila_subcribe.settings
+      - DEBUG=TRUE
+      
+      # Configuration Eureka CORRIGÉE
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://njila-registry-service:8761/eureka/
+      - EUREKA_CLIENT_ENABLED=true
+      - EUREKA_CLIENT_REGISTERWITH_EUREKA=true
+      - EUREKA_CLIENT_FETCHREGISTRY=true
+      
+      # Instance configuration
+      - EUREKA_INSTANCE_INSTANCEID=njila-subcribe-service:8089
+      - EUREKA_INSTANCE_APP=NJILA-SUBCRIBE-SERVICE
+      - EUREKA_INSTANCE_HOSTNAME=njila-subcribe-service
+      - EUREKA_INSTANCE_PORT=8089
+      - EUREKA_INSTANCE_PREFERIPADDRESS=false
+      
+      # Autres variables
+      - SECRET_KEY=njila-subcribe-secret-key-2026-change-in-production
+      - DATABASE_URL=postgres://njila:njila2026@njila-subcribe-db:5432/njila_subcribe_db
+      - SERVICE_NAME=njila-subcribe-service
+      - SERVICE_PORT=8089
+      
+      # RabbitMQ
+      - RABBITMQ_HOST=njila-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_EXCHANGE=njila-subcribe-exchange
+
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-subcribe-service:8089/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+    networks:
+      - njila-network
+
+  njila-user-db:
+    image: postgres:15-alpine
+    container_name: njila-user-db
+    environment:
+      - POSTGRES_USER=njila
+      - POSTGRES_PASSWORD=njila2026
+      - POSTGRES_DB=njila_user_db
+    ports:
+      - "5437:5432"
+    volumes:
+      - njila-user-data:/var/lib/postgresql/data
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-user-db:5432/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+    
+  njila-user-service:
+    build: ./njila-user-service
+    depends_on:
+      - njila-conf-service
+      - njila-registry-service
+      - njila-user-db
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_APPLICATION_NAME=njila-user-service
+      - SPRING_CLOUD_CONFIG_URI=http://njila-conf-service:8080
+      - SPRING_CONFIG_IMPORT=configserver:http://bank-config-service:8080
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://njila-registry-service:8761/eureka/
+      - EUREKA_CLIENT_ENABLED=true
+      - EUREKA_CLIENT_REGISTERWITH_EUREKA=true
+      - EUREKA_CLIENT_FETCHREGISTRY=true
+      - EUREKA_INSTANCE_INSTANCEID=njila-user-service:8082
+      - EUREKA_INSTANCE_APP=NJILA-USER-SERVICE
+      - EUREKA_INSTANCE_HOSTNAME=njila-user-service
+      - EUREKA_INSTANCE_PORT=8082
+      - EUREKA_INSTANCE_PREFERIPADDRESS=false
+      
+      # Autres variables
+      - SECRET_KEY=njila-2026-change-in-production
+      - DATABASE_URL=postgres://njila:njila2026@njila-user-db:5432/njila_user_db
+      - SERVICE_NAME=njila-user-service
+      - SERVICE_PORT=8082
+      
+      # RabbitMQ
+      - RABBITMQ_HOST=njila-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_EXCHANGE=njila-user-exchange
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-user-service:8082/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+    networks:
+      - njila-network
+
+  njila-booking-db:
+    image: postgres:15-alpine
+    container_name: njila-booking-db
+    environment:
+      - POSTGRES_USER=njila
+      - POSTGRES_PASSWORD=njila2026
+      - POSTGRES_DB=njila_booking_db
+    ports:
+      - "5438:5432"
+    volumes:
+      - njila-booking-data:/var/lib/postgresql/data
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-booking-db:5432/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+
+  njila-booking-service:
+    build: ./njila-booking-service
+    depends_on:
+      - njila-conf-service
+      - njila-registry-service
+      - njila-booking-db
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_APPLICATION_NAME=njila-booking-service
+      - SPRING_CLOUD_CONFIG_URI=http://njila-conf-service:8080
+      - SPRING_CONFIG_IMPORT=configserver:http://bank-config-service:8080
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://njila-registry-service:8761/eureka/
+      - EUREKA_CLIENT_ENABLED=true
+      - EUREKA_CLIENT_REGISTERWITH_EUREKA=true
+      - EUREKA_CLIENT_FETCHREGISTRY=true
+      - EUREKA_INSTANCE_INSTANCEID=njila-booking-service:8083
+      - EUREKA_INSTANCE_APP=NJILA-BOOKING-SERVICE
+      - EUREKA_INSTANCE_HOSTNAME=njila-booking-service
+      - EUREKA_INSTANCE_PORT=8083
+      - EUREKA_INSTANCE_PREFERIPADDRESS=false
+      
+      # Autres variables
+      - SECRET_KEY=njila-2026-change-in-production
+      - DATABASE_URL=postgres://njila:njila2026@njila-booking-db:5432/njila_booking_db
+      - SERVICE_NAME=njila-booking-service
+      - SERVICE_PORT=8083
+      
+      # RabbitMQ
+      - RABBITMQ_HOST=njila-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_EXCHANGE=njila-booking-exchange
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-booking-service:8083/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+    networks:
+      - njila-network
+
+  njila-payement-db:
+    image: postgres:15-alpine
+    container_name: njila-payement-db
+    environment:
+      - POSTGRES_USER=njila
+      - POSTGRES_PASSWORD=njila2026
+      - POSTGRES_DB=njila_payement_db
+    ports:
+      - "5439:5432"
+    volumes:
+      - njila-payement-data:/var/lib/postgresql/data
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-payement-db:5432/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+
+  njila-payement-service:
+    build: ./njila-payement-service
+    depends_on:
+      - njila-conf-service
+      - njila-registry-service
+      - njila-payement-db
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_APPLICATION_NAME=njila-payement-service
+      - SPRING_CLOUD_CONFIG_URI=http://njila-conf-service:8080
+      - SPRING_CONFIG_IMPORT=configserver:http://bank-config-service:8080
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://njila-registry-service:8761/eureka/
+      - EUREKA_CLIENT_ENABLED=true
+      - EUREKA_CLIENT_REGISTERWITH_EUREKA=true
+      - EUREKA_CLIENT_FETCHREGISTRY=true
+      - EUREKA_INSTANCE_INSTANCEID=njila-payement-service:8084
+      - EUREKA_INSTANCE_APP=NJILA-PAYEMENT-SERVICE
+      - EUREKA_INSTANCE_HOSTNAME=njila-payement-service
+      - EUREKA_INSTANCE_PORT=8084
+      - EUREKA_INSTANCE_PREFERIPADDRESS=false
+      
+      # Autres variables
+      - SECRET_KEY=njila-2026-change-in-production
+      - DATABASE_URL=postgres://njila:njila2026@njila-payement-db:5432/njila_payement_db
+      - SERVICE_NAME=njila-payement-service
+      - SERVICE_PORT=8084
+      
+      # RabbitMQ
+      - RABBITMQ_HOST=njila-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_EXCHANGE=njila-payment-exchange
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-payement-service:8084/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+    networks:
+      - njila-network
+
+  njila-notification-db:
+    image: postgres:15-alpine
+    container_name: njila-notification-db
+    environment:
+      - POSTGRES_USER=njila
+      - POSTGRES_PASSWORD=njila2026
+      - POSTGRES_DB=njila_notification_db
+    ports:
+      - "5440:5432"
+    volumes:
+      - njila-notification-data:/var/lib/postgresql/data
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-notification-db:5432/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Augmenté pour laisser le temps au service de démarrer
+    restart: unless-stopped
+
+  njila-notification-service:
+    build:
+      context: ./njila-notification-service
+      dockerfile: Dockerfile
+    container_name: njila-notification-service
+    depends_on:
+      terra-conf-service:
+        condition: service_healthy
+      terra-registry-service:
+        condition: service_healthy
+      terra-notification-db:
+        condition: service_healthy
+      terra-rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    environment:
+      - NODE_ENV=production
+      - PORT=8085
+      - HOSTNAME=njila-notification-service
+      - SERVICE_NAME=njila-notification-service
+      - CONFIG_SERVICE_URL=http://njila-conf-service:8080
+      - EUREKA_HOST=njila-registry-service
+      - EUREKA_PORT=8761
+      - DB_HOST=terra-notification-db
+      - DB_USER=terra_notification_user
+      - DB_PASSWORD=terra_notification_pass
+      - DB_NAME=terra_notification_db
+      - RABBITMQ_HOST=njila-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_URL=amqp://njila-rabbitmq:5672
+      - RABBITMQ_EXCHANGE=njila-notification-exchange
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://njila-notification-service:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  
+#service de notification(node.js)
+  terra-notification-service:
+    build:
+      context: ./terra-notification-service
+      dockerfile: Dockerfile
+    container_name: terra-notification-service
+    depends_on:
+      terra-conf-service:
+        condition: service_healthy
+      terra-registry-service:
+        condition: service_healthy
+      terra-notification-db:
+        condition: service_healthy
+      terra-rabbitmq:
+        condition: service_healthy
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+      - HOSTNAME=terra-notification-service
+      - SERVICE_NAME=terra-notification-service
+      - CONFIG_SERVICE_URL=http://terra-conf-service:8080
+      - EUREKA_HOST=terra-registry-service
+      - EUREKA_PORT=8761
+      - DB_HOST=terra-notification-db
+      - DB_USER=terra_notification_user
+      - DB_PASSWORD=terra_notification_pass
+      - DB_NAME=terra_notification_db
+      - RABBITMQ_HOST=terra-rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_URL=amqp://terra-rabbitmq:5672
+      - RABBITMQ_EXCHANGE=user.events
+      - RABBITMQ_QUEUE=queue.user.created
+    networks:
+      - terra-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"  
+
+#RabbitMq service
+  njila-rabbitmq:
+    image: rabbitmq:3-management
+    container_name: njila-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - njila-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+  
+  njila-frontend:
+      build:
+        context: ./njila-frontend
+        dockerfile: Dockerfile
+        args:
+          - VITE_API_GATEWAY_URL=http://njila-proxy-service:8088
+          - VITE_APP_NAME=NJILA
+          - VITE_BASE_URL=/
+      ports:
+        - "5174:80"  # Changé de 5173:5173 à 5173:80
+      environment:
+        - NODE_ENV=production
+        - VITE_API_GATEWAY_URL=http://njila-proxy-service:8088
+      volumes:
+        - ./njila-frontend/public:/usr/share/nginx/html/public:ro
+      networks:
+        - njila-network
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost/health"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 40s
+      restart: unless-stopped
+
+
+networks:
+  njila-network:
+    driver: bridge
+
+volumes:
+  njila-fleet-data:
+  njila-subcribe-data:
+  njila-user-data:
+  njila-notification-data:
+  njila-rabbitmq-data:
+  njila-auth-data:
+  njila-payement-data:
+  njila-booking-data:
+  

@@ -24,7 +24,11 @@ public class FleetEventConsumer {
     private final AgenceDataRepository agenceRepository;
     private final FilialeDataRepository filialeRepository;
 
-    @RabbitListener(queues = RabbitMQConfig.FLEET_SYNC_QUEUE)
+    @RabbitListener(queues = {
+            RabbitMQConfig.FLEET_AGENCY_QUEUE,
+            RabbitMQConfig.FLEET_FILIALE_QUEUE,
+            RabbitMQConfig.FLEET_VOYAGE_QUEUE
+    })
     public void consumeFleetEvent(Map<String, Object> event) {
         String type = (String) event.get("type");
         log.info("[FLEET-SYNC] Événement reçu type={}", type);
