@@ -131,7 +131,9 @@ class EventPublisher:
         filiale_id: Optional[str] = None,
         agence_id: Optional[str] = None,
     ):
-        profile_payload = {
+        
+        # 1. Format pour le service USER (format original)
+        user_service_payload = {
             "userId": user_id,
             "email": email,
             "name": name,
@@ -144,12 +146,44 @@ class EventPublisher:
             "agenceId": agence_id,
         }
         
+        # 2. Format pour le service BOOKING (avec wrapper type/data)
+        booking_payload = {
+            "type": "user.registered",
+            "data": {
+                "userId": user_id,
+                "id": user_id,
+                "name": name,
+                "nom": name,
+                "surname": surname,
+                "prenom": surname,
+                "email": email,
+                "phone": phone,
+                "telephone": phone,
+                "adresse": adresse,
+                "address": adresse,
+                "photo_portrait_url": photo_url,
+                "role": role,
+                "agence_id": agence_id,
+                "filiale_id": filiale_id,
+            }
+        }
+        
+        # Publication pour le service USER avec routing key spécifique
         self.publish(
-            exchange=EXCHANGE_USER,
-            routing_key=ROUTING_USER_REGISTERED,
-            payload=profile_payload,
+            exchange=EXCHANGE_USER,           # njila.user.exchange
+            routing_key="user.registered",  # ⚠️ Différente
+            payload=user_service_payload,
         )
         
+        # Publication pour le service BOOKING avec routing key différente
+        # MAIS qui match toujours le pattern 'user.#' du booking service
+        self.publish(
+            exchange=EXCHANGE_USER,           # njila.user.exchange
+            routing_key="user.registered.booking",  # ⚠️ Différente aussi
+            payload=booking_payload,
+        )
+        
+        # Publication pour le service NOTIFICATION
         self.publish(
             exchange=EXCHANGE_NOTIFICATION,
             routing_key=ROUTING_WELCOME_EMAIL,
@@ -160,7 +194,8 @@ class EventPublisher:
                 "type": "welcome",
             },
         )
-        logger.info("[RABBITMQ] user.registered publié | userId=%s email=%s", user_id, email)
+        
+        logger.info("[RABBITMQ] user.registered publié | userId=%s", user_id)
 
     def publish_user_updated(
         self,
@@ -168,18 +203,70 @@ class EventPublisher:
         email: str,
         email_changed: bool = False,
         photo_url: Optional[str] = None,
+        name: Optional[str] = None,
+        surname: Optional[str] = None,
+        phone: Optional[str] = None,
+        adresse: Optional[str] = None,
+        role: Optional[str] = None,
+        filiale_id: Optional[str] = None,
+        agence_id: Optional[str] = None,
     ):
+        # 1. Format pour le service USER (format original)
+        user_service_payload = {
+            "userId": user_id,
+            "email": email,
+            "emailChanged": email_changed,
+            "photoUrl": photo_url,
+            # Ajout optionnel si ces champs sont fournis
+            "name": name,
+            "surname": surname,
+            "phone": phone,
+            "adresse": adresse,
+            "role": role,
+            "filialeId": filiale_id,
+            "agenceId": agence_id,
+        }
+        
+        # 2. Format pour le service BOOKING (avec wrapper type/data)
+        booking_payload = {
+            "type": "user.updated",  # ou "USER_UPDATED" selon ce que le consumer accepte
+            "data": {
+                "userId": user_id,
+                "id": user_id,
+                "email": email,
+                "photoUrl": photo_url,
+                "photo_portrait_url": photo_url,
+                # Inclure tous les champs qui pourraient être mis à jour
+                "name": name,
+                "nom": name,
+                "surname": surname,
+                "prenom": surname,
+                "phone": phone,
+                "telephone": phone,
+                "adresse": adresse,
+                "address": adresse,
+                "role": role,
+                "agence_id": agence_id,
+                "filiale_id": filiale_id,
+            }
+        }
+        
+        # Publication pour le service USER avec routing key spécifique
         self.publish(
             exchange=EXCHANGE_USER,
-            routing_key=ROUTING_USER_UPDATED,
-            payload={
-                "userId": user_id,
-                "email": email,
-                "emailChanged": email_changed,
-                "photoUrl": photo_url,
-            },
+            routing_key="user.updated",  # Spécifique au service user
+            payload=user_service_payload,
         )
-        logger.debug("[RABBITMQ] user.updated publié | userId=%s emailChanged=%s", user_id, email_changed)
+        
+        # Publication pour le service BOOKING avec routing key différente
+        # MAIS qui match toujours le pattern 'user.#' du booking service
+        self.publish(
+            exchange=EXCHANGE_USER,
+            routing_key="user.updated.booking",  # Spécifique au booking
+            payload=booking_payload,
+        )
+        
+        logger.info("[RABBITMQ] user.updated publié | userId=%s emailChanged=%s", user_id, email_changed)
 
     def publish_password_reset(self, email: str, reset_link: str, name: str = ""):
         self.publish(
