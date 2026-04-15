@@ -22,7 +22,9 @@ public class RabbitMQConfig {
     public static final String QUEUE_USER_REGISTERED        = "njila.user.registered.queue";
     public static final String QUEUE_USER_UPDATED           = "njila.user.updated.queue";
     public static final String QUEUE_AGENCE_CREATED         = "njila.user.agence-created.queue";
+    public static final String QUEUE_AGENCE_UPDATED         = "njila.user.agence-updated.queue";      // ← NOUVEAU
     public static final String QUEUE_FILIALE_CREATED        = "njila.user.filiale-created.queue";
+    public static final String QUEUE_FILIALE_UPDATED        = "njila.user.filiale-updated.queue";    // ← NOUVEAU
     public static final String QUEUE_RESERVATION_CREATED    = "njila.user.reservation-created.queue";
     public static final String QUEUE_NOTIFICATION_STAFF_CREATED = "njila.notification.staff.created.queue";
     public static final String QUEUE_NOTIFICATION_STAFF_DELETED = "njila.notification.staff.deleted.queue";
@@ -35,7 +37,9 @@ public class RabbitMQConfig {
     public static final String KEY_USER_REGISTERED     = "user.registered";
     public static final String KEY_USER_UPDATED        = "user.updated";
     public static final String KEY_AGENCE_CREATED      = "agence.created";
+    public static final String KEY_AGENCE_UPDATED      = "agence.updated";        // ← NOUVEAU
     public static final String KEY_FILIALE_CREATED     = "filiale.created";
+    public static final String KEY_FILIALE_UPDATED     = "filiale.updated";       // ← NOUVEAU
     public static final String KEY_RESERVATION_CREATED = "reservation.created";
     public static final String KEY_STAFF_CREATED       = "staff.created";
     public static final String KEY_STAFF_DELETED       = "staff.deleted";
@@ -94,8 +98,18 @@ public class RabbitMQConfig {
     }
     
     @Bean 
+    public Queue agenceUpdatedQueue() { 
+        return durableQueue(QUEUE_AGENCE_UPDATED); 
+    }
+    
+    @Bean 
     public Queue filialeCreatedQueue() { 
         return durableQueue(QUEUE_FILIALE_CREATED); 
+    }
+    
+    @Bean 
+    public Queue filialeUpdatedQueue() { 
+        return durableQueue(QUEUE_FILIALE_UPDATED); 
     }
     
     @Bean 
@@ -144,9 +158,21 @@ public class RabbitMQConfig {
     }
     
     @Bean 
+    public Binding bindingAgenceUpdated() {
+        return BindingBuilder.bind(agenceUpdatedQueue())
+                .to(fleetExchange()).with(KEY_AGENCE_UPDATED);
+    }
+    
+    @Bean 
     public Binding bindingFilialeCreated() {
         return BindingBuilder.bind(filialeCreatedQueue())
                 .to(fleetExchange()).with(KEY_FILIALE_CREATED);
+    }
+    
+    @Bean 
+    public Binding bindingFilialeUpdated() {
+        return BindingBuilder.bind(filialeUpdatedQueue())
+                .to(fleetExchange()).with(KEY_FILIALE_UPDATED);
     }
     
     @Bean 

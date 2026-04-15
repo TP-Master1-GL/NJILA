@@ -218,14 +218,17 @@ public class UserEventConsumer {
     @RabbitListener(queues = "njila.user.agence-created.queue")
     @Transactional
     public void handleAgenceCreated(Map<String, Object> payload) {
-        log.info("[CONSUMER] agence.created reçu");
+        log.info("[CONSUMER] agence.created reçu - payload: {}", payload);
         try {
-            String agenceId = getString(payload, "agenceId");
+            // ✅ Adapter aux noms de champs envoyés par fleet-service (snake_case)
+            String agenceId = getString(payload, "agence_id");      // snake_case
             String nom = getString(payload, "nom");
-            String description = getString(payload, "description");
+            String adresse = getString(payload, "adresse");
+            String telephone = getString(payload, "telephone");
+            String emailOfficiel = getString(payload, "email_officiel");
 
             if (agenceId == null || nom == null) {
-                log.error("[CONSUMER] agence.created : agenceId ou nom manquant");
+                log.error("[CONSUMER] agence.created : agence_id ou nom manquant");
                 return;
             }
 
@@ -236,38 +239,129 @@ public class UserEventConsumer {
                 return;
             }
 
+            // Construire la description à partir des données disponibles
+            StringBuilder description = new StringBuilder();
+            if (adresse != null && !adresse.isBlank()) {
+                description.append("Adresse: ").append(adresse).append(". ");
+            }
+            if (telephone != null && !telephone.isBlank()) {
+                description.append("Tél: ").append(telephone).append(". ");
+            }
+            if (emailOfficiel != null && !emailOfficiel.isBlank()) {
+                description.append("Email: ").append(emailOfficiel);
+            }
+
             Agence agence = Agence.builder()
                 .idAgence(id)
                 .nom(nom)
-                .description(description != null ? description : "")
+                .description(description.toString())
+                .adresse(adresse)
+                .telephone(telephone)
+                .emailOfficiel(emailOfficiel)
                 .isActive(true)
                 .build();
 
             agenceRepository.save(agence);
-            log.info("[CONSUMER] Agence créée | id={} nom={}", agenceId, nom);
+            log.info("[CONSUMER] Agence créée | id={} nom={} adresse={} tel={} email={}", 
+                     agenceId, nom, adresse, telephone, emailOfficiel);
 
         } catch (Exception e) {
             log.error("[CONSUMER] Erreur agence.created : {}", e.getMessage(), e);
         }
     }
 
+    @RabbitListener(queues = "njila.user.agence-updated.queue")
+    @Transactional
+    public void handleAgenceUpdated(Map<String, Object> payload) {
+        log.info("[CONSUMER] agence.updated reçu - payload: {}", payload);
+        try {
+            // ✅ Adapter aux noms de champs envoyés par fleet-service (snake_case)
+            String agenceId = getString(payload, "agence_id");
+            String nom = getString(payload, "nom");
+            String telephone = getString(payload, "telephone");
+            String emailOfficiel = getString(payload, "email_officiel");
+            String statutGlobal = getString(payload, "statut_global");
+
+            if (agenceId == null) {
+                log.error("[CONSUMER] agence.updated : agence_id manquant");
+                return;
+            }
+
+            UUID id = UUID.fromString(agenceId);
+            Agence agence = agenceRepository.findById(id).orElse(null);
+
+            if (agence == null) {
+                log.warn("[CONSUMER] Agence non trouvée pour mise à jour id={}", agenceId);
+                return;
+            }
+
+            boolean changed = false;
+
+            if (nom != null && !nom.isBlank()) {
+                agence.setNom(nom);
+                changed = true;
+            }
+            if (telephone != null && !telephone.isBlank()) {
+                agence.setTelephone(telephone);
+                changed = true;
+            }
+            if (emailOfficiel != null && !emailOfficiel.isBlank()) {
+                agence.setEmailOfficiel(emailOfficiel);
+                changed = true;
+            }
+            if (statutGlobal != null) {
+                // Mettre à jour le statut si nécessaire
+                // agence.setStatutGlobal(statutGlobal);
+                changed = true;
+            }
+
+            if (changed) {
+                // Mettre à jour la description
+                StringBuilder description = new StringBuilder();
+                if (agence.getAdresse() != null && !agence.getAdresse().isBlank()) {
+                    description.append("Adresse: ").append(agence.getAdresse()).append(". ");
+                }
+                if (agence.getTelephone() != null && !agence.getTelephone().isBlank()) {
+                    description.append("Tél: ").append(agence.getTelephone()).append(". ");
+                }
+                if (agence.getEmailOfficiel() != null && !agence.getEmailOfficiel().isBlank()) {
+                    description.append("Email: ").append(agence.getEmailOfficiel());
+                }
+                agence.setDescription(description.toString());
+
+                agenceRepository.save(agence);
+                log.info("[CONSUMER] Agence mise à jour | id={} nom={} tel={} email={}", 
+                         agenceId, nom, telephone, emailOfficiel);
+            } else {
+                log.debug("[CONSUMER] Aucune modification pour l'agence id={}", agenceId);
+            }
+
+        } catch (Exception e) {
+            log.error("[CONSUMER] Erreur agence.updated : {}", e.getMessage(), e);
+        }
+    }
+
     @RabbitListener(queues = "njila.user.filiale-created.queue")
     @Transactional
     public void handleFilialeCreated(Map<String, Object> payload) {
-        log.info("[CONSUMER] filiale.created reçu");
+        log.info("[CONSUMER] filiale.created reçu - payload: {}", payload);
         try {
-            String filialeId = getString(payload, "filialeId");
+            // ✅ Adapter aux noms de champs envoyés par fleet-service (snake_case)
+            String filialeId = getString(payload, "filiale_id");    // snake_case
+            String agenceId = getString(payload, "agence_id");      // snake_case
             String nom = getString(payload, "nom");
             String adresse = getString(payload, "adresse");
             String ville = getString(payload, "ville");
-            String agenceId = getString(payload, "agenceId");
+            String code = getString(payload, "code");
+            String telephone = getString(payload, "telephone");
+            String email = getString(payload, "email");
 
             if (filialeId == null || nom == null) {
-                log.error("[CONSUMER] filiale.created : filialeId ou nom manquant");
+                log.error("[CONSUMER] filiale.created : filiale_id ou nom manquant");
                 return;
             }
             if (agenceId == null) {
-                log.error("[CONSUMER] filiale.created : agenceId manquant");
+                log.error("[CONSUMER] filiale.created : agence_id manquant");
                 return;
             }
 
@@ -290,14 +384,86 @@ public class UserEventConsumer {
                 .adresse(adresse != null ? adresse : "")
                 .ville(ville != null ? ville : "")
                 .agenceId(idAgence)
+                .code(code != null ? code : "")
+                .telephone(telephone != null ? telephone : "")
+                .email(email != null ? email : "")
                 .isActive(true)
                 .build();
 
             filialeRepository.save(filiale);
-            log.info("[CONSUMER] Filiale créée | id={} nom={} agenceId={}", filialeId, nom, agenceId);
+            log.info("[CONSUMER] Filiale créée | id={} nom={} agenceId={} ville={} code={} tel={} email={}", 
+                     filialeId, nom, agenceId, ville, code, telephone, email);
 
         } catch (Exception e) {
             log.error("[CONSUMER] Erreur filiale.created : {}", e.getMessage(), e);
+        }
+    }
+
+    @RabbitListener(queues = "njila.user.filiale-updated.queue")
+    @Transactional
+    public void handleFilialeUpdated(Map<String, Object> payload) {
+        log.info("[CONSUMER] filiale.updated reçu - payload: {}", payload);
+        try {
+            // ✅ Adapter aux noms de champs envoyés par fleet-service (snake_case)
+            String filialeId = getString(payload, "filiale_id");
+            String agenceId = getString(payload, "agence_id");
+            String nom = getString(payload, "nom");
+            String code = getString(payload, "code");
+            String ville = getString(payload, "ville");
+            String telephone = getString(payload, "telephone");
+            String email = getString(payload, "email");
+            Boolean estActive = payload.get("est_active") instanceof Boolean ? (Boolean) payload.get("est_active") : null;
+
+            if (filialeId == null) {
+                log.error("[CONSUMER] filiale.updated : filiale_id manquant");
+                return;
+            }
+
+            UUID idFiliale = UUID.fromString(filialeId);
+            Filiale filiale = filialeRepository.findById(idFiliale).orElse(null);
+
+            if (filiale == null) {
+                log.warn("[CONSUMER] Filiale non trouvée pour mise à jour id={}", filialeId);
+                return;
+            }
+
+            boolean changed = false;
+
+            if (nom != null && !nom.isBlank()) {
+                filiale.setNom(nom);
+                changed = true;
+            }
+            if (code != null && !code.isBlank()) {
+                filiale.setCode(code);
+                changed = true;
+            }
+            if (ville != null && !ville.isBlank()) {
+                filiale.setVille(ville);
+                changed = true;
+            }
+            if (telephone != null && !telephone.isBlank()) {
+                filiale.setTelephone(telephone);
+                changed = true;
+            }
+            if (email != null && !email.isBlank()) {
+                filiale.setEmail(email);
+                changed = true;
+            }
+            if (estActive != null) {
+                filiale.setActive(estActive);
+                changed = true;
+            }
+
+            if (changed) {
+                filialeRepository.save(filiale);
+                log.info("[CONSUMER] Filiale mise à jour | id={} nom={} ville={} tel={} email={} active={}", 
+                         filialeId, nom, ville, telephone, email, estActive);
+            } else {
+                log.debug("[CONSUMER] Aucune modification pour la filiale id={}", filialeId);
+            }
+
+        } catch (Exception e) {
+            log.error("[CONSUMER] Erreur filiale.updated : {}", e.getMessage(), e);
         }
     }
 

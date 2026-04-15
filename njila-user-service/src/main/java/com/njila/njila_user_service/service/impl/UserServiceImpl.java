@@ -3,11 +3,7 @@ package com.njila.njila_user_service.service.impl;
 import com.njila.njila_user_service.dto.request.*;
 import com.njila.njila_user_service.dto.response.AvisResponse;
 import com.njila.njila_user_service.dto.response.UserProfileResponse;
-import com.njila.njila_user_service.entity.Avis;
-import com.njila.njila_user_service.entity.Chauffeur;
-import com.njila.njila_user_service.entity.Guichetier;
-import com.njila.njila_user_service.entity.UserProfile;
-import com.njila.njila_user_service.entity.Voyageur;
+import com.njila.njila_user_service.entity.*;
 import com.njila.njila_user_service.enums.Role;
 import com.njila.njila_user_service.enums.UserEventType;
 import com.njila.njila_user_service.events.publisher.EventPublisher;
@@ -16,7 +12,9 @@ import com.njila.njila_user_service.middleware.JwtClaims;
 import com.njila.njila_user_service.observer.IUserObserver;
 import com.njila.njila_user_service.observer.IUserSubject;
 import com.njila.njila_user_service.observer.UserEvent;
+import com.njila.njila_user_service.events.publisher.NotificationEventPublisher;
 import com.njila.njila_user_service.repository.*;
+import com.njila.njila_user_service.service.*;
 import com.njila.njila_user_service.service.RedisCacheInvalidator;
 import com.njila.njila_user_service.service.RoleManager;
 import com.njila.njila_user_service.service.UserService;
@@ -32,7 +30,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -51,9 +48,15 @@ public class UserServiceImpl implements UserService, IUserSubject {
     private final ChauffeurRepository chauffeurRepository;
     private final RoleManager roleManager;
     private final EventPublisher eventPublisher;
+    private final NotificationEventPublisher notificationEventPublisher;
     private final RedisCacheInvalidator cacheInvalidator;
     private final CacheManager cacheManager;
     private final StaffQueryService staffQueryService;
+    
+    // Services de délégation pour les staffs (NOUVEAUX)
+    private final AdministrateurService administrateurService;
+    private final ManagerGlobalService managerGlobalService;
+    private final ManagerLocalService managerLocalService;
 
     private final List<IUserObserver> observers = new ArrayList<>();
 
@@ -67,8 +70,10 @@ public class UserServiceImpl implements UserService, IUserSubject {
 
     @Override
     public void subscribe(IUserObserver observer) { observers.add(observer); }
+    
     @Override
     public void unsubscribe(IUserObserver observer) { observers.remove(observer); }
+    
     @Override
     public void notifyObservers(UserEvent event) {
         observers.forEach(o -> {
@@ -77,7 +82,9 @@ public class UserServiceImpl implements UserService, IUserSubject {
         });
     }
 
-    // ── PROFIL ──────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+    // ── PROFIL (VOYAGEUR) ─── NON MODIFIÉ ─────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
     @Override
     @Cacheable(value = "profiles", key = "#userId.toString()", unless = "#result == null")
@@ -119,6 +126,13 @@ public class UserServiceImpl implements UserService, IUserSubject {
         userRepository.save(profile);
 
         if (changed) {
+            notificationEventPublisher.publishProfileUpdated(
+                userId.toString(),
+                profile.getEmail(),
+                profile.getName(),
+                profile.getSurname(),
+                caller != null ? caller.getUserId().toString() : "SYSTEM"
+            );
             notifyObservers(UserEvent.of(
                 UserEventType.PROFIL_MODIFIER,
                 caller != null ? caller.getUserId() : null,
@@ -184,7 +198,9 @@ public class UserServiceImpl implements UserService, IUserSubject {
         return userRepository.findAll().stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── AVIS ────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+    // ── AVIS (VOYAGEUR) ─── NON MODIFIÉ ───────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
@@ -257,247 +273,118 @@ public class UserServiceImpl implements UserService, IUserSubject {
         return moyenne != null ? Math.round(moyenne * 10.0) / 10.0 : 0.0;
     }
 
-    // ── MANAGER GLOBAL (délégué à ManagerGlobalService) ─────────────────────
-    
+    // ──────────────────────────────────────────────────────────────────────────
+    // ── MANAGER GLOBAL ─── DÉLÉGUÉ À ManagerGlobalService ─────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listStaffByAgence(UUID agenceId, String type, JwtClaims caller) {
-        
-        roleManager.assertCanViewStaffByAgence(caller, agenceId);
-        
-        List<UserProfile> staff;
-        if ("MANAGER_LOCAL".equalsIgnoreCase(type)) {
-            staff = staffQueryService.findAllManagerLocauxByAgenceId(agenceId).stream()
-                    .map(u -> (UserProfile) u)
-                    .collect(Collectors.toList());
-        } else if ("EMPLOYE".equalsIgnoreCase(type)) {
-            staff = staffQueryService.findAllEmployesByAgenceId(agenceId);
-        } else {
-            staff = staffQueryService.findAllStaffByAgenceId(agenceId);
-        }
-        
-        return staff.stream().map(this::toResponse).collect(Collectors.toList());
+        return managerGlobalService.listStaffByAgence(agenceId, type, caller);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listEmployesByAgence(UUID agenceId, JwtClaims caller) {
-        roleManager.assertCanViewStaffByAgence(caller, agenceId);
-        return staffQueryService.findAllEmployesByAgenceId(agenceId).stream()
-            .map(this::toResponse).collect(Collectors.toList());
+        return managerGlobalService.listEmployesByAgence(agenceId, caller);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listEmployesByAgenceAndFiliale(UUID agenceId, UUID filialeId, JwtClaims caller) {
-        roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
-        
-        var filiale = filialeRepository.findById(filialeId)
-            .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
-        
-        if (!filiale.getAgenceId().equals(agenceId)) {
-            throw new ForbiddenException("Cette filiale n'appartient pas à votre agence.");
-        }
-        
-        return staffQueryService.findAllEmployesByAgenceAndFiliale(agenceId, filialeId).stream()
-            .map(this::toResponse).collect(Collectors.toList());
+        return managerGlobalService.listEmployesByAgenceAndFiliale(agenceId, filialeId, caller);
     }
 
     @Override
     @Transactional
     public void createManagerLocal(UUID agenceId, CreateManagerLocalRequest request, JwtClaims caller) {
-        roleManager.assertCanCreateStaffByManagerGlobal(caller);
-        roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
-        
-        String email = request.getEmail().toLowerCase().strip();
-        if (userRepository.existsByEmail(email)) {
-            throw new EmailAlreadyExistsException(email);
-        }
-        
-        UUID filialeId = UUID.fromString(request.getFilialeId());
-        var filiale = filialeRepository.findById(filialeId)
-            .orElseThrow(() -> new FilialeNotFoundException(request.getFilialeId()));
-        
-        if (!filiale.getAgenceId().equals(agenceId)) {
-            throw new ForbiddenException("La filiale spécifiée n'appartient pas à votre agence.");
-        }
-        
-        UUID newUserId = UUID.randomUUID();
-        var managerLocal = com.njila.njila_user_service.entity.ManagerLocal.builder()
-            .idUser(newUserId)
-            .name(request.getName().strip())
-            .surname(request.getSurname().strip())
-            .email(email)
-            .phone(request.getPhone())
-            .adresse(request.getAdresse())
-            .agenceId(agenceId)
-            .filialeId(filialeId)
-            .isActive(true)
-            .build();
-        
-        managerLocalRepository.save(managerLocal);
-        evictUserLists();
-        
-        log.info("[SERVICE] ManagerLocal créé | userId={} agenceId={} filialeId={}", newUserId, agenceId, filialeId);
+        managerGlobalService.createManagerLocal(agenceId, request, caller);
     }
 
-    // ── MANAGER LOCAL (délégué) ─────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+    // ── MANAGER LOCAL ─── DÉLÉGUÉ À ManagerLocalService ───────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listEmployesByFiliale(UUID filialeId, JwtClaims caller) {
-        roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
-        return staffQueryService.findAllEmployesByFilialeId(filialeId).stream()
-            .map(this::toResponse).collect(Collectors.toList());
+        return managerLocalService.listEmployesByFiliale(filialeId, caller);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listGuichetiersByFiliale(UUID filialeId, JwtClaims caller) {
-        roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
-        return staffQueryService.findAllGuichetiersByFilialeId(filialeId).stream()
-            .map(this::toResponse).collect(Collectors.toList());
+        return managerLocalService.listGuichetiersByFiliale(filialeId, caller);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listChauffeursByFiliale(UUID filialeId, JwtClaims caller) {
-        roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
-        return staffQueryService.findAllChauffeursByFilialeId(filialeId).stream()
-            .map(this::toResponse).collect(Collectors.toList());
+        return managerLocalService.listChauffeursByFiliale(filialeId, caller);
     }
 
     @Override
     @Transactional
     public void createGuichetier(UUID filialeId, CreateGuichetierRequest request, JwtClaims caller) {
-        roleManager.assertCanCreateEmployeByManagerLocal(caller);
-        roleManager.assertManagerLocalCanManageFiliale(caller, filialeId);
-        
-        String email = request.getEmail().toLowerCase().strip();
-        if (userRepository.existsByEmail(email)) {
-            throw new EmailAlreadyExistsException(email);
-        }
-        
-        var filiale = filialeRepository.findById(filialeId)
-            .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
-        
-        UUID newUserId = UUID.randomUUID();
-        var guichetier = Guichetier.builder()
-            .idUser(newUserId)
-            .name(request.getName().strip())
-            .surname(request.getSurname().strip())
-            .email(email)
-            .phone(request.getPhone())
-            .adresse(request.getAdresse())
-            .agenceId(filiale.getAgenceId())
-            .filialeId(filialeId)
-            .poste(request.getPoste())
-            .isActive(true)
-            .build();
-        
-        guichetierRepository.save(guichetier);
-        evictUserLists();
-        
-        log.info("[SERVICE] Guichetier créé | userId={} filialeId={}", newUserId, filialeId);
+        managerLocalService.createGuichetier(filialeId, request, caller);
     }
 
     @Override
     @Transactional
     public void createChauffeur(UUID filialeId, CreateChauffeurRequest request, JwtClaims caller) {
-        roleManager.assertCanCreateEmployeByManagerLocal(caller);
-        roleManager.assertManagerLocalCanManageFiliale(caller, filialeId);
-        
-        String email = request.getEmail().toLowerCase().strip();
-        if (userRepository.existsByEmail(email)) {
-            throw new EmailAlreadyExistsException(email);
-        }
-        
-        var filiale = filialeRepository.findById(filialeId)
-            .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
-        
-        UUID newUserId = UUID.randomUUID();
-        var chauffeur = Chauffeur.builder()
-            .idUser(newUserId)
-            .name(request.getName().strip())
-            .surname(request.getSurname().strip())
-            .email(email)
-            .phone(request.getPhone())
-            .adresse(request.getAdresse())
-            .agenceId(filiale.getAgenceId())
-            .filialeId(filialeId)
-            .numeroPermis(request.getNumeroPermis())
-            .disponible(true)
-            .isActive(true)
-            .build();
-        
-        chauffeurRepository.save(chauffeur);
-        evictUserLists();
-        
-        log.info("[SERVICE] Chauffeur créé | userId={} filialeId={}", newUserId, filialeId);
+        managerLocalService.createChauffeur(filialeId, request, caller);
     }
 
-    // ── ADMIN ───────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+    // ── ADMIN ─── DÉLÉGUÉ À AdministrateurService ─────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
     public void createManagerGlobal(CreateManagerGlobalRequest request, JwtClaims caller) {
-        roleManager.assertIsAdmin(caller);
-        
-        String email = request.getEmail().toLowerCase().strip();
-        if (userRepository.existsByEmail(email)) {
-            throw new EmailAlreadyExistsException(email);
-        }
-        
-        UUID agenceId = UUID.fromString(request.getAgenceId());
-        agenceRepository.findById(agenceId)
-            .orElseThrow(() -> new AgenceNotFoundException(request.getAgenceId()));
-        
-        UUID newUserId = UUID.randomUUID();
-        var managerGlobal = com.njila.njila_user_service.entity.ManagerGlobal.builder()
-            .idUser(newUserId)
-            .name(request.getName().strip())
-            .surname(request.getSurname().strip())
-            .email(email)
-            .phone(request.getPhone())
-            .adresse(request.getAdresse())
-            .agenceId(agenceId)
-            .isActive(true)
-            .build();
-        
-        managerGlobalRepository.save(managerGlobal);
-        evictUserLists();
-        
-        log.info("[SERVICE] ManagerGlobal créé | userId={} agenceId={}", newUserId, agenceId);
+        administrateurService.createManagerGlobal(request, caller);
     }
 
-    // ── SUPPRESSION STAFF ───────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+    // ── SUPPRESSION STAFF ─── DÉLÉGUÉ SELON LE RÔLE ───────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
     public void deleteStaff(UUID staffId, JwtClaims caller) {
         UserProfile staff = userRepository.findById(staffId)
             .orElseThrow(() -> new ProfileNotFoundException(staffId.toString()));
-        
+
         if (staff.getRole() == Role.VOYAGEUR) {
             throw new ForbiddenException("Impossible de supprimer un compte voyageur via cette endpoint.");
         }
-        
+
         roleManager.assertCanDeleteUser(caller, staff);
-        
-        if (staff.getRole() == Role.MANAGER_GLOBAL && caller.getRole() != Role.ADMINISTRATEUR) {
-            throw new ForbiddenException("Seul un Administrateur peut supprimer un ManagerGlobal.");
+
+        // Déléguer selon le rôle
+        switch (staff.getRole()) {
+            case MANAGER_GLOBAL:
+                administrateurService.deleteManagerGlobal(staffId, caller);
+                break;
+            case MANAGER_LOCAL:
+            case GUICHETIER:
+            case CHAUFFEUR:
+                managerLocalService.deleteEmploye(staffId, caller);
+                break;
+            default:
+                throw new ForbiddenException("Suppression non supportée pour ce rôle: " + staff.getRole());
         }
-        
-        userRepository.delete(staff);
+
         evictUserLists();
-        
         var profileCache = cacheManager.getCache("profiles");
         if (profileCache != null) profileCache.evict(staffId.toString());
-        
+
         log.info("[SERVICE] Staff supprimé | staffId={}", staffId);
     }
 
-    // ── HELPERS ─────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
+    // ── HELPERS ─── NON MODIFIÉS ──────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
     private void evictUserLists() {
         var cache = cacheManager.getCache("userLists");
@@ -527,12 +414,9 @@ public class UserServiceImpl implements UserService, IUserSubject {
             .derniereConnexion(p.getDerniereConnexion())
             .agenceId(agent != null ? agent.getAgenceId() : null)
             .filialeId(agent != null ? agent.getFilialeId() : null)
-            .poste(p instanceof com.njila.njila_user_service.entity.Guichetier
-                ? ((com.njila.njila_user_service.entity.Guichetier) p).getPoste() : null)
-            .numeroPermis(p instanceof com.njila.njila_user_service.entity.Chauffeur
-                ? ((com.njila.njila_user_service.entity.Chauffeur) p).getNumeroPermis() : null)
-            .disponible(p instanceof com.njila.njila_user_service.entity.Chauffeur
-                ? ((com.njila.njila_user_service.entity.Chauffeur) p).getDisponible() : null)
+            .poste(p instanceof Guichetier ? ((Guichetier) p).getPoste() : null)
+            .numeroPermis(p instanceof Chauffeur ? ((Chauffeur) p).getNumeroPermis() : null)
+            .disponible(p instanceof Chauffeur ? ((Chauffeur) p).getDisponible() : null)
             .dateEmbauche(employe != null ? employe.getDateEmbauche() : null)
             .historiqueResa(p instanceof Voyageur ? ((Voyageur) p).getHistoriqueResa() : null)
             .build();

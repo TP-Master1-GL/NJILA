@@ -20,6 +20,7 @@ import com.njila.njila_user_service.repository.UserRepository;
 import com.njila.njila_user_service.service.ManagerLocalService;
 import com.njila.njila_user_service.service.RoleManager;
 import com.njila.njila_user_service.events.publisher.EventPublisher;
+import com.njila.njila_user_service.events.publisher.NotificationEventPublisher;
 import com.njila.njila_user_service.service.impl.StaffQueryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,16 +46,24 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
     private final RoleManager roleManager;
     private final StaffQueryService staffQueryService;
     private final EventPublisher eventPublisher;
-    
+    private final NotificationEventPublisher notificationEventPublisher;
+
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+
+    // ── helper ──────────────────────────────────────────────────────────────
+    private String getCallerFullName(JwtClaims caller) {
+        return userRepository.findById(caller.getUserId())
+            .map(u -> u.getName() + " " + u.getSurname())
+            .orElse("Manager");
+    }
+
+    // ── LISTES ──────────────────────────────────────────────────────────────
 
     @Override
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listEmployesByFiliale(UUID filialeId, JwtClaims caller) {
         roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
-        
-        List<UserProfile> employes = staffQueryService.findAllEmployesByFilialeId(filialeId);
-        return employes.stream()
+        return staffQueryService.findAllEmployesByFilialeId(filialeId).stream()
             .map(this::toResponse)
             .collect(Collectors.toList());
     }
@@ -63,9 +72,7 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listGuichetiersByFiliale(UUID filialeId, JwtClaims caller) {
         roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
-        
-        List<Guichetier> guichetiers = staffQueryService.findAllGuichetiersByFilialeId(filialeId);
-        return guichetiers.stream()
+        return staffQueryService.findAllGuichetiersByFilialeId(filialeId).stream()
             .map(this::toResponse)
             .collect(Collectors.toList());
     }
@@ -74,30 +81,42 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
     @Transactional(readOnly = true)
     public List<UserProfileResponse> listChauffeursByFiliale(UUID filialeId, JwtClaims caller) {
         roleManager.assertCanViewEmployesByFiliale(caller, filialeId);
-        
-        List<Chauffeur> chauffeurs = staffQueryService.findAllChauffeursByFilialeId(filialeId);
-        return chauffeurs.stream()
+        return staffQueryService.findAllChauffeursByFilialeId(filialeId).stream()
             .map(this::toResponse)
             .collect(Collectors.toList());
     }
+
+    // ── CRÉATION GUICHETIER ─────────────────────────────────────────────────
 
     @Override
     @Transactional
     public void createGuichetier(UUID filialeId, CreateGuichetierRequest request, JwtClaims caller) {
         roleManager.assertCanCreateEmployeByManagerLocal(caller);
         roleManager.assertManagerLocalCanManageFiliale(caller, filialeId);
-        
+
         String email = request.getEmail().toLowerCase().strip();
         if (userRepository.existsByEmail(email)) {
             throw new EmailAlreadyExistsException(email);
         }
-        
+
         Filiale filiale = filialeRepository.findById(filialeId)
             .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
-        
+
+        // ✅ VÉRIFICATION POUR MANAGER_GLOBAL : la filiale doit appartenir à son agence
+        if (caller.getRole() == Role.MANAGER_GLOBAL) {
+            if (caller.getAgenceId() == null) {
+                throw new ForbiddenException("ManagerGlobal sans agence associée.");
+            }
+            if (!filiale.getAgenceId().equals(caller.getAgenceId())) {
+                throw new ForbiddenException("Cette filiale n'appartient pas à votre agence.");
+            }
+            log.info("[MANAGER_LOCAL] ManagerGlobal crée un guichetier | mgAgenceId={} filialeAgenceId={}", 
+                     caller.getAgenceId(), filiale.getAgenceId());
+        }
+
         UUID newUserId = UUID.randomUUID();
         String tempPassword = "0000";
-        
+
         LocalDateTime dateEmbauche = null;
         if (request.getDateEmbauche() != null && !request.getDateEmbauche().isBlank()) {
             try {
@@ -106,7 +125,7 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
                 log.warn("[MANAGER_LOCAL] Format date embauche invalide, utilisation null");
             }
         }
-        
+
         Guichetier guichetier = Guichetier.builder()
             .idUser(newUserId)
             .name(request.getName().strip())
@@ -120,10 +139,9 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
             .dateEmbauche(dateEmbauche)
             .isActive(true)
             .build();
-        
+
         guichetierRepository.save(guichetier);
-        
-        
+
         eventPublisher.publishStaffToAuth(
             newUserId, email, tempPassword,
             Role.GUICHETIER.name(),
@@ -136,28 +154,55 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
             request.getPoste(),
             null
         );
-        
-        log.info("[MANAGER_LOCAL] Guichetier créé | userId={} filialeId={} agenceId={} par ml={}", 
-                 newUserId, filialeId, filiale.getAgenceId(), caller.getUserId());
+
+        notificationEventPublisher.publishStaffCreated(
+            newUserId.toString(),
+            email,
+            Role.GUICHETIER.name(),
+            request.getName().strip(),
+            request.getSurname().strip(),
+            filiale.getAgenceId().toString(),
+            filialeId.toString(),
+            caller.getUserId().toString(),
+            getCallerFullName(caller)
+        );
+
+        log.info("[MANAGER_LOCAL] Guichetier créé | userId={} filialeId={} agenceId={} par {}={}",
+                 newUserId, filialeId, filiale.getAgenceId(),
+                 caller.getRole(), caller.getUserId());
     }
+
+    // ── CRÉATION CHAUFFEUR ──────────────────────────────────────────────────
 
     @Override
     @Transactional
     public void createChauffeur(UUID filialeId, CreateChauffeurRequest request, JwtClaims caller) {
         roleManager.assertCanCreateEmployeByManagerLocal(caller);
         roleManager.assertManagerLocalCanManageFiliale(caller, filialeId);
-        
+
         String email = request.getEmail().toLowerCase().strip();
         if (userRepository.existsByEmail(email)) {
             throw new EmailAlreadyExistsException(email);
         }
-        
+
         Filiale filiale = filialeRepository.findById(filialeId)
             .orElseThrow(() -> new FilialeNotFoundException(filialeId.toString()));
-        
+
+        // ✅ VÉRIFICATION POUR MANAGER_GLOBAL : la filiale doit appartenir à son agence
+        if (caller.getRole() == Role.MANAGER_GLOBAL) {
+            if (caller.getAgenceId() == null) {
+                throw new ForbiddenException("ManagerGlobal sans agence associée.");
+            }
+            if (!filiale.getAgenceId().equals(caller.getAgenceId())) {
+                throw new ForbiddenException("Cette filiale n'appartient pas à votre agence.");
+            }
+            log.info("[MANAGER_LOCAL] ManagerGlobal crée un chauffeur | mgAgenceId={} filialeAgenceId={}", 
+                     caller.getAgenceId(), filiale.getAgenceId());
+        }
+
         UUID newUserId = UUID.randomUUID();
         String tempPassword = "0000";
-        
+
         LocalDateTime dateEmbauche = null;
         if (request.getDateEmbauche() != null && !request.getDateEmbauche().isBlank()) {
             try {
@@ -166,7 +211,7 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
                 log.warn("[MANAGER_LOCAL] Format date embauche invalide, utilisation null");
             }
         }
-        
+
         Chauffeur chauffeur = Chauffeur.builder()
             .idUser(newUserId)
             .name(request.getName().strip())
@@ -181,10 +226,9 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
             .disponible(true)
             .isActive(true)
             .build();
-        
+
         chauffeurRepository.save(chauffeur);
-        
-       
+
         eventPublisher.publishStaffToAuth(
             newUserId, email, tempPassword,
             Role.CHAUFFEUR.name(),
@@ -197,11 +241,25 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
             null,
             request.getNumeroPermis()
         );
-        
-        log.info("[MANAGER_LOCAL] Chauffeur créé | userId={} filialeId={} agenceId={} par ml={}", 
-                 newUserId, filialeId, filiale.getAgenceId(), caller.getUserId());
+
+        notificationEventPublisher.publishStaffCreated(
+            newUserId.toString(),
+            email,
+            Role.CHAUFFEUR.name(),
+            request.getName().strip(),
+            request.getSurname().strip(),
+            filiale.getAgenceId().toString(),
+            filialeId.toString(),
+            caller.getUserId().toString(),
+            getCallerFullName(caller)
+        );
+
+        log.info("[MANAGER_LOCAL] Chauffeur créé | userId={} filialeId={} agenceId={} par {}={}",
+                 newUserId, filialeId, filiale.getAgenceId(),
+                 caller.getRole(), caller.getUserId());
     }
 
+    // ── SUPPRESSION EMPLOYÉ ─────────────────────────────────────────────────
 
     @Override
     @Transactional
@@ -209,19 +267,20 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
     public void deleteEmploye(UUID employeId, JwtClaims caller) {
         UserProfile employe = userRepository.findById(employeId)
             .orElseThrow(() -> new ProfileNotFoundException(employeId.toString()));
-        
-        // Vérifier que c'est bien un employé (Guichetier ou Chauffeur)
+
         if (employe.getRole() != Role.GUICHETIER && employe.getRole() != Role.CHAUFFEUR) {
             throw new ForbiddenException("Vous ne pouvez supprimer que des guichetiers ou chauffeurs.");
         }
-        
+
         roleManager.assertCanDeleteUser(caller, employe);
-        
         userRepository.delete(employe);
-        
-        log.info("[MANAGER_LOCAL] Employé supprimé | employeId={} par ml={}", employeId, caller.getUserId());
+
+        log.info("[MANAGER_LOCAL] Employé supprimé | employeId={} par {}={}", 
+                 employeId, caller.getRole(), caller.getUserId());
     }
-    
+
+    // ── MAPPER ──────────────────────────────────────────────────────────────
+
     private UserProfileResponse toResponse(UserProfile p) {
         com.njila.njila_user_service.entity.AgentFiliale agent =
             (p instanceof com.njila.njila_user_service.entity.AgentFiliale)
@@ -243,13 +302,12 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
             .isActive(p.isActive())
             .dateInscription(p.getDateInscription())
             .derniereConnexion(p.getDerniereConnexion())
-            .agenceId(agent != null ? agent.getAgenceId() : null)
-            .filialeId(agent != null ? agent.getFilialeId() : null)
-            .poste(p instanceof Guichetier ? ((Guichetier) p).getPoste() : null)
+            .agenceId(agent  != null ? agent.getAgenceId()   : null)
+            .filialeId(agent != null ? agent.getFilialeId()  : null)
+            .poste(p instanceof Guichetier  ? ((Guichetier)  p).getPoste()        : null)
             .numeroPermis(p instanceof Chauffeur ? ((Chauffeur) p).getNumeroPermis() : null)
-            .disponible(p instanceof Chauffeur ? ((Chauffeur) p).getDisponible() : null)
+            .disponible(p instanceof Chauffeur   ? ((Chauffeur) p).getDisponible()   : null)
             .dateEmbauche(employe != null ? employe.getDateEmbauche() : null)
             .build();
     }
-
 }

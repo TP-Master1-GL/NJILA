@@ -205,15 +205,58 @@ LOGGING = {
             "format": "[{asctime}] [{levelname}] [{name}] — {message}",
             "style": "{",
         },
+        "simple": {
+            "format": "[{levelname}] {message}",
+            "style": "{",
+        },
     },
     "handlers": {
         "console": {
-            "class":     "logging.StreamHandler",
+            "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
     },
     "root": {
         "handlers": ["console"],
-        "level": "DEBUG" if DEBUG else "INFO",
+        "level": "INFO" if DEBUG else "WARNING",  # ← Changé : INFO par défaut
+    },
+    "loggers": {
+        # Vos modules en DEBUG (pour voir vos logs)
+        "authentication": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        # Modules tiers en WARNING ou ERROR (pour ne pas les voir)
+        "pika": {
+            "handlers": ["console"],
+            "level": "WARNING",  # ← Ne montre que les warnings/erreurs
+            "propagate": False,
+        },
+        "pika.heartbeat": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "httpcore": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "httpx": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "asyncio": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.utils.autoreload": {
+            "handlers": ["console"],
+            "level": "INFO",  # Pour voir quand il y a un vrai rechargement
+            "propagate": False,
+        },
     },
 }
