@@ -18,84 +18,12 @@ public class GatewayConfig {
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
-            // Auth Service
-            .route("auth-service", r -> r
-                .path("/api/auth/**", "/api/schema/**", "/api/docs/**")
+            // Route pour le fallback seulement (pas de capture par défaut)
+            .route("fallback-route", r -> r
+                .path("/fallback/**")
                 .filters(f -> f
-                    .filter(globalRequestLogFilter)
-                    .circuitBreaker(config -> config
-                        .setName("authServiceCB")
-                        .setFallbackUri("forward:/fallback/auth")))
-                .uri("lb://njila-auth-service"))
-
-            // User Service
-            .route("user-service", r -> r
-                .path("/api/users/**", "/api/agences-filiales/**", "/api/avis/**")
-                .filters(f -> f
-                    .filter(globalRequestLogFilter)
-                    .filter(jwtAuthenticationFilter)
-                    .circuitBreaker(config -> config
-                        .setName("userServiceCB")
-                        .setFallbackUri("forward:/fallback/user")))
-                .uri("lb://njila-user-service"))
-
-            // Fleet Service
-            .route("fleet-service", r -> r
-                .path("/api/agences/**", "/api/filiales/**", "/api/bus/**", 
-                      "/api/chauffeurs/**", "/api/guichetiers/**", "/api/trajets/**", 
-                      "/api/voyages/**", "/api/annonces/**")
-                .filters(f -> f
-                    .filter(globalRequestLogFilter)
-                    .filter(jwtAuthenticationFilter)
-                    .circuitBreaker(config -> config
-                        .setName("fleetServiceCB")
-                        .setFallbackUri("forward:/fallback/fleet")))
-                .uri("lb://njila-fleet-service"))
-
-            // Booking Service
-            .route("booking-service", r -> r
-                .path("/api/bookings/**")
-                .filters(f -> f
-                    .filter(globalRequestLogFilter)
-                    .filter(jwtAuthenticationFilter)
-                    .circuitBreaker(config -> config
-                        .setName("bookingServiceCB")
-                        .setFallbackUri("forward:/fallback/booking")))
-                .uri("lb://njila-booking-service"))
-
-            // Payment Service
-            .route("payment-service", r -> r
-                .path("/api/payments/**", "/api/paiement/**")
-                .filters(f -> f
-                    .filter(globalRequestLogFilter)
-                    .filter(jwtAuthenticationFilter)
-                    .circuitBreaker(config -> config
-                        .setName("paymentServiceCB")
-                        .setFallbackUri("forward:/fallback/payment")))
-                .uri("lb://njila-payement-service"))
-
-            // Notification Service
-            .route("notification-service", r -> r
-                .path("/api/notifications/**")
-                .filters(f -> f
-                    .filter(globalRequestLogFilter)
-                    .filter(jwtAuthenticationFilter)
-                    .circuitBreaker(config -> config
-                        .setName("notificationServiceCB")
-                        .setFallbackUri("forward:/fallback/notification")))
-                .uri("lb://njila-notification-service"))
-
-            // Subscribe Service
-            .route("subscribe-service", r -> r
-                .path("/api/subscribe/**")
-                .filters(f -> f
-                    .filter(globalRequestLogFilter)
-                    .filter(jwtAuthenticationFilter)
-                    .circuitBreaker(config -> config
-                        .setName("subscribeServiceCB")
-                        .setFallbackUri("forward:/fallback/subscribe")))
-                .uri("lb://njila-subscribe-service"))
-
+                    .filter(globalRequestLogFilter))
+                .uri("forward:/fallback"))
             .build();
     }
 }
