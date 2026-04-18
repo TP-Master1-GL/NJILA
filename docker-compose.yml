@@ -526,13 +526,13 @@ services:
       dockerfile: Dockerfile
     container_name: njila-notification-service
     depends_on:
-      terra-conf-service:
+      njila-conf-service:
         condition: service_healthy
-      terra-registry-service:
+      njila-registry-service:
         condition: service_healthy
-      terra-notification-db:
+      njila-notification-db:
         condition: service_healthy
-      terra-rabbitmq:
+      njila-rabbitmq:
         condition: service_healthy
     ports:
       - "8085:8085"
