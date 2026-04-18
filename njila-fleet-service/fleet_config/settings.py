@@ -23,7 +23,7 @@ def _get(remote_key, local_key, cast=str, default=None):
 
 SERVER_PORT = _get('server.port', 'PORT', cast=int, default=8088)
 
-SECRET_KEY    = env('SECRET_KEY')
+SECRET_KEY    = env('SECRET_KEY', 'njila-2026-change-in-production')
 DEBUG         = env('DEBUG', cast=bool, default=True)
 ALLOWED_HOSTS = ['*']
 

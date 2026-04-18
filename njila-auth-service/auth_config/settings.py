@@ -21,7 +21,7 @@ def _get(remote_key, local_key, cast=str, default=None):
 SERVER_PORT = _get("server.port", "PORT", cast=int, default=8081)
 
 BASE_DIR      = Path(__file__).resolve().parent.parent
-SECRET_KEY    = env("SECRET_KEY", default="njila-dev-secret-change-in-prod-!!")
+SECRET_KEY    = env("SECRET_KEY", default="njila-2026-change-in-production")
 DEBUG         = env("DEBUG", cast=bool, default=True)
 ALLOWED_HOSTS = ["*"]
 

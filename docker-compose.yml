@@ -2,8 +2,7 @@ version: '3.8'
 
 services:
   njila-conf-service:
-    build:
-      context: ./njila-conf-service
+    build: ./njila-conf-service
     container_name: njila-conf-service
     ports:
       - "8080:8080"
@@ -28,8 +27,7 @@ services:
     restart: unless-stopped
 
   njila-registry-service:
-    build:
-      context: ./njila-registry-service
+    build: ./njila-registry-service
     container_name: njila-registry-service
     depends_on:
       - njila-conf-service
@@ -50,8 +48,7 @@ services:
     restart: unless-stopped
     
   njila-proxy-service:
-    build:
-      context: ./njila-proxy-service
+    build: ./njila-proxy-service
     container_name: njila-proxy-service
     depends_on:
         - njila-conf-service
@@ -547,10 +544,10 @@ services:
       - CONFIG_SERVICE_URL=http://njila-conf-service:8080
       - EUREKA_HOST=njila-registry-service
       - EUREKA_PORT=8761
-      - DB_HOST=terra-notification-db
-      - DB_USER=terra_notification_user
-      - DB_PASSWORD=terra_notification_pass
-      - DB_NAME=terra_notification_db
+      - DB_HOST=njila-notification-db
+      - DB_USER=njla
+      - DB_PASSWORD=njila2026
+      - DB_NAME=njila_notification_db
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
       - RABBITMQ_USER=guest
@@ -573,56 +570,6 @@ services:
         max-file: "3"
 
   
-#service de notification(node.js)
-  terra-notification-service:
-    build:
-      context: ./terra-notification-service
-      dockerfile: Dockerfile
-    container_name: terra-notification-service
-    depends_on:
-      terra-conf-service:
-        condition: service_healthy
-      terra-registry-service:
-        condition: service_healthy
-      terra-notification-db:
-        condition: service_healthy
-      terra-rabbitmq:
-        condition: service_healthy
-    ports:
-      - "4002:4002"
-    environment:
-      - NODE_ENV=production
-      - PORT=4002
-      - HOSTNAME=terra-notification-service
-      - SERVICE_NAME=terra-notification-service
-      - CONFIG_SERVICE_URL=http://terra-conf-service:8080
-      - EUREKA_HOST=terra-registry-service
-      - EUREKA_PORT=8761
-      - DB_HOST=terra-notification-db
-      - DB_USER=terra_notification_user
-      - DB_PASSWORD=terra_notification_pass
-      - DB_NAME=terra_notification_db
-      - RABBITMQ_HOST=terra-rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=guest
-      - RABBITMQ_PASSWORD=guest
-      - RABBITMQ_URL=amqp://terra-rabbitmq:5672
-      - RABBITMQ_EXCHANGE=user.events
-      - RABBITMQ_QUEUE=queue.user.created
-    networks:
-      - terra-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"  
 
 #RabbitMq service
   njila-rabbitmq:
@@ -684,4 +631,3 @@ volumes:
   njila-auth-data:
   njila-payement-data:
   njila-booking-data:
-  
