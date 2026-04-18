@@ -131,7 +131,7 @@ services:
       - EUREKA_INSTANCE_PREFERIPADDRESS=false
       
       # Autres variables
-      - SECRET_KEY=terra-order-secret-key-2024-change-in-production
+      - SECRET_KEY=njila-secret-key-2026-change-in-production
       - DATABASE_URL=postgres://njila:njila2026@njila-auth-db:5432/njila_db
       - SERVICE_NAME=njila-auth-service
       - SERVICE_PORT=8081
@@ -154,25 +154,25 @@ services:
     networks:
       - njila-network
     
-    njila-fleet-db:
-      image: postgres:15-alpine
-      container_name: njila-fleet-db
-      environment:
-        - POSTGRES_USER=njila
-        - POSTGRES_PASSWORD=njila2026
-        - POSTGRES_DB=njila_fleet_db
-      ports:
-        - "5435:5432"
-      volumes:
-        - njila-fleet-data:/var/lib/postgresql/data
-      networks:
-        - njila-network
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://njila-fleet-db:5432/health/"]
-        interval: 30s
-        timeout: 10s
-        retries: 3
-        start_period: 60s
+  njila-fleet-db:
+    image: postgres:15-alpine
+    container_name: njila-fleet-db
+    environment:
+      - POSTGRES_USER=njila
+      - POSTGRES_PASSWORD=njila2026
+      - POSTGRES_DB=njila_fleet_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - njila-fleet-data:/var/lib/postgresql/data
+    networks:
+      - njila-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://njila-fleet-db:5432/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
       restart: unless-stopped
     
   njila-fleet-service:
@@ -205,7 +205,7 @@ services:
       - EUREKA_INSTANCE_PREFERIPADDRESS=false
       
       # Autres variables
-      - SECRET_KEY=njila-fleet-secret-key-2026-change-in-production
+      - SECRET_KEY=njila-secret-key-2026-change-in-production
       - DATABASE_URL=postgres://njila:njila2026@njila-fleet-db:5432/njila_fleet_db
       - SERVICE_NAME=njila-fleet-service
       - SERVICE_PORT=8088
@@ -278,7 +278,7 @@ services:
       - EUREKA_INSTANCE_PREFERIPADDRESS=false
       
       # Autres variables
-      - SECRET_KEY=njila-subcribe-secret-key-2026-change-in-production
+      - SECRET_KEY=njila-secret-key-2026-change-in-production
       - DATABASE_URL=postgres://njila:njila2026@njila-subcribe-db:5432/njila_subcribe_db
       - SERVICE_NAME=njila-subcribe-service
       - SERVICE_PORT=8089
