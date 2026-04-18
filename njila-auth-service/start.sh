@@ -6,7 +6,10 @@ echo "  NJILA - njila-auth-service"
 echo "================================================="
 echo ""
 
-# source venv/bin/activate
+source venv/bin/activate
+
+# Installer gunicorn si nécessaire
+pip install gunicorn -q
 
 # ── Etape 1 : port depuis njila-conf-service ──────────────────────────────────
 echo "[START] Etape 1 - Lecture config sur njila-conf-service (8080)..."
@@ -33,8 +36,14 @@ register_to_eureka($PORT)
 "
 echo ""
 
-# ── Etape 3 : demarrage Django ────────────────────────────────────────────────
+# ── Etape 3 : demarrage Django avec Gunicorn ──────────────────────────────────
 echo "[START] Etape 3 - Demarrage Django sur le port $PORT..."
 echo ""
-python manage.py runserver 0.0.0.0:$PORT
 
+# Démarrer avec gunicorn (maintient les threads correctement)
+exec gunicorn auth_config.wsgi:application \
+    --bind 0.0.0.0:$PORT \
+    --workers 2 \
+    --threads 2 \
+    --timeout 120 \
+    --access-logfile -
