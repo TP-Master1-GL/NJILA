@@ -1,8 +1,7 @@
 # Dockerfile pour njila-notification-service
 FROM node:20-alpine
 
-# Installer curl et wget pour les health checks
-RUN apk add --no-cache curl wget
+
 
 WORKDIR /app
 

@@ -7,12 +7,13 @@ ENV PORT=8090
 
 WORKDIR /app
 
-RUN apk update && \
-    apk add --no-cache \
-        mariadb-connector-c-dev \
-        build-base \
-        pkgconfig \
-        && rm -rf /var/cache/apk/*
+# Dépendances PostgreSQL
+RUN apk add --no-cache \
+    postgresql-dev \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev
 
 COPY requirements.txt .
 
