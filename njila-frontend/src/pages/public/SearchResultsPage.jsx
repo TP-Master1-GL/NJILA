@@ -71,7 +71,7 @@ export default function SearchResultsPage() {
             <span>{recherche.nombrePlaces || 1} passager(s)</span>
           </div>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/recherche")}
             className="ml-auto text-sm font-bold text-primary-600 hover:underline"
           >
             Modifier

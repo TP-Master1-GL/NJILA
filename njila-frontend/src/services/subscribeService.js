@@ -2,32 +2,37 @@ import api from "./axios";
 
 export const subscribeService = {
   getAgences: async () => {
-    const { data } = await api.get("/api/agencies/agences");
+    const { data } = await api.get("/api/subscribe/agences");
     return data;
   },
 
   getAgence: async (id) => {
-    const { data } = await api.get(`/api/agencies/agences/${id}`);
+    const { data } = await api.get(`/api/subscribe/agences/${id}`);
+    return data;
+  },
+
+  creerAgence: async (payload) => {
+    const { data } = await api.post("/api/subscribe/agences", payload);
     return data;
   },
 
   souscrire: async (id, payload) => {
-    const { data } = await api.post(`/api/agencies/agences/${id}/souscrire`, payload);
+    const { data } = await api.post(`/api/subscribe/agences/${id}/souscrire`, payload);
     return data;
   },
 
   renouveler: async (id, payload) => {
-    const { data } = await api.post(`/api/agencies/agences/${id}/renouveler`, payload);
+    const { data } = await api.post(`/api/subscribe/agences/${id}/renouveler`, payload);
     return data;
   },
 
   suspendre: async (id, payload) => {
-    const { data } = await api.post(`/api/agencies/agences/${id}/suspendre`, payload);
+    const { data } = await api.post(`/api/subscribe/agences/${id}/suspendre`, payload);
     return data;
   },
 
   reactiver: async (id, payload) => {
-    const { data } = await api.post(`/api/agencies/agences/${id}/reactiver`, payload);
+    const { data } = await api.post(`/api/subscribe/agences/${id}/reactiver`, payload);
     return data;
   },
 

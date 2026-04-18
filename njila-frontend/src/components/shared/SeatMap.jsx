@@ -18,7 +18,32 @@ export default function SeatMap({
 
   const isSelected = (seat) => selected.some(s => s.id === seat.id);
 
-  const rows = Math.ceil(seats.length / 4);
+  const isLargeBus = totalPlaces >= 70;
+  const seatsPerRow = isLargeBus ? 5 : 4;
+  const rows = Math.ceil(seats.length / seatsPerRow);
+
+  const renderSeat = (seatId) => {
+    const seat = seats[seatId];
+    if (!seat) return <div key={`empty-${seatId}`} />;
+    const sel = isSelected(seat);
+    return (
+      <button
+        key={seat.id}
+        disabled={seat.occupe || readOnly}
+        onClick={() => !seat.occupe && !readOnly && onToggle?.(seat)}
+        className={cn(
+          "w-10 h-10 rounded-lg text-xs font-bold transition-all duration-150",
+          seat.occupe
+            ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+            : sel
+            ? "bg-[#135bec] text-white shadow-md shadow-[#135bec]/30 scale-105"
+            : "border-2 border-slate-200 text-slate-500 hover:border-[#135bec]/50 hover:text-[#135bec] bg-white"
+        )}
+      >
+        {seat.numero}
+      </button>
+    );
+  };
 
   return (
     <div className="w-full">
@@ -56,59 +81,17 @@ export default function SeatMap({
         {/* Grille des places */}
         <div className="space-y-2">
           {Array.from({ length: rows }, (_, row) => (
-            <div key={row} className="grid grid-cols-5 gap-1.5 items-center">
-              {/* Côté gauche (2 places) */}
-              {[0, 1].map(col => {
-                const seat = seats[row * 4 + col];
-                if (!seat) return <div key={col} />;
-                const sel = isSelected(seat);
-                return (
-                  <button
-                    key={seat.id}
-                    disabled={seat.occupe || readOnly}
-                    onClick={() => !seat.occupe && !readOnly && onToggle?.(seat)}
-                    className={cn(
-                      "w-10 h-10 rounded-lg text-xs font-bold transition-all duration-150",
-                      seat.occupe
-                        ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                        : sel
-                        ? "bg-[#135bec] text-white shadow-md shadow-[#135bec]/30 scale-105"
-                        : "border-2 border-slate-200 text-slate-500 hover:border-[#135bec]/50 hover:text-[#135bec] bg-white"
-                    )}
-                  >
-                    {seat.numero}
-                  </button>
-                );
-              })}
+            <div key={row} className={cn("grid gap-1.5 items-center", isLargeBus ? "grid-cols-6" : "grid-cols-5")}>
+              {/* Côté gauche */}
+              {(isLargeBus ? [0, 1, 2] : [0, 1]).map(col => renderSeat(row * seatsPerRow + col))}
 
               {/* Allée */}
               <div className="flex items-center justify-center">
                 <div className="w-px h-8 bg-slate-200" />
               </div>
 
-              {/* Côté droit (2 places) */}
-              {[2, 3].map(col => {
-                const seat = seats[row * 4 + col];
-                if (!seat) return <div key={col} />;
-                const sel = isSelected(seat);
-                return (
-                  <button
-                    key={seat.id}
-                    disabled={seat.occupe || readOnly}
-                    onClick={() => !seat.occupe && !readOnly && onToggle?.(seat)}
-                    className={cn(
-                      "w-10 h-10 rounded-lg text-xs font-bold transition-all duration-150",
-                      seat.occupe
-                        ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                        : sel
-                        ? "bg-[#135bec] text-white shadow-md shadow-[#135bec]/30 scale-105"
-                        : "border-2 border-slate-200 text-slate-500 hover:border-[#135bec]/50 hover:text-[#135bec] bg-white"
-                    )}
-                  >
-                    {seat.numero}
-                  </button>
-                );
-              })}
+              {/* Côté droit */}
+              {(isLargeBus ? [3, 4] : [2, 3]).map(col => renderSeat(row * seatsPerRow + col))}
             </div>
           ))}
         </div>
