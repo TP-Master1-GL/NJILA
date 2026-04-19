@@ -1,48 +1,44 @@
 const amqp = require('amqplib');
 
-async function simulate() {
+async function simulateTicket() {
     try {
-        // 1. Connexion à RabbitMQ (local ou URL Render)
-        const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost'); 
+        const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost');
         const channel = await connection.createChannel();
         const exchange = 'njila.notification.exchange';
 
-        console.log("🚀 Simulation : Envoi d'email de Réinitialisation (Password Reset)...");
+        console.log("🚀 Simulation : Envoi Ticket via BOOKING CONFIRMED...");
 
-        // --- PAYLOAD EXACT DU SERVICE AUTH (PYTHON) ---
-        const resetPayload = {
+        // Simulation du PDF en Base64 (Fidèle à ton opération Java)
+        const fakePdfContent = "Contenu binaire du ticket NJILA - Confirmation de Reservation";
+        const base64Ticket = Buffer.from(fakePdfContent).toString('base64');
+
+        const payload = {
             email: "maffo.ngaleu@gmail.com",
             name: "Laetitia",
-            resetLink: "https://njila-app.com/reset-password/token_test_abc123",
-            type: "password_reset"
+            destination: "Bafoussam",
+            billetPdfBase64: base64Ticket 
         };
 
-        // 2. Publication sur l'exchange avec la clé spécifique
-        const sent = channel.publish(
-            exchange, 
-            'auth.password.reset', 
-            Buffer.from(JSON.stringify(resetPayload)),
+        // On utilise la clé liée à 'njila.booking.confirmed.queue'
+        const routingKey = 'booking.confirmed'; 
+        
+        channel.publish(
+            exchange,
+            routingKey,
+            Buffer.from(JSON.stringify(payload)),
             { persistent: true }
         );
 
-        if (sent) {
-            console.log("✅ [SUCCESS] Message 'auth.password.reset' posté !");
-            console.log(`🔗 Lien envoyé : ${resetPayload.resetLink}`);
-        } else {
-            console.log("❌ [ERROR] Échec de l'envoi.");
-        }
+        console.log(`✅ Message envoyé sur la clé : ${routingKey}`);
 
-        // 3. Fermeture propre
         setTimeout(() => {
             connection.close();
-            console.log("\n🏁 Simulation terminée. Vérifie ton email.");
             process.exit(0);
         }, 2000);
 
     } catch (error) {
         console.error("❌ Erreur :", error.message);
-        process.exit(1);
     }
 }
 
-simulate();
+simulateTicket();
