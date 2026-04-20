@@ -18,10 +18,9 @@ public class WithdrawRequest {
 
     private String amount;
 
-    private String phoneNumber;
+    private String to;
 
     private String description;
 
-    private String externalReference;
-
+    private String external_reference;
 }

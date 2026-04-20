@@ -23,19 +23,21 @@ public class RabbitMqConfig {
 
     //Event published queues
 
-    public static final String BOOKING_SUCCESS_QUEUE = "njila.payment.success.queue";
+    public static final String PAYMENT_SUCCESS_QUEUE = "njila.payment.success.queue";
 
-    public static final String BOOKING_FAIL_QUEUE = "njila.payment.fail.queue";
+    public static final String PAYMENT_FAIL_QUEUE = "njila.payment.fail.queue";
+
+    public static final String REFUND_QUEUE = "njila.payment.refunded.queue";
+
+    public static final String CANCELLED_QUEUE = "njila.payment.canceled.queue";
+
 
     public static final String NOTIF_SUCCESS_QUEUE = "njila.payment.success.notif.queue";
 
     public static final String NOTIF_FAIL_QUEUE = "njila.payment.fail.notif.queue";
 
-    public static final String REFUND_QUEUE = "njila.payment.refunded.queue";
 
     public static final String INITIATED_QUEUE = "njila.payment.initiated.queue";
-
-    public static final String CANCELLED_QUEUE = "njila.payment.canceled.queue";
 
     public static final String TIMEOUT_QUEUE = "njila.payment.timeout.queue";
 
@@ -67,12 +69,27 @@ public class RabbitMqConfig {
 
     @Bean
     public Queue paymentSuccessQueue() {
-        return new Queue(BOOKING_SUCCESS_QUEUE);
+        return new Queue(PAYMENT_SUCCESS_QUEUE);
     }
 
     @Bean
     public Queue paymentFailQueue() {
-        return new Queue(BOOKING_FAIL_QUEUE);
+        return new Queue(PAYMENT_FAIL_QUEUE);
+    }
+
+    @Bean
+    public Queue refundedQueue() {
+        return new Queue(REFUND_QUEUE);
+    }
+
+    @Bean
+    public Queue cancelledQueue() {
+        return new  Queue(CANCELLED_QUEUE);
+    }
+
+    @Bean
+    public Queue bookingCreated() {
+        return new Queue(BOOKING_CREATED_QUEUE);
     }
 
     @Bean
@@ -85,29 +102,18 @@ public class RabbitMqConfig {
         return new Queue(NOTIF_FAIL_QUEUE);
     }
 
-    @Bean
-    public Queue refundedQueue() {
-        return new Queue(REFUND_QUEUE);
-    }
+
 
     @Bean
     public Queue initiatedQueue() {
         return new  Queue(INITIATED_QUEUE);
     }
 
-    @Bean
-    public Queue cancelledQueue() {
-        return new  Queue(CANCELLED_QUEUE);
-    }
+
 
     @Bean
     public Queue timeoutQueue() {
         return new  Queue(TIMEOUT_QUEUE);
-    }
-
-    @Bean
-    public Queue bookingCreated() {
-        return new Queue(BOOKING_CREATED_QUEUE);
     }
 
 
@@ -136,6 +142,23 @@ public class RabbitMqConfig {
     }
 
     @Bean
+    public Binding PaymentCancelledBinding() {
+        return BindingBuilder
+                .bind(cancelledQueue())
+                .to(exchange())
+                .with(PAYMENT_CANCELLED);
+    }
+
+    @Bean
+    public Binding BookingCreatedBinding() {
+        return BindingBuilder
+                .bind(bookingCreated())
+                .to(exchange())
+                .with(BOOKING_CREATED);
+    }
+
+
+    @Bean
     public Binding PaymentInitiatedBinding() {
         return BindingBuilder
                 .bind(initiatedQueue())
@@ -151,21 +174,7 @@ public class RabbitMqConfig {
                 .with(PAYMENT_TIMEOUT);
     }
 
-    @Bean
-    public Binding PaymentCancelledBinding() {
-        return BindingBuilder
-                .bind(cancelledQueue())
-                .to(exchange())
-                .with(PAYMENT_CANCELLED);
-    }
 
-    @Bean
-    public Binding BookingCreatedBinding() {
-        return BindingBuilder
-                .bind(bookingCreated())
-                .to(exchange())
-                .with(BOOKING_CREATED);
-    }
 
     @Bean
     public Jackson2JsonMessageConverter messageConverter() {

@@ -12,9 +12,11 @@ public class TransactionStatusResponse {
 
     private String reference;
 
+    private String external_reference;
+
     private String status;
 
-    private double amount;
+    private String amount;
 
     private Currency currency;
 
@@ -22,7 +24,15 @@ public class TransactionStatusResponse {
 
     private String code;
 
+    private String operator_reference;
+
+    private String description;
+
+    private String external_user;
+
+    private String reason;
+
     private String phoneNumber;
 
-    private String externalReference;
+    private String endpoint;
 }

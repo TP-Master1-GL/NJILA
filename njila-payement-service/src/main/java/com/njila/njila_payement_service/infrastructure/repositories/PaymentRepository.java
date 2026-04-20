@@ -18,11 +18,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findPaymentByBookingId(long bookingId);
 
-    //List<Payment> findPaymentByPassengerId(long passengerId);
-
     Optional<Payment> findPaymentByIdempotencyKeyValue(String idempotencyKeyValue);
 
     List<Payment> findByPassengerId(long passengerId);
 
     List<Payment> findByStatusAndUpdatedAtBefore(PaymentStatus status, LocalDateTime updatedAt);
+
 }

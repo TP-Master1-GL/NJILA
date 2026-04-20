@@ -1,6 +1,7 @@
 package com.njila.njila_payement_service.application.callbackPayload;
 
 import com.njila.njila_payement_service.domain.enumerations.Currency;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.UUID;
 
@@ -8,7 +9,7 @@ public class CampayCallback implements CallbackPayload {
 
     private String status;
 
-    private UUID reference;
+    private String reference;
 
     private Integer amount;
 
@@ -20,9 +21,16 @@ public class CampayCallback implements CallbackPayload {
 
     private String signature;
 
-    private UUID externalReference;
+    private String operatorReference;
+
+    private String endpoint;
+
+    private String externalReference;
 
     private String phoneNumber;
+
+    @Value("${campay.webhook.key}")
+    private String webhookKey;
 
     @Override
     public String getStatus() {
@@ -31,15 +39,15 @@ public class CampayCallback implements CallbackPayload {
     }
 
     @Override
-    public UUID getReference() {
+    public String getReference() {
 
         return reference;
     }
 
     @Override
-    public Integer getAmount() {
+    public Double getAmount() {
 
-        return amount;
+        return amount != null ? amount.doubleValue() : null;
     }
 
     @Override
@@ -66,7 +74,7 @@ public class CampayCallback implements CallbackPayload {
     }
 
     @Override
-    public UUID ExternalReference() {
+    public String ExternalReference() {
 
         return externalReference;
     }

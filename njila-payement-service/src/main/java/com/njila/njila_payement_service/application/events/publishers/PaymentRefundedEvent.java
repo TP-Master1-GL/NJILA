@@ -17,11 +17,12 @@ import java.time.LocalDate;
 
 
 public class PaymentRefundedEvent {
+
+    private long paymentId;
+
     private long bookingId;
 
     private long passengerId;
-
-    private long paymentId;
 
     private double refundedAmount;
 

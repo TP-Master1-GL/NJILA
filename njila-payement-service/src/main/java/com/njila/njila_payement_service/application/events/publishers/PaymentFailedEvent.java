@@ -1,6 +1,5 @@
 package com.njila.njila_payement_service.application.events.publishers;
 
-import com.njila.njila_payement_service.domain.enumerations.Currency;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
