@@ -8,7 +8,7 @@ import NjilaLogo from "../../components/ui/NjilaLogo";
 import Input from "../../components/ui/Input";
 import { useAuth } from "../../hooks/useAuth";
 import { IMAGES } from "../../assets/images";
-import AuthAvatars from "../../components/ui/AuthAvatars";
+
 
 const schema = z.object({
   nom:      z.string().min(2, "Nom requis (min 2 caractères)"),
@@ -22,7 +22,7 @@ const schema = z.object({
 export default function RegisterPage() {
   const { register: registerUser } = useAuth();
   const [showPass, setShowPass] = useState(false);
-  const [isAvatarHiding, setIsAvatarHiding] = useState(false);
+
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { cgu: false },
@@ -78,9 +78,14 @@ export default function RegisterPage() {
 
       {/* ── Droite ── */}
       <div className="flex-1 flex items-center justify-center p-8 bg-white relative overflow-hidden">
+        {/* Image de fond abstraite */}
+        <div className="absolute inset-0 opacity-[0.9] pointer-events-none">
+          <img src={IMAGES.AUTH_BG} alt="" className="w-full h-full object-cover" />
+        </div>
+
         {/* Filigrane bus */}
-        <div className="absolute bottom-0 left-0 opacity-[0.03] pointer-events-none rotate-12">
-          <img src={IMAGES.BUS_COMPORT} alt="" className="w-[500px]" />
+        <div className="absolute bottom-4 left-4 opacity-[0.02] pointer-events-none rotate-12">
+          <img src={IMAGES.BUS_COMPORT} alt="" className="w-[400px]" />
         </div>
 
         <div className="w-full max-w-md relative z-10">
@@ -89,8 +94,6 @@ export default function RegisterPage() {
           </div>
 
           <div className="mb-7">
-            {/* Avatars interactifs */}
-            <AuthAvatars isPasswordFocused={isAvatarHiding} />
             <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Créer un compte</h2>
             <p className="text-slate-500">Remplissez les informations ci-dessous pour commencer.</p>
           </div>
@@ -124,8 +127,8 @@ export default function RegisterPage() {
               <div className="relative">
                 <input type={showPass ? "text" : "password"} placeholder="••••••••"
                   className={`w-full px-4 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec] focus:border-transparent transition-all pr-11 ${errors.password ? "border-red-400" : "border-slate-200"}`}
-                  onFocus={() => setIsAvatarHiding(true)}
-                  onBlur={() => setIsAvatarHiding(false)}
+                  onFocus={() => {}}
+                  onBlur={() => {}}
                   {...register("password")}
                 />
                 <button type="button" onClick={() => setShowPass(!showPass)}
@@ -146,17 +149,17 @@ export default function RegisterPage() {
 
             <label className="flex items-start gap-2 cursor-pointer">
               <input type="checkbox" className="mt-0.5 rounded border-slate-300 text-[#135bec]" {...register("cgu")} />
-              <span className="text-sm text-slate-600">
+              <span className="text-sm text-[#0a0a0a] text-slate-600">
                 J'accepte les{" "}
-                <a href="#" className="text-[#135bec] font-semibold hover:underline">Conditions Générales d'Utilisation</a>{" "}
+                <a href="#" className="text-[#0a9416] font-semibold hover:underline">Conditions Générales d'Utilisation</a>{" "}
                 et la{" "}
-                <a href="#" className="text-[#135bec] font-semibold hover:underline">Politique de Confidentialité</a>
+                <a href="#" className="text-[#0a9416] font-semibold hover:underline">Politique de Confidentialité</a>
               </span>
             </label>
             {errors.cgu && <p className="text-xs text-red-500">{errors.cgu.message}</p>}
 
             <button type="submit" disabled={isSubmitting}
-              className="w-full h-12 bg-[#135bec] hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#135bec]/25 flex items-center justify-center gap-2 text-sm">
+              className="w-full h-12 bg-[#139cec] hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#135bec]/25 flex items-center justify-center gap-2 text-sm">
               {isSubmitting ? (
                 <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="4"/>
@@ -167,13 +170,12 @@ export default function RegisterPage() {
           </form>
 
           <div className="flex items-center justify-center gap-6 mt-4 text-xs text-slate-400">
-            <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> SSL Sécurisé</span>
-            <span className="flex items-center gap-1"><Cloud className="w-3 h-3" /> Cloud Based</span>
+            <span className="flex items-center text-[#0a0a0a] gap-1"><Cloud className="w-3 h-3" /> Cloud Based</span>
           </div>
 
-          <p className="text-center text-sm text-slate-500 mt-5">
+          <p className="text-center  text-[#0a0a0a] text-sm text-slate-500 mt-5">
             Déjà un compte ?{" "}
-            <Link to="/login" className="text-[#135bec] font-bold hover:underline">Se connecter</Link>
+            <Link to="/login" className="text-[#ecb613] font-bold hover:underline">Se connecter</Link>
           </p>
         </div>
       </div>

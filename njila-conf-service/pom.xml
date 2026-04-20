@@ -59,6 +59,7 @@
 	</dependencyManagement>
 
 	<build>
+		<finalName>njila-conf-service</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>

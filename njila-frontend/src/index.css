@@ -19,6 +19,15 @@
   --radius: 14px;
 }
 
+.dark {
+  --surface: #1e293b;
+  --bg: #0f172a;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --border: #334155;
+  --brand-light: rgba(19, 91, 236, 0.15);
+}
+
 * {
   box-sizing: border-box;
 }

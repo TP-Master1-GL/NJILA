@@ -14,7 +14,7 @@ import lombok.Data;
 public class ReservationStatsResponse {
 
     /** Identifiant de la filiale concernée */
-    private Long   filialeId;
+    private String   filialeId;
 
     /** Nombre total de réservations pour cette filiale */
     private long   totalReservations;

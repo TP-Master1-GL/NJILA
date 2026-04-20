@@ -11,6 +11,11 @@ export const subscribeService = {
     return data;
   },
 
+  creerAgence: async (payload) => {
+    const { data } = await api.post("/api/subscribe/agences", payload);
+    return data;
+  },
+
   souscrire: async (id, payload) => {
     const { data } = await api.post(`/api/subscribe/agences/${id}/souscrire`, payload);
     return data;

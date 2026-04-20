@@ -18,7 +18,8 @@ public class TicketEmbarquementFactory extends TicketFactory {
                                 String origine,
                                 String destination,
                                 String dateDepart,
-                                String immatriculationBus) {
+                                String immatriculationBus,
+                                String logoAgence) {
 
         TicketEmbarquement ticket = new TicketEmbarquement();
         ticket.setNumeroTicket(numeroTicket);
@@ -28,6 +29,7 @@ public class TicketEmbarquementFactory extends TicketFactory {
         ticket.setDestination(destination);
         ticket.setDateDepart(LocalDate.parse(dateDepart));
         ticket.setImmatriculationBus(immatriculationBus);
+        ticket.setLogoAgence(logoAgence);
         ticket.setStatut(StatutTicket.ACTIF);
         ticket.setReservation(reservation);
         ticket.setIdReservation(reservation.getId());

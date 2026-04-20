@@ -36,7 +36,7 @@ export default function GestionAgences() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionMenuId, setActionMenuId] = useState(null);
   const [form, setForm] = useState({
-    nom: "", emailOfficiel: "", telephone: "", plan: "MENSUEL",
+    nom: "", emailOfficiel: "", telephone: "",
     managerNom: "", managerPrenom: "", managerEmail: "",
   });
 
@@ -50,11 +50,7 @@ export default function GestionAgences() {
   const agenceListe = agences?.length ? agences : MOCK_AGENCES;
 
   const { mutate: creerAgence, isPending } = useMutation({
-    mutationFn: async (payload) => {
-      // 1. Créer l'agence
-      const agence = await subscribeService.souscrire(payload.agenceId, { plan: payload.plan });
-      return agence;
-    },
+    mutationFn: subscribeService.creerAgence,
     onSuccess: () => {
       toast.success("Agence créée et Manager Global notifié !");
       qc.invalidateQueries({ queryKey: ["agences"] });
@@ -78,9 +74,15 @@ export default function GestionAgences() {
       } else if (action === "reactiver") {
         await subscribeService.reactiver(agenceId, {});
         toast.success("Agence réactivée.");
-      } else if (action === "souscrire") {
+      } else if (action === "souscrire_essai") {
+        await subscribeService.souscrire(agenceId, { plan: "ESSAI" });
+        toast.success("Abonnement Essai actif.");
+      } else if (action === "souscrire_mensuel") {
         await subscribeService.souscrire(agenceId, { plan: "MENSUEL" });
-        toast.success("Abonnement créé.");
+        toast.success("Abonnement Mensuel actif.");
+      } else if (action === "souscrire_annuel") {
+        await subscribeService.souscrire(agenceId, { plan: "ANNUEL" });
+        toast.success("Abonnement Annuel actif.");
       }
       qc.invalidateQueries({ queryKey: ["agences"] });
     } catch {
@@ -197,9 +199,14 @@ export default function GestionAgences() {
                           {a.statut_global === "ACTIVE" ? (
                             <button onClick={() => handleAction(a.id, "suspendre")} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Suspendre</button>
                           ) : (
-                            <button onClick={() => handleAction(a.id, "reactiver")} className="w-full text-left px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50">Réactiver</button>
+                            <>
+                              <button onClick={() => handleAction(a.id, "reactiver")} className="w-full text-left px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50">Réactiver</button>
+                              <button onClick={() => handleAction(a.id, "souscrire_essai")} className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Souscrire (Essai)</button>
+                              <button onClick={() => handleAction(a.id, "souscrire_mensuel")} className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Souscrire (Mensuel)</button>
+                              <button onClick={() => handleAction(a.id, "souscrire_annuel")} className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50">Souscrire (Annuel)</button>
+                            </>
                           )}
-                          <button onClick={() => handleAction(a.id, "souscrire")} className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Renouveler</button>
+                          <button onClick={() => handleAction(a.id, "souscrire_annuel")} className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Renouveler</button>
                           <button className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Voir détails</button>
                         </div>
                       )}
@@ -247,19 +254,7 @@ export default function GestionAgences() {
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]" />
               </div>
             </div>
-            <div className="mt-3">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Plan d'abonnement</label>
-              <div className="grid grid-cols-4 gap-2">
-                {PLANS.map(p => (
-                  <button key={p} type="button" onClick={() => setForm(f=>({...f,plan:p}))}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      form.plan === p ? "bg-[#135bec] text-white border-[#135bec]" : "border-slate-200 text-slate-500 hover:border-[#135bec] hover:text-[#135bec]"
-                    }`}>
-                    {p}<br/><span className="font-normal opacity-75">{PLANS_PRIX[p]?formatMontant(PLANS_PRIX[p]):"Gratuit"}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Assigner un Manager Global</p>

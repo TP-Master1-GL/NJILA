@@ -43,6 +43,8 @@ public abstract class Ticket {
     @Column(nullable = false)
     private String immatriculationBus;
 
+    private String logoAgence;
+
     // ─── Statut ───────────────────────────────────────────────────────────────
     @Column(nullable = false)
     private Boolean utilise;

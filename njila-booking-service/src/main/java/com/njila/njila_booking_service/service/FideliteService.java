@@ -26,12 +26,12 @@ public class FideliteService {
 
     // Convention NJILA : njila:booking:fidelite:{idVoyageur}:{codeAgence}:{annee}
     private static final String KEY_TEMPLATE =
-            "njila:booking:fidelite:%d:%s:%d";
+            "njila:booking:fidelite:%s:%s:%d";
 
     // ─── Incrémenter après chaque réservation confirmée ───────────────────────
 
     @Transactional
-    public void incrementer(Long idVoyageur, String codeAgence) {
+    public void incrementer(String idVoyageur, String codeAgence) {
         int annee = LocalDate.now().getYear();
 
         // 1. Mettre à jour PostgreSQL
@@ -70,7 +70,7 @@ public class FideliteService {
 
     // ─── Vérifier si le prochain voyage est gratuit (lecture rapide Redis) ────
 
-    public boolean estVoyageGratuit(Long idVoyageur, String codeAgence) {
+    public boolean estVoyageGratuit(String idVoyageur, String codeAgence) {
         int    annee = LocalDate.now().getYear();
         String cle   = getCleRedis(idVoyageur, codeAgence, annee);
         String val   = redisTemplate.opsForValue().get(cle);
@@ -88,7 +88,7 @@ public class FideliteService {
         return nb % SEUIL_VOYAGE_GRATUIT == 0 && nb > 0;
     }
 
-    public int getNombreVoyages(Long idVoyageur, String codeAgence) {
+    public int getNombreVoyages(String idVoyageur, String codeAgence) {
         int    annee = LocalDate.now().getYear();
         String cle   = getCleRedis(idVoyageur, codeAgence, annee);
         String val   = redisTemplate.opsForValue().get(cle);
@@ -101,7 +101,7 @@ public class FideliteService {
 
     // ─── Notifier via RabbitMQ → notification-service ─────────────────────────
 
-    private void notifierVoyageGratuit(Long idVoyageur,
+    private void notifierVoyageGratuit(String idVoyageur,
                                         String codeAgence,
                                         int nombreVoyages) {
         Map<String, Object> payload = Map.of(
@@ -122,7 +122,7 @@ public class FideliteService {
                 idVoyageur, codeAgence);
     }
 
-    private String getCleRedis(Long idVoyageur, String codeAgence, int annee) {
+    private String getCleRedis(String idVoyageur, String codeAgence, int annee) {
         return String.format(KEY_TEMPLATE, idVoyageur, codeAgence, annee);
     }
 }

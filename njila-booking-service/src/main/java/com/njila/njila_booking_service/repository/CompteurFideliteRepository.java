@@ -9,5 +9,5 @@ import java.util.Optional;
 public interface CompteurFideliteRepository extends JpaRepository<CompteurFidelite, Long> {
 
     Optional<CompteurFidelite> findByIdVoyageurAndCodeAgenceAndAnnee(
-            Long idVoyageur, String codeAgence, Integer annee);
+            String idVoyageur, String codeAgence, Integer annee);
 }

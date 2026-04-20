@@ -160,20 +160,107 @@ export default function ManagerDashboard() {
   const [retraitForm, setRetraitForm] = useState({ montant: "", motif: "Retrait mensuel recettes" });
 
   const handlePDF = () => {
-    const content = `<html><head><title>Rapport Manager</title>
-    <style>body{font-family:Arial;padding:20px;font-size:12px}h1{color:#135bec}
-    table{width:100%;border-collapse:collapse}th,td{border:1px solid #e2e8f0;padding:8px}
-    th{background:#135bec;color:white}</style></head><body>
-    <h1>Rapport de Performance — ${user?.agenceNom || "Mon Agence"}</h1>
-    <p>Généré le : ${new Date().toLocaleDateString("fr-FR")} | Rôle : ${isGlobal ? "Manager Global" : "Manager Local"}</p>
-    <h2>Statistiques mensuelles</h2>
-    <table><tr><th>Mois</th><th>Recettes (FCFA)</th><th>Voyageurs</th><th>Prévision</th></tr>
-    ${RECETTES_MENSUEL.slice(-6).map(d=>`<tr><td>${d.mois}</td><td>${d.recettes.toLocaleString()}</td><td>${d.voyageurs}</td><td>${d.prevision?.toLocaleString()||"—"}</td></tr>`).join("")}
-    </table></body></html>`;
+    const data = summary?.recettesMensuelles || RECETTES_MENSUEL;
+    const slices = data.slice(-6);
+    const maxRecettes = Math.max(...slices.map(s => s.recettes));
+    
+    // Génération d'un mini graphique SVG pour le PDF
+    const chartHeight = 100;
+    const chartWidth = 500;
+    const barWidth = 40;
+    const gap = 30;
+    const svgBars = slices.map((s, i) => {
+      const h = (s.recettes / maxRecettes) * chartHeight;
+      const x = i * (barWidth + gap) + 40;
+      return `
+        <rect x="${x}" y="${chartHeight - h + 20}" width="${barWidth}" height="${h}" fill="#135bec" rx="4" />
+        <text x="${x + barWidth/2}" y="${chartHeight + 40}" font-size="10" text-anchor="middle" fill="#64748b">${s.mois}</text>
+      `;
+    }).join("");
+
+    const content = `<!DOCTYPE html>
+    <html>
+    <head>
+      <title>Rapport d'Activité NJILA</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; pb: 20px; mb: 30px; }
+        .logo { color: #135bec; font-size: 24px; font-weight: 900; }
+        h1 { color: #0f172a; font-size: 28px; margin: 0; }
+        .meta { color: #64748b; font-size: 12px; margin-top: 5px; }
+        .stats-grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 20px; margin: 30px 0; }
+        .stat-card { background: #f8fafc; border-radius: 12px; padding: 15px; border: 1px solid #e2e8f0; }
+        .stat-label { color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; }
+        .stat-value { color: #0f172a; font-size: 18px; font-weight: 800; }
+        table { width: 100%; border-collapse: collapse; margin-top: 30px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+        th { background: #f8fafc; color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .footer { margin-top: 50px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #f1f5f9; pt: 20px; }
+        .chart-container { margin: 40px 0; padding: 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="logo">NJILA</div>
+        <div style="text-align: right">
+          <h1>Rapport de Performance</h1>
+          <div class="meta">Généré le ${new Date().toLocaleString("fr-FR")}</div>
+        </div>
+      </div>
+
+      <div class="info">
+        <p><strong>Agence :</strong> ${user?.agenceNom || "General Voyage"}</p>
+        <p><strong>Filiale :</strong> ${isGlobal ? "Toutes les filiales" : (user?.filialeNom || "Hub Douala")}</p>
+        <p><strong>Période :</strong> 6 derniers mois</p>
+      </div>
+
+      <div class="chart-container">
+        <h3 style="margin-top: 0; font-size: 14px; color: #0f172a;">Évolution des recettes (FCFA)</h3>
+        <svg width="${chartWidth}" height="${chartHeight + 60}" viewBox="0 0 ${chartWidth} ${chartHeight + 60}">
+          <line x1="40" y1="${chartHeight + 20}" x2="${chartWidth - 20}" y2="${chartHeight + 20}" stroke="#e2e8f0" stroke-width="1" />
+          ${svgBars}
+        </svg>
+      </div>
+
+      <h2>Détails mensuels</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Mois</th>
+            <th>Recettes (FCFA)</th>
+            <th>Voyageurs</th>
+            <th>Taux d'occupation</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${slices.map(d => `
+            <tr>
+              <td><strong>${d.mois}</strong></td>
+              <td>${d.recettes.toLocaleString()}</td>
+              <td>${d.voyageurs}</td>
+              <td>${d.taux || 85}%</td>
+              <td><span style="color: ${d.recettes >= (d.prevision || 0) ? '#10b981' : '#f59e0b'} font-weight: bold;">
+                ${d.recettes >= (d.prevision || 0) ? "Cible atteinte" : "Sous performance"}
+              </span></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+
+      <div class="footer">
+        Document officiel généré par la plateforme NJILA - Système Interurbain du Cameroun
+      </div>
+    </body>
+    </html>`;
+
     const win = window.open("", "_blank");
     win.document.write(content);
     win.document.close();
-    win.print();
+    setTimeout(() => {
+      win.print();
+      // win.close(); // Optionnel : fermer après impression
+    }, 500);
   };
 
   const { mutate: effectuerRetrait, isPending: isRetraitPending } = useMutation({

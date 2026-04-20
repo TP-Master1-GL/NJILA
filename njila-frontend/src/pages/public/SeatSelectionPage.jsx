@@ -32,7 +32,7 @@ export default function SeatSelectionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 transition-colors duration-300">
       <style>{`
         @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
         .fade-in { animation: fadeUp .35s ease both; }
@@ -42,35 +42,35 @@ export default function SeatSelectionPage() {
       `}</style>
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+      <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-4 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-800 transition-colors group"
+            className="flex items-center gap-2 text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-200 transition-colors group"
           >
-            <div className="w-8 h-8 bg-slate-100 group-hover:bg-slate-200 rounded-xl flex items-center justify-center transition-colors">
+            <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 rounded-xl flex items-center justify-center transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </div>
             <span className="text-sm font-semibold">Retour aux résultats</span>
           </button>
-          <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-slate-200">
             <Bus className="w-4 h-4 text-primary-600" />
             {voyageSelectionne?.origine || "Douala"} → {voyageSelectionne?.destination || "Yaoundé"}
           </div>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-400 dark:text-slate-500 hidden sm:block">
             {voyageSelectionne?.heureDepart?.slice(0, 10)} à {voyageSelectionne?.heureDepart?.slice(11, 16)}
           </p>
         </div>
       </div>
 
       {/* Stepper */}
-      <div className="bg-white border-b border-gray-100 px-4 py-3">
+      <div className="bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-center gap-4">
           {[["1", "Sélection", true], ["2", "Passagers", true], ["3", "Paiement", false]].map(([n, l, active], i) => (
             <div key={n} className="flex items-center gap-2">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${active ? "bg-primary-600 text-white" : "bg-gray-200 text-gray-500"}`}>{n}</div>
-              <span className={`text-sm font-medium ${active ? "text-gray-900" : "text-gray-400"}`}>{l}</span>
-              {i < 2 && <div className="w-16 h-px bg-gray-200" />}
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${active ? "bg-primary-600 text-white" : "bg-gray-200 dark:bg-slate-800 text-gray-500 dark:text-slate-500"}`}>{n}</div>
+              <span className={`text-sm font-medium ${active ? "text-gray-900 dark:text-slate-100" : "text-gray-400 dark:text-slate-600"}`}>{l}</span>
+              {i < 2 && <div className="w-16 h-px bg-gray-200 dark:bg-slate-800" />}
             </div>
           ))}
         </div>
@@ -79,11 +79,11 @@ export default function SeatSelectionPage() {
       <div className="max-w-7xl mx-auto px-4 py-8 flex gap-8 flex-col lg:flex-row">
         {/* Plan bus */}
         <div className="flex-1 fade-in">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Sélectionnez vos places</h2>
-                <p className="text-sm text-gray-500">Bus VIP Executive Coach · 70 places</p>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">Sélectionnez vos places</h2>
+                <p className="text-sm text-gray-500 dark:text-slate-400">Bus VIP Executive Coach · 70 places</p>
               </div>
               <div className="flex items-center gap-4 text-xs text-gray-500">
                 <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded border border-gray-300 bg-white inline-block" /> Libre</span>
@@ -92,21 +92,21 @@ export default function SeatSelectionPage() {
               </div>
             </div>
 
-            <div className="border-2 border-gray-200 rounded-2xl p-6 max-w-sm mx-auto bg-slate-50/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex flex-col items-center gap-1">
-                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                    <Bus className="w-4 h-4 text-gray-400" />
+            <div className="border-2 border-blue-200 rounded-3xl p-10 max-w-sm mx-auto bg-slate-80/80">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex flex-col items-center gap-5">
+                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
+                    <Bus className="w-10 h-10 text-gray-400" />
                   </div>
                   <span className="text-xs text-gray-400">Chauffeur</span>
                 </div>
                 <span className="text-xs font-medium text-gray-400">AVANT →</span>
               </div>
               <div className="grid gap-2">
-                {Array.from({ length: Math.ceil(seats.length / 4) }, (_, row) => (
+                {Array.from({ length: Math.ceil(seats.length / 5) }, (_, row) => (
                   <div key={row} className="grid grid-cols-5 gap-1 items-center">
-                    {[0,1].map(col => {
-                      const seat = seats[row * 4 + col];
+                    {[0,1,2].map(col => {
+                      const seat = seats[row * 5 + col];
                       if (!seat) return <div key={col} />;
                       const selected = placesSelectionnees.some(p => p.id === seat.id);
                       return (
@@ -124,8 +124,8 @@ export default function SeatSelectionPage() {
                     <div className="flex items-center justify-center">
                       <div className="w-px h-6 bg-gray-200" />
                     </div>
-                    {[2,3].map(col => {
-                      const seat = seats[row * 4 + col];
+                    {[3,4].map(col => {
+                      const seat = seats[row * 5 + col];
                       if (!seat) return <div key={col} />;
                       const selected = placesSelectionnees.some(p => p.id === seat.id);
                       return (
@@ -148,15 +148,15 @@ export default function SeatSelectionPage() {
 
           {/* Passagers */}
           {placesSelectionnees.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6 fade-in">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-6 mt-6 fade-in">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-emerald-500" />
                 Détails des passagers ({placesSelectionnees.length})
               </h3>
               <div className="space-y-4">
                 {placesSelectionnees.map((place, idx) => (
-                  <div key={place.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                    <p className="text-sm font-semibold text-gray-700 mb-3">
+                  <div key={place.id} className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
+                    <p className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">
                       Passager {idx + 1} — <span className="text-primary-600">Place {place.numero}</span>
                     </p>
                     <div className="grid grid-cols-2 gap-3">

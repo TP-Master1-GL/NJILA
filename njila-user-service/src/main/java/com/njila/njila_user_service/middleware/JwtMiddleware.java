@@ -23,22 +23,20 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
-
 @Component
 @Slf4j
 public class JwtMiddleware extends OncePerRequestFilter {
 
-    @Value("${njila.jwt.secret:njila-dev-secret-change-in-prod-!!}")
+    @Value("${njila.jwt.secret:njila-2026-change-in-production}")
     private String jwtSecret;
 
     public static final String CLAIMS_ATTR = "jwtClaims";
 
     @Override
     protected void doFilterInternal(
-        @NonNull HttpServletRequest  request,
-        @NonNull HttpServletResponse response,
-        @NonNull FilterChain         filterChain
-    ) throws ServletException, IOException {
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
 
@@ -51,38 +49,35 @@ public class JwtMiddleware extends OncePerRequestFilter {
 
         try {
             Claims claims = Jwts.parser()
-                .verifyWith(Keys.hmacShaKeyFor(
-                    jwtSecret.getBytes(StandardCharsets.UTF_8)
-                ))
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+                    .verifyWith(Keys.hmacShaKeyFor(
+                            jwtSecret.getBytes(StandardCharsets.UTF_8)))
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
 
-            String userId     = claims.getSubject();
-            String roleStr    = claims.get("role",       String.class);
-            String sessionId  = claims.get("session_id", String.class);
+            String userId = claims.getSubject();
+            String roleStr = claims.get("role", String.class);
+            String sessionId = claims.get("session_id", String.class);
             String filialeStr = claims.get("filiale_id", String.class);
-            String agenceStr  = claims.get("agence_id",  String.class);
+            String agenceStr = claims.get("agence_id", String.class);
 
             Role role = Role.valueOf(roleStr);
 
             JwtClaims jwtClaims = JwtClaims.builder()
-                .userId(UUID.fromString(userId))
-                .role(role)
-                .sessionId(sessionId)
-                .filialeId(filialeStr != null ? UUID.fromString(filialeStr) : null)
-                .agenceId (agenceStr  != null ? UUID.fromString(agenceStr)  : null)
-                .exp(claims.getExpiration().getTime())
-                .build();
+                    .userId(UUID.fromString(userId))
+                    .role(role)
+                    .sessionId(sessionId)
+                    .filialeId(filialeStr != null ? UUID.fromString(filialeStr) : null)
+                    .agenceId(agenceStr != null ? UUID.fromString(agenceStr) : null)
+                    .exp(claims.getExpiration().getTime())
+                    .build();
 
             request.setAttribute(CLAIMS_ATTR, jwtClaims);
 
-            UsernamePasswordAuthenticationToken auth =
-                new UsernamePasswordAuthenticationToken(
+            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                     jwtClaims,
                     null,
-                    List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
-                );
+                    List.of(new SimpleGrantedAuthority("ROLE_" + role.name())));
             SecurityContextHolder.getContext().setAuthentication(auth);
 
             log.debug("[JWT] Authentifié : userId={} role={}", userId, roleStr);
@@ -100,7 +95,7 @@ public class JwtMiddleware extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return path.equals("/api/users/health")
-            || path.startsWith("/api/avis/agence")
-            || path.startsWith("/actuator");
+                || path.startsWith("/api/avis/agence")
+                || path.startsWith("/actuator");
     }
 }

@@ -42,6 +42,12 @@ public class PdfGeneratorService {
                     .setFontSize(16).setBold()
                     .setTextAlignment(TextAlignment.CENTER));
 
+            if (ticket.getLogoAgence() != null && !ticket.getLogoAgence().isEmpty()) {
+                document.add(new Paragraph("Agence : " + ticket.getReservation().getCodeAgence())
+                        .setFontSize(12).setItalic()
+                        .setTextAlignment(TextAlignment.CENTER));
+            }
+
             document.add(new Paragraph(" "));
 
             // ─── Numéro unique ────────────────────────────────────────────────
@@ -79,6 +85,20 @@ public class PdfGeneratorService {
             document.close();
 
             byte[] pdfBytes = baos.toByteArray();
+
+            // Enregistrement sur disque (requis pour lirePdf et tests)
+            try {
+                Path dossier = Paths.get(repertoireBillets);
+                if (!Files.exists(dossier)) {
+                    Files.createDirectories(dossier);
+                }
+                Path chemin = dossier.resolve(ticket.getNumeroTicket() + ".pdf");
+                Files.write(chemin, pdfBytes);
+                log.info("[PDF] Billet enregistré sur disque : {}", chemin);
+            } catch (IOException e) {
+                log.error("[PDF] Erreur lors de l'enregistrement sur disque : {}", e.getMessage());
+                // On continue quand même car on a le byte[] en mémoire
+            }
 
             log.info("[PDF] Billet généré en mémoire : {}",
                     ticket.getNumeroTicket());

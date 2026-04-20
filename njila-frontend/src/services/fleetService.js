@@ -26,7 +26,19 @@ export const fleetService = {
   },
 
   creerVoyage: async (payload) => {
-    const { data } = await api.post("/api/fleet/voyages", payload);
+    const formattedPayload = {
+      ...payload,
+      bus_id: payload.busId,
+      chauffeur_id: payload.chauffeurId,
+      prix_vip: payload.prixVIP,
+      prix_classic: payload.prixClassic
+    };
+    delete formattedPayload.busId;
+    delete formattedPayload.chauffeurId;
+    delete formattedPayload.prixVIP;
+    delete formattedPayload.prixClassic;
+
+    const { data } = await api.post("/api/fleet/voyages", formattedPayload);
     return data;
   },
 

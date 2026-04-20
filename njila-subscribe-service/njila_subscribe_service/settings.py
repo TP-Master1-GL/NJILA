@@ -25,7 +25,7 @@ def _get(key: str, default: str = "") -> str:
 
 # ─── Django core ──────────────────────────────────────────────────────────────
 
-SECRET_KEY  = _get("django.secret-key", "njila-subscribe-insecure-change-me")
+SECRET_KEY  = _get("django.secret-key", "njila-2026-change-in-production")
 DEBUG = True
 SERVER_PORT = int(_get("server.port", "8090"))
 

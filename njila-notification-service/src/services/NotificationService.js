@@ -1,7 +1,7 @@
 const Notification = require('../models/notification'); 
 const EmailStrategy = require('../strategies/Email');
 const PushStrategy = require('../strategies/Push'); 
-const MailDecorator = require('../utils/MailDecorator'); // Import du décorateur
+const MailDecorator = require('../utils/MailDecorator');
 
 class NotificationService {
     constructor() {
@@ -23,12 +23,13 @@ class NotificationService {
         }
 
         // 2. Sauvegarde initiale en base de données
+        // Note: 'attachment' n'est pas dans le modèle DB, Sequelize va donc l'ignorer ici.
         const notification = await Notification.create({
             userId: data.userId || 'SYSTEM',
             type: data.type,
             recipient: data.recipient,
             sujet: data.subject || data.sujet, 
-            content: finalContent, // On stocke le HTML pour l'historique
+            content: finalContent, // Stockage du HTML décoré
             status: 'PENDING'
         });
 
@@ -40,23 +41,29 @@ class NotificationService {
                 throw new Error(`Le type de notification "${notification.type}" n'est pas supporté.`);
             }
 
-            // 4. Envoi via la stratégie choisie
+            // --- 4. RÉCUPÉRATION DE L'ATTACHEMENT (LE TICKET PDF) ---
+            // On re-fixe l'objet attachment (Buffer binaire) à l'instance notification 
+            // car cet objet est nécessaire pour Email.js mais n'existe pas en DB.
+            if (data.attachment) {
+                notification.attachment = data.attachment;
+                console.log(`[SERVICE] Pièce jointe détectée pour l'envoi : ${data.attachment.filename}`);
+            }
+
+            // 5. Envoi via la stratégie choisie
             console.log(`[SERVICE] Tentative d'envoi via stratégie : ${notification.type}`);
-            
-            // On passe l'objet notification (qui contient le content décoré)
             await strategy.send(notification);
 
-            // 5. Mise à jour en cas de succès
+            // 6. Mise à jour en cas de succès
             await notification.update({
                 status: 'SENT',
                 sentAt: new Date()
             });
-            console.log(` [SUCCESS] Notification ${notification.id} envoyée.`);
+            console.log(`[SUCCESS] Notification ${notification.id} envoyée avec succès.`);
 
         } catch (error) {
-            console.error(` [ERROR] ID: ${notification.id} - ${error.message}`);
+            console.error(`[ERROR] ID: ${notification.id} - ${error.message}`);
             
-            // 6. Gestion de l'échec et planification (Retry)
+            // 7. Gestion de l'échec et planification (Retry dans 5 min)
             const retryDate = new Date();
             retryDate.setMinutes(retryDate.getMinutes() + 5);
 

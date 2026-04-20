@@ -1,7 +1,6 @@
 package com.njila.njila_booking_service.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -16,6 +15,6 @@ public class ValiderBilletDepartRequest {
     private String numeroBillet;
 
     /** Identifiant du manager local qui supervise le départ */
-    @NotNull
-    private Long idManager;
+    @NotBlank
+    private String idManager;
 }
