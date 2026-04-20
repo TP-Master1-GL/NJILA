@@ -56,7 +56,7 @@ public class PaymentEventPublisherImpl implements PaymentEventPublisher {
         );
     }
 
-    @Override
+/*    @Override
     public void publishPaymentTimeout(PaymentTimeoutEvent timeoutEvent) {
         rabbitTemplate.convertAndSend(
                 RabbitMqConfig.EXCHANGE,
@@ -73,5 +73,5 @@ public class PaymentEventPublisherImpl implements PaymentEventPublisher {
                 RabbitMqConfig.PAYMENT_INITIATED,
                 initiatedEvent
         );
-    }
+    }*/
 }

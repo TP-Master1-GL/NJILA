@@ -20,7 +20,6 @@ public interface CamPayFeignClient {
     @PostMapping("/token/")
     TokenResponse getToken(@RequestBody TokenRequest tokenRequest);
 
-
     @PostMapping("/collect/")
     CollectResponse collect(@RequestHeader("Authorization") String token, @RequestBody CollectRequest collectRequest);
 

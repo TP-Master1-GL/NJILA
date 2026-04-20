@@ -60,11 +60,19 @@ public class Utilities {
 
     public static void verifyPhoneNumber(String phoneNumber){
 
+        if(phoneNumber == null || phoneNumber.isBlank()){
+
+            throw new InvalidPhoneNumberException("Phone number is null or empty");
+        }
+
+        String cleaned = phoneNumber.strip();
+
+
         String start = "2376";
 
-        if (phoneNumber.length() != 12 || !phoneNumber.startsWith(start)) {
+        if (!cleaned.matches("^237(6[4-9]\\d{7})$")) {
 
-            throw new InvalidPhoneNumberException("The provided phone number is invalid");
+            throw new InvalidPhoneNumberException("Invalid phone number.Expected format: 2376XXXXXXXXX (MTN or Orange). Got: " + phoneNumber);
         }
 
     }

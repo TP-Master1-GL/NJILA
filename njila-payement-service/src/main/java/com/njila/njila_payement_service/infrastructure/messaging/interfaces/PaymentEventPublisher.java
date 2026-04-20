@@ -12,7 +12,7 @@ public interface PaymentEventPublisher {
 
     void publishPaymentCancelled(PaymentCancelledEvent cancelledEvent);
 
-    void publishPaymentTimeout(PaymentTimeoutEvent timeoutEvent);
+/*    void publishPaymentTimeout(PaymentTimeoutEvent timeoutEvent);
 
-    void publishPaymentInitiated(PaymentInitiatedEvent initiatedEvent);
+    void publishPaymentInitiated(PaymentInitiatedEvent initiatedEvent);*/
 }

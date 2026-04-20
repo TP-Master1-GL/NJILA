@@ -1,9 +1,11 @@
 package com.njila.njila_payement_service.infrastructure.messaging.implementations;
 
 import com.njila.njila_payement_service.application.dtos.requests.InitiatePaymentRequest;
+import com.njila.njila_payement_service.application.dtos.responses.InitiatePaymentResponse;
 import com.njila.njila_payement_service.application.events.consumers.BookingCreatedEvent;
 
 import com.njila.njila_payement_service.application.services.interfaces.PaymentService;
+
 import com.njila.njila_payement_service.infrastructure.config.RabbitMqConfig;
 import com.njila.njila_payement_service.infrastructure.messaging.interfaces.PaymentEventListener;
 import lombok.RequiredArgsConstructor;
@@ -35,8 +37,8 @@ public class PaymentEventListenerImpl implements PaymentEventListener {
                 event.getPaymentMethodType()
         );
 
-        paymentService.initiatePayment(initiatePaymentRequest);
+        InitiatePaymentResponse response = paymentService.initiatePayment(initiatePaymentRequest);
 
-       // paymentService.processPayment();
+       paymentService.processPayment(response.paymentId());
     }
 }

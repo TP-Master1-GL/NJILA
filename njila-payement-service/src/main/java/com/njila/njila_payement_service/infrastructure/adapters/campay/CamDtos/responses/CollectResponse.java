@@ -11,7 +11,8 @@ public class CollectResponse {
 
     private String reference;
 
-    private String ussdCode;
+//    @JsonProperty()
+    private String ussd_code;
 
     private String operator; // MTN ou Orange
 

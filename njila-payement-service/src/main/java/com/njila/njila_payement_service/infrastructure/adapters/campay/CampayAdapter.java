@@ -38,15 +38,25 @@ public class CampayAdapter implements PaymentMethod, Refundable {
 
     private String getToken(){
 
-        TokenResponse response = camPayClient.getToken(
-                new TokenRequest(username, password)
-        );
+        try{
+            TokenResponse response = camPayClient.getToken(
+                    new TokenRequest(username, password)
+            );
 
-        if (response.getToken()==null ){
+            System.out.println("Token receive : " + response.getToken());
 
-            throw new CamPayException("Could not get CamPay token");
+            if (response.getToken()==null || response.getToken().isBlank()){
+
+                throw new CamPayException("Could not get CamPay token");
         }
-        return "Token: " + response.getToken();
+            return "Token " + response.getToken();
+
+        } catch (FeignException e){
+            System.out.println("Error getting token: " + e.status()
+            + " " + e.contentUTF8());
+
+            throw new CamPayAuthenticationException("Could not get CamPay token: " + e.contentUTF8());
+        }
     }
 
     @Override
@@ -94,7 +104,6 @@ public class CampayAdapter implements PaymentMethod, Refundable {
                 UUID.randomUUID().toString()
         );
 
-
         try{
 
             WithdrawResponse response = camPayClient.withdraw(
@@ -115,7 +124,7 @@ public class CampayAdapter implements PaymentMethod, Refundable {
     }
 
 
-    public TransactionStatusResponse getTransactionStatus(String externalReference) {
+    public TransactionStatusResponse getTransactionStatus(String providedReference) {
 
         String token = getToken();
 
@@ -123,12 +132,11 @@ public class CampayAdapter implements PaymentMethod, Refundable {
 
             TransactionStatusResponse response = camPayClient.getTransactionStatus(
                     token,
-                    externalReference)
-            ;
+                    providedReference);
 
             if (response == null ||response.getStatus() == null){
 
-                throw new CamPayException("Status not found for this: " + externalReference);
+                throw new CamPayException("Status not found for this: " + providedReference);
             }
 
             return response;
@@ -138,7 +146,6 @@ public class CampayAdapter implements PaymentMethod, Refundable {
             throw new CamPayException("CamPay Status Error: " + e.getMessage());
         }
 
-       // return ;
     }
 
 
@@ -167,6 +174,7 @@ public class CampayAdapter implements PaymentMethod, Refundable {
             }
 
             return response;
+
         } catch (FeignException e){
 
             handleCamPayError(e.contentUTF8());

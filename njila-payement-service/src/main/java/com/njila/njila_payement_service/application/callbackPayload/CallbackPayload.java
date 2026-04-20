@@ -8,9 +8,9 @@ public interface CallbackPayload {
 
     String getStatus();
 
-    UUID getReference();
+    String  getReference();
 
-    Integer getAmount();
+    Double getAmount();
 
     Currency getCurrency();
 
@@ -21,7 +21,7 @@ public interface CallbackPayload {
 
     String getSignature();
 
-    UUID ExternalReference();
+    String  ExternalReference();
 
     String getPhoneNumber();
 

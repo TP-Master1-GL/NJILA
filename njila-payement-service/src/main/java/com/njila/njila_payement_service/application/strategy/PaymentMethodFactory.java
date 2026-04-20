@@ -21,20 +21,17 @@ public class PaymentMethodFactory {
     public PaymentMethod getStrategy(PaymentMethodType type){
 
         if(type == null){
+
             throw new UnsupportedPaymentMethodException("The payment method type cannot be null");
         }
 
-        switch (type){
+        return switch (type) {
 
-            case CASH:
-                return cashHandler;
+            case CASH -> cashHandler;
 
-            case MOBILE_MONEY:
-                return campayAdapter;
+            case MOBILE_MONEY -> campayAdapter;
 
-                default:
-                    throw new UnsupportedPaymentMethodException("There's no such payment method");
-        }
+        };
 
     }
 }
