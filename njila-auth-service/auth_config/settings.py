@@ -114,7 +114,7 @@ CACHES = {
     }
 }
 
-RABBITMQ_HOST  = _get("rabbitmq.host",  "RABBITMQ_HOST",  default="localhost")
+RABBITMQ_HOST  = _get("rabbitmq.host",  "RABBITMQ_HOST",  default="njila-rabbitmq")
 RABBITMQ_PORT  = _get("rabbitmq.port",  "RABBITMQ_PORT",  cast=int, default=5672)
 RABBITMQ_USER  = _get("rabbitmq.user",  "RABBITMQ_USER",  default="guest")
 RABBITMQ_PASS  = _get("rabbitmq.pass",  "RABBITMQ_PASS",  default="guest")

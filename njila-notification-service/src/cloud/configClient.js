@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const CONFIG_SERVER_URL = process.env.CONFIG_SERVER_URL || 'http://localhost:8080';
+const CONFIG_SERVER_URL = process.env.CONFIG_SERVER_URL || 'http://njila-conf-service:8080';
 const APP_NAME          = process.env.APP_NAME || 'njila-notification-service';
 const PROFILE           = 'default';
 

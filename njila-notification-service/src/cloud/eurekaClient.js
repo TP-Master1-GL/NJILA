@@ -1,5 +1,5 @@
 const { Eureka } = require('eureka-js-client');
-const os         = require('os');
+const os = require('os');
 
 function getLocalIp() {
     const interfaces = os.networkInterfaces();
@@ -14,34 +14,34 @@ function getLocalIp() {
 }
 
 function registerToEureka(port) {
-    const host       = getLocalIp();
+    const host = getLocalIp();
     const eurekaHost = process.env.EUREKA_HOST || 'localhost';
     const eurekaPort = parseInt(process.env.EUREKA_PORT || '8761');
-    const appName    = 'NJILA-NOTIFICATION-SERVICE';
+    const appName = 'NJILA-NOTIFICATION-SERVICE';
 
     process.stderr.write(`[EUREKA] Enregistrement : ${appName} @ ${host}:${port}\n`);
 
     const client = new Eureka({
         instance: {
-            app:        appName,
+            app: appName,
             instanceId: `${host}:${appName.toLowerCase()}:${port}`,  // ✅ format correct
-            hostName:   host,
-            ipAddr:     host,
-            port:       { '$': port, '@enabled': true },
+            hostName: host,
+            ipAddr: host,
+            port: { '$': port, '@enabled': true },
             vipAddress: appName.toLowerCase(),
-            healthCheckUrl:  `http://${host}:${port}/api/notifications/health`,
-            statusPageUrl:   `http://${host}:${port}/api/notifications/health`,
-            homePageUrl:     `http://${host}:${port}/`,
+            healthCheckUrl: `http://${host}:${port}/api/notifications/health`,
+            statusPageUrl: `http://${host}:${port}/api/notifications/health`,
+            homePageUrl: `http://${host}:${port}/`,
             dataCenterInfo: {
                 '@class': 'com.netflix.appinfo.InstanceInfo$DefaultDataCenterInfo',
-                name:     'MyOwn',
+                name: 'MyOwn',
             },
         },
         eureka: {
-            host:              eurekaHost,
-            port:              eurekaPort,
-            servicePath:       '/eureka/apps/',
-            maxRetries:        5,
+            host: eurekaHost,
+            port: eurekaPort,
+            servicePath: '/eureka/apps/',
+            maxRetries: 5,
             requestRetryDelay: 2000,
         },
     });

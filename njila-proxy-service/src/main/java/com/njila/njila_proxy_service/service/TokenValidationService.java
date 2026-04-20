@@ -27,7 +27,7 @@ public class TokenValidationService {
     private String authServiceEurekaName;
 
     // Conservé comme fallback si Eureka est indisponible
-    @Value("${njila.auth.service.url:http://localhost:8081}")
+    @Value("${njila.auth.service.url:http://njila-auth-service:8081}")
     private String authServiceDirectUrl;
 
     @Value("${njila.auth.service.internal-token:njila-shared-secret-2026}")

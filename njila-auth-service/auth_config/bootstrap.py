@@ -4,7 +4,7 @@ import sys
 
 logger = logging.getLogger(__name__)
 
-CONFIG_SERVER_URL = "http://localhost:8080"
+CONFIG_SERVER_URL = "http://njila-conf-service:8080"
 APP_NAME          = "njila-auth-service"
 PROFILE           = "default"
 

@@ -4,8 +4,8 @@ import threading
 import time
 import socket
 
-CONFIG_SERVER_URL = "http://localhost:8080"
-EUREKA_URL        = "http://localhost:8761/eureka/"
+CONFIG_SERVER_URL = "http://njila-conf-service:8080"
+EUREKA_URL        = "http://njila-registry-service:8761/eureka/"
 APP_NAME          = "njila-auth-service"
 PROFILE           = "default"
 

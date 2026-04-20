@@ -114,7 +114,7 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # ─── Eureka ───────────────────────────────────────────────────────────────────
 # Clé : eureka.url
 
-EUREKA_URL = _get("eureka.url", "http://localhost:8761/eureka/")
+EUREKA_URL = _get("eureka.url", "http://njila-registry-service:8761/eureka/")
 
 # ─── REST Framework ───────────────────────────────────────────────────────────
 

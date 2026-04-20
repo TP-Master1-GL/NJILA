@@ -1,5 +1,4 @@
-# Dockerfile corrigé - terra-auth-service
-FROM python:3.10-alpine
+FROM python:3.10-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -7,25 +6,21 @@ ENV PORT=8090
 
 WORKDIR /app
 
-# Dépendances PostgreSQL
-RUN apk add --no-cache \
-    postgresql-dev \
+# Dépendances système (PostgreSQL + build)
+RUN apt-get update && apt-get install -y \
     gcc \
-    musl-dev \
+    libpq-dev \
     python3-dev \
-    libffi-dev
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
+# Installer dépendances Python
 COPY requirements.txt .
-
 RUN pip install --upgrade pip --no-cache-dir && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copier le code
 COPY . .
 
-# Nettoyer les packages de compilation
-RUN apk del build-base pkgconfig && \
-    rm -rf /var/cache/apk/*
-
-# NE PAS faire les migrations ici - elles seront faites au démarrage
-CMD ["sh", "-c", "python manage.py makemigrations --noinput && python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:${PORT:-8090}"]
+# Commande de démarrage
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8090"]

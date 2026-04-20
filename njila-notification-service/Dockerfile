@@ -29,4 +29,4 @@ ENV NODE_ENV=production \
 EXPOSE 8085
 
 # 6. Commande de démarrage avec logs non-buffered pour Docker
-CMD ["node", "--trace-warnings", "src/index.js"]
+CMD ["node", "--trace-warnings", "src/app.js"]

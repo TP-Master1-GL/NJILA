@@ -15,8 +15,8 @@ import requests
 # ─── Constantes ───────────────────────────────────────────────────────────────
 
 APP_NAME          = "njila-subscribe-service"
-CONFIG_SERVER_URL = os.environ.get("CONFIG_SERVER_URL", "http://localhost:8080")
-EUREKA_URL        = os.environ.get("EUREKA_URL",        "http://localhost:8761/eureka/")
+CONFIG_SERVER_URL = os.environ.get("CONFIG_SERVER_URL", "http://njila-conf-service:8080")
+EUREKA_URL        = os.environ.get("EUREKA_URL",        "http://njila-registry-service:8761/eureka/")
 PROFILE           = os.environ.get("NJILA_PROFILE",     "default")
 
 
