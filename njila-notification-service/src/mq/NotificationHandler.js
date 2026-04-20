@@ -79,16 +79,42 @@ class NotificationHandlers {
     }
 
     async handleBookingConfirmed(payload) {
-        return await NotificationService.sendNotification({
-            userId: payload.userId,
-            type: 'EMAIL',
-            recipient: payload.email,
-            subject: ` Confirmation de réservation - Trajet ${payload.depart} -> ${payload.destination}`,
-            content: `Votre siège est réservé pour le ${payload.dateVoyage} à ${payload.heure}. Merci d'avoir choisi NJILA.`
-        });
-    }
+       const { email, name, billetPdfBase64, destination } = payload;
 
-    async handleTicketReady(payload) {
+    try {
+        console.log(`[TICKET] Réception du ticket crypté pour : ${email}`);
+
+        // --- L'OPÉRATION DE DÉCRYPTAGE (Base64 vers Buffer) ---
+        // C'est ici que l'on transforme le texte en fichier PDF réel en mémoire
+        const pdfBuffer = Buffer.from(billetPdfBase64, 'base64'); 
+
+        const subject = "Votre billet de voyage NJILA est disponible";
+        const content = `
+            Bonjour ${name},<br><br>
+            Merci d'avoir choisi NJILA pour votre trajet vers <b>${destination}</b>.<br>
+            Vous trouverez votre billet électronique en pièce jointe de cet e-mail.
+        `;
+
+        // --- ENVOI DE LA NOTIFICATION ---
+        return await NotificationService.sendNotification({
+            type: 'EMAIL',
+            recipient: email,
+            subject: subject,
+            content: content,
+            // On passe l'objet pour la pièce jointe
+            attachment: {
+                content: pdfBuffer, // Le buffer décrypté
+                filename: `Ticket_NJILA_${destination}.pdf`,
+                contentType: 'application/pdf'
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ Erreur lors du décodage du ticket :", error.message);
+    }
+}
+
+   /* async handleTicketReady(payload) {
         
         return await NotificationService.sendNotification({
             userId: payload.userId,
@@ -97,19 +123,11 @@ class NotificationHandlers {
             subject: " Votre billet est disponible !",
             content: `Le ticket pour votre voyage vers ${payload.destination} est prêt. Présentez l'identifiant unique pour votre voyage.`
         });
-    }
+    }*/
 
     // --- 4. PAYMENT SERVICE ---
-    async handlePaymentSuccess(payload) {
-        return await NotificationService.sendNotification({
-            userId: payload.userId,
-            type: 'EMAIL',
-            recipient: payload.email,
-            subject: ` Reçu de paiement NJILA - ${payload.montant} FCFA`,
-            content: `Paiement réussi via ${payload.method} (ID: ${payload.transactionId}). Votre réservation est validée.`
-        });
-    }
-
+    
+    
     async handleTripReminder(payload) {
         return await NotificationService.sendNotification({
             userId: payload.userId,
