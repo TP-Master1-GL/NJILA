@@ -8,10 +8,21 @@ import {
   Bus, Users, TrendingUp, Calendar, Clock, MoreVertical,
   ArrowRight, ArrowUp, ArrowDown, Ticket, MapPin, Star,
   Activity, DollarSign, Package, AlertTriangle, CheckCircle,
-  Eye, Download, RefreshCw, Bell, Search, Filter
+  Eye, Download, RefreshCw, Bell, Search, Filter, Network
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { formatMontant } from "../../utils/formatters";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { paymentService } from "../../services/paymentService";
+import { fleetService } from "../../services/fleetService";
+import { filialeService } from "../../services/filialeService";
+import Spinner from "../../components/ui/Spinner";
+import Modal from "../../components/ui/Modal";
+import toast from "react-hot-toast";
+import { useAuthStore } from "../../store/authStore";
+import { ROLES } from "../../utils/constants";
+
+
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 const RECETTES_MENSUEL = [
@@ -39,8 +50,7 @@ const OCCUPATION_PAR_ROUTE = [
 ];
 
 const REPARTITION_CLASSE = [
-  { name: "VIP Premium", value: 35, color: "#135bec" },
-  { name: "VIP Standard", value: 28, color: "#6366f1" },
+  { name: "VIP", value: 35, color: "#135bec" },
   { name: "Classic", value: 37, color: "#10b981" },
 ];
 
@@ -143,14 +153,60 @@ function KPICard({ title, value, sub, trend, trendVal, icon: Icon, gradient, spa
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ManagerDashboard() {
+  const { user } = useAuthStore();
+  const isGlobal = user?.role === ROLES.MANAGER_GLOBAL;
+  const [activeTab, setActiveTab] = useState("apercu");
+  const [isRetraitOpen, setIsRetraitOpen] = useState(false);
+  const [retraitForm, setRetraitForm] = useState({ montant: "", motif: "Retrait mensuel recettes" });
+
+  const handlePDF = () => {
+    const content = `<html><head><title>Rapport Manager</title>
+    <style>body{font-family:Arial;padding:20px;font-size:12px}h1{color:#135bec}
+    table{width:100%;border-collapse:collapse}th,td{border:1px solid #e2e8f0;padding:8px}
+    th{background:#135bec;color:white}</style></head><body>
+    <h1>Rapport de Performance — ${user?.agenceNom || "Mon Agence"}</h1>
+    <p>Généré le : ${new Date().toLocaleDateString("fr-FR")} | Rôle : ${isGlobal ? "Manager Global" : "Manager Local"}</p>
+    <h2>Statistiques mensuelles</h2>
+    <table><tr><th>Mois</th><th>Recettes (FCFA)</th><th>Voyageurs</th><th>Prévision</th></tr>
+    ${RECETTES_MENSUEL.slice(-6).map(d=>`<tr><td>${d.mois}</td><td>${d.recettes.toLocaleString()}</td><td>${d.voyageurs}</td><td>${d.prevision?.toLocaleString()||"—"}</td></tr>`).join("")}
+    </table></body></html>`;
+    const win = window.open("", "_blank");
+    win.document.write(content);
+    win.document.close();
+    win.print();
+  };
+
+  const { mutate: effectuerRetrait, isPending: isRetraitPending } = useMutation({
+    mutationFn: (payload) => filialeService.retraitRecettes(payload),
+    onSuccess: () => { toast.success("Retrait effectué avec succès !"); setIsRetraitOpen(false); setRetraitForm({ montant: "", motif: "Retrait mensuel recettes" }); },
+    onError: () => toast.error("Erreur lors du retrait."),
+  });
+
+  const filialeId = user?.filialeId || "local-filiale-id";
+  const { data: summary, isLoading: isLoadingSummary } = useQuery({
+    queryKey: ["manager-payment-summary", filialeId],
+    queryFn: () => paymentService.getFilialeSummary(filialeId),
+    retry: 1
+  });
+
+  const { data: filialesList, isLoading: isLoadingFiliales } = useQuery({
+    queryKey: ["manager-filiales"],
+    queryFn: fleetService.getFiliales,
+    enabled: isGlobal,
+    retry: 1
+  });
+
   const [periode, setPeriode] = useState("12m");
-  const sparkRevenu = RECETTES_MENSUEL.slice(-6).map(d => ({ v: d.recettes / 1000000 }));
-  const sparkVoyageurs = RECETTES_MENSUEL.slice(-6).map(d => ({ v: d.voyageurs }));
+  const donneesRecettes = summary?.recettesMensuelles || RECETTES_MENSUEL;
+  const sparkRevenu = donneesRecettes.slice(-6).map(d => ({ v: d.recettes / 1000000 }));
+  const sparkVoyageurs = donneesRecettes.slice(-6).map(d => ({ v: d.voyageurs }));
+  
+  const isLoading = isLoadingSummary;
 
   return (
     <DashboardLayout>
       {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex items-start justify-between mb-6">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <div className="w-10 h-10 bg-[#135bec]/10 rounded-xl flex items-center justify-center">
@@ -185,14 +241,42 @@ export default function ManagerDashboard() {
           <button className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors">
             <RefreshCw className="w-4 h-4 text-slate-500" />
           </button>
-          <button className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors">
+          <button onClick={handlePDF} className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors" title="Télécharger rapport PDF">
             <Download className="w-4 h-4 text-slate-500" />
           </button>
+          {isGlobal && (
+            <button onClick={() => setIsRetraitOpen(true)} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors">
+              Retrait
+            </button>
+          )}
           <button className="flex items-center gap-2 bg-[#135bec] hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors">
             <Calendar className="w-4 h-4" /> + Nouveau départ
           </button>
         </div>
       </div>
+
+      {/* ── Tabs (Manager Global only) ── */}
+      {isGlobal && (
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6 w-fit">
+          {[
+            { id: "apercu",   label: "Aperçu général",  icon: Activity },
+            { id: "filiales", label: "Mes Filiales",    icon: Network },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === id
+                  ? "bg-white shadow-sm text-slate-900"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
@@ -523,6 +607,102 @@ export default function ManagerDashboard() {
           </button>
         </div>
       </div>
+
+      {/* ── ONGLET FILIALES (Manager Global seulement) ── */}
+      {isGlobal && activeTab === "filiales" && (
+        <div className="animate-fade-up">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-extrabold text-slate-900">Mes Filiales</h2>
+              <p className="text-sm text-slate-400 mt-0.5">Vue consolidée de toutes vos filiales et leurs performances</p>
+            </div>
+            <button className="flex items-center gap-2 bg-[#135bec] hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors">
+              + Ajouter une filiale
+            </button>
+          </div>
+
+          {isLoadingFiliales ? (
+            <Spinner size="lg" className="py-16" />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Filiales depuis l'API ou fallback */}
+              {(filialesList?.length ? filialesList : [
+                { id: "1", nom: "General Mvan",  ville: "Douala – Mvan",   manager: "Jean Mbarga",   bus: 8,  voyages: 142, taux: 87, recettes: 2800000 },
+                { id: "2", nom: "General Akwa",  ville: "Douala – Akwa",   manager: "Marie Ekotto",  bus: 6,  voyages: 108, taux: 79, recettes: 1950000 },
+                { id: "3", nom: "General Bassa", ville: "Douala – Bassa",  manager: "Paul Ndjock",   bus: 4,  voyages: 76,  taux: 72, recettes: 1320000 },
+                { id: "4", nom: "General Bonaberi", ville: "Douala – Bonaberi", manager: "Alice Fon", bus: 5, voyages: 95, taux: 83, recettes: 1640000 },
+              ]).map((f, i) => {
+                const tauxColor = f.taux >= 85 ? "text-emerald-600 bg-emerald-50" : f.taux >= 70 ? "text-blue-600 bg-blue-50" : "text-amber-600 bg-amber-50";
+                return (
+                  <div key={f.id || i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md hover:-translate-y-0.5 transition-all">
+                    {/* Header */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <img
+                        src={`https://ui-avatars.com/api/?name=${encodeURIComponent(f.nom)}&background=135bec&color=fff&size=40&bold=true`}
+                        alt={f.nom}
+                        className="w-10 h-10 rounded-xl"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-extrabold text-slate-900 text-sm truncate">{f.nom}</p>
+                        <p className="text-xs text-slate-400 truncate">{f.ville}</p>
+                      </div>
+                      <div className={`text-xs font-bold px-2 py-1 rounded-lg ${tauxColor}`}>
+                        {f.taux}%
+                      </div>
+                    </div>
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      <div className="bg-slate-50 rounded-xl p-2.5 text-center">
+                        <Bus className="w-4 h-4 text-[#135bec] mx-auto mb-1" />
+                        <p className="text-lg font-extrabold text-slate-900">{f.bus}</p>
+                        <p className="text-[10px] text-slate-400">Bus</p>
+                      </div>
+                      <div className="bg-slate-50 rounded-xl p-2.5 text-center">
+                        <Calendar className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
+                        <p className="text-lg font-extrabold text-slate-900">{f.voyages}</p>
+                        <p className="text-[10px] text-slate-400">Voyages</p>
+                      </div>
+                      <div className="bg-slate-50 rounded-xl p-2.5 text-center">
+                        <TrendingUp className="w-4 h-4 text-violet-500 mx-auto mb-1" />
+                        <p className="text-xs font-extrabold text-slate-900 leading-tight mt-0.5">{formatMontant(f.recettes)}</p>
+                        <p className="text-[10px] text-slate-400">Recettes</p>
+                      </div>
+                    </div>
+
+                    {/* Taux d'occupation bar */}
+                    <div className="mb-3">
+                      <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Taux d'occupation</span>
+                        <span className="font-bold">{f.taux}%</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${f.taux}%`, backgroundColor: f.taux >= 85 ? '#10b981' : f.taux >= 70 ? '#135bec' : '#f59e0b' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Manager */}
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-50">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-600">
+                          {f.manager?.[0] || "M"}
+                        </div>
+                        <span className="text-xs text-slate-500">{f.manager || "Manager local"}</span>
+                      </div>
+                      <button className="text-xs text-[#135bec] font-bold hover:underline flex items-center gap-1">
+                        Détails <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </DashboardLayout>
   );
 }

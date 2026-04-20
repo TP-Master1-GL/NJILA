@@ -3,19 +3,22 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Bus, LayoutDashboard, Truck, Calendar, Users, BarChart3,
   Ticket, LogOut, MapPin, CreditCard, Building2, ChevronLeft,
-  ChevronRight, Settings, Menu, X
+  ChevronRight, Settings, Menu, X, Network
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useAuthStore } from "../../store/authStore";
 import { cn } from "../../utils/cn";
 import { ROLES } from "../../utils/constants";
 
-const managerLinks = [
+const BASE_MANAGER_LINKS = [
   { to: "/manager",            icon: LayoutDashboard, label: "Dashboard" },
   { to: "/manager/voyages",    icon: Calendar,        label: "Voyages" },
   { to: "/manager/flotte",     icon: Truck,           label: "Flotte" },
   { to: "/manager/chauffeurs", icon: Users,           label: "Chauffeurs" },
   { to: "/manager/stats",      icon: BarChart3,       label: "Statistiques" },
+];
+const GLOBAL_EXTRA_LINKS = [
+  { to: "/manager/filiales",   icon: Network,         label: "Filiales" },
 ];
 
 const guichetierLinks = [
@@ -46,9 +49,10 @@ export default function Sidebar({ onMobileClose, mobileOpen }) {
   const [collapsed, setCollapsed] = useState(false);
 
   const links =
-    role === ROLES.ADMIN          ? adminLinks     :
-    role === ROLES.GUICHETIER     ? guichetierLinks:
-    managerLinks;
+    role === ROLES.ADMIN          ? adminLinks        :
+    role === ROLES.GUICHETIER     ? guichetierLinks   :
+    role === ROLES.MANAGER_GLOBAL ? [...BASE_MANAGER_LINKS, ...GLOBAL_EXTRA_LINKS] :
+    BASE_MANAGER_LINKS;
 
   const agency = AGENCY_LOGOS[role] || { name: "NJILA", short: "NJ", color: "#135bec" };
 

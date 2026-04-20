@@ -204,6 +204,37 @@ export default function LandingPage() {
             </form>
           </div>
         </div>
+
+      {/* ── Bus en mouvement ── */}
+      <div className="relative w-full mt-8 h-20 overflow-hidden pointer-events-none select-none">
+        {/* Route */}
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-slate-300/20 rounded-t-2xl" />
+        {/* Tirets de la route */}
+        <div className="absolute bottom-2 left-0 flex gap-8 animate-road-dash" style={{ width: "200%" }}>
+          {Array.from({ length: 24 }).map((_, i) => (
+            <div key={i} className="flex-shrink-0 w-12 h-1 bg-[#135bec]/25 rounded-full" />
+          ))}
+        </div>
+        {/* Le bus SVG NJILA qui traverse l'écran */}
+        <div className="absolute bottom-5 animate-drive-bus">
+          <svg viewBox="0 0 130 48" className="w-40 h-auto drop-shadow-2xl" fill="none">
+            <rect x="2" y="10" width="120" height="30" rx="7" fill="#135bec"/>
+            <rect x="8" y="3" width="108" height="13" rx="4" fill="#0d47c7"/>
+            <rect x="15" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="38" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="61" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="84" y="13" width="17" height="11" rx="2" fill="#bfdbfe" opacity="0.9"/>
+            <rect x="102" y="20" width="14" height="18" rx="2" fill="#1e40af"/>
+            <rect x="2" y="27" width="120" height="3" rx="1" fill="#fde68a"/>
+            <circle cx="24" cy="40" r="8" fill="#1e293b"/>
+            <circle cx="24" cy="40" r="3.5" fill="#94a3b8"/>
+            <circle cx="96" cy="40" r="8" fill="#1e293b"/>
+            <circle cx="96" cy="40" r="3.5" fill="#94a3b8"/>
+            <rect x="114" y="14" width="7" height="5" rx="1" fill="#fef08a"/>
+            <text x="35" y="24" fontFamily="Arial" fontSize="9" fill="white" fontWeight="bold" letterSpacing="1">NJILA</text>
+          </svg>
+        </div>
+      </div>
       </section>
 
       {/* ── STATS ───────────────────────────────────────────────────────── */}

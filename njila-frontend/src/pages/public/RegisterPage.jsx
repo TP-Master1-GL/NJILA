@@ -8,6 +8,7 @@ import NjilaLogo from "../../components/ui/NjilaLogo";
 import Input from "../../components/ui/Input";
 import { useAuth } from "../../hooks/useAuth";
 import { IMAGES } from "../../assets/images";
+import AuthAvatars from "../../components/ui/AuthAvatars";
 
 const schema = z.object({
   nom:      z.string().min(2, "Nom requis (min 2 caractères)"),
@@ -21,6 +22,7 @@ const schema = z.object({
 export default function RegisterPage() {
   const { register: registerUser } = useAuth();
   const [showPass, setShowPass] = useState(false);
+  const [isAvatarHiding, setIsAvatarHiding] = useState(false);
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { cgu: false },
@@ -87,6 +89,8 @@ export default function RegisterPage() {
           </div>
 
           <div className="mb-7">
+            {/* Avatars interactifs */}
+            <AuthAvatars isPasswordFocused={isAvatarHiding} />
             <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Créer un compte</h2>
             <p className="text-slate-500">Remplissez les informations ci-dessous pour commencer.</p>
           </div>
@@ -120,6 +124,8 @@ export default function RegisterPage() {
               <div className="relative">
                 <input type={showPass ? "text" : "password"} placeholder="••••••••"
                   className={`w-full px-4 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec] focus:border-transparent transition-all pr-11 ${errors.password ? "border-red-400" : "border-slate-200"}`}
+                  onFocus={() => setIsAvatarHiding(true)}
+                  onBlur={() => setIsAvatarHiding(false)}
                   {...register("password")}
                 />
                 <button type="button" onClick={() => setShowPass(!showPass)}
