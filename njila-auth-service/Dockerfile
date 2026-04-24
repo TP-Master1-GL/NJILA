@@ -10,6 +10,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    netcat-openbsd \
     python3-dev \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -23,4 +24,7 @@ RUN pip install --upgrade pip --no-cache-dir && \
 COPY . .
 
 # Commande de démarrage
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8081"]
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]

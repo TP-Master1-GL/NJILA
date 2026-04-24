@@ -8,28 +8,11 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// ── Intercepteur requête — ajoute le JWT automatiquement et les préfixes du Gateway ──────────────────────
+// ── Intercepteur requête — ajoute le JWT automatiquement ──────────────────────
 api.interceptors.request.use(
   (config) => {
     const token = useAuthToken();
     if (token) config.headers.Authorization = `Bearer ${token}`;
-
-    if (config.url && !config.url.startsWith("http")) {
-      if (config.url.startsWith("/api/auth")) {
-        config.url = `/njila-auth-service${config.url}`;
-      } else if (config.url.startsWith("/api/fleet")) {
-        config.url = `/njila-fleet-service${config.url}`;
-      } else if (config.url.startsWith("/api/subscribe")) {
-        config.url = `/njila-subscribe-service${config.url}`;
-      } else if (config.url.startsWith("/api/bookings")) {
-        config.url = `/njila-booking-service${config.url}`;
-      } else if (config.url.startsWith("/api/users") || config.url.startsWith("/api/agences-filiales")) {
-        config.url = `/njila-user-service${config.url}`;
-      } else if (config.url.startsWith("/api/payments")) {
-        config.url = `/njila-payment-service${config.url}`;
-      }
-    }
-
     return config;
   },
   (error) => Promise.reject(error)
@@ -46,7 +29,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = getRefreshToken();
         const { data } = await axios.post(
-          `${API_BASE_URL}/njila-auth-service/api/auth/refresh`,
+          `${API_BASE_URL}/api/auth/refresh`,
           { refreshToken }
         );
         setAccessToken(data.accessToken);
@@ -65,10 +48,10 @@ api.interceptors.response.use(
 let _accessToken = null;
 let _refreshToken = null;
 
-export const useAuthToken     = () => _accessToken;
-export const getRefreshToken  = () => _refreshToken;
-export const setAccessToken   = (t) => { _accessToken  = t; };
-export const setRefreshToken  = (t) => { _refreshToken = t; };
-export const clearAuth        = () => { _accessToken = null; _refreshToken = null; };
+export const useAuthToken = () => _accessToken;
+export const getRefreshToken = () => _refreshToken;
+export const setAccessToken = (t) => { _accessToken = t; };
+export const setRefreshToken = (t) => { _refreshToken = t; };
+export const clearAuth = () => { _accessToken = null; _refreshToken = null; };
 
 export default api;

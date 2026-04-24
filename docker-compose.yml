@@ -136,7 +136,9 @@ services:
       - DATABASE_URL=postgres://njila:njila2026@njila-auth-db:5432/njila_db
       - SERVICE_NAME=njila-auth-service
       - SERVICE_PORT=8081
-
+      # redis
+      - REDIS_HOST=njila-redis
+      - REDIS_PORT=6379
       # RabbitMQ
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
@@ -212,6 +214,9 @@ services:
       - SERVICE_NAME=njila-fleet-service
       - SERVICE_PORT=8088
 
+    # redis
+      - REDIS_HOST=njila-redis
+      - REDIS_PORT=6379
       # RabbitMQ
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
@@ -275,7 +280,7 @@ services:
 
       # Instance configuration
       - EUREKA_INSTANCE_INSTANCEID=njila-subscribe-service:8089
-      - EUREKA_INSTANCE_APP=NJILA-SUBsCRIBE-SERVICE
+      - EUREKA_INSTANCE_APP=NJILA-SUBSCRIBE-SERVICE
       - EUREKA_INSTANCE_HOSTNAME=njila-subscribe-service
       - EUREKA_INSTANCE_PORT=8089
       - EUREKA_INSTANCE_PREFERIPADDRESS=false
@@ -286,6 +291,9 @@ services:
       - SERVICE_NAME=njila-subscribe-service
       - SERVICE_PORT=8089
 
+    # redis
+      - REDIS_HOST=njila-redis
+      - REDIS_PORT=6379
       # RabbitMQ
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
@@ -352,6 +360,9 @@ services:
       - SERVICE_NAME=njila-user-service
       - SERVICE_PORT=8082
 
+    # redis
+      - REDIS_HOST=njila-redis
+      - REDIS_PORT=6379
       # RabbitMQ
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
@@ -417,7 +428,9 @@ services:
       - DATABASE_URL=postgres://njila:njila2026@njila-booking-db:5432/njila_booking_db
       - SERVICE_NAME=njila-booking-service
       - SERVICE_PORT=8083
-
+    # redis
+      - REDIS_HOST=njila-redis
+      - REDIS_PORT=6379
       # RabbitMQ
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
@@ -484,6 +497,9 @@ services:
       - SERVICE_NAME=njila-payement-service
       - SERVICE_PORT=8084
 
+    # redis
+      - REDIS_HOST=njila-redis
+      - REDIS_PORT=6379
       # RabbitMQ
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
@@ -545,6 +561,10 @@ services:
       - DB_USER=njila
       - DB_PASSWORD=njila2026
       - DB_NAME=njila_notification_db
+    # redis
+      - REDIS_HOST=njila-redis
+      - REDIS_PORT=6379
+      # RabbitMQ
       - RABBITMQ_HOST=njila-rabbitmq
       - RABBITMQ_PORT=5672
       - RABBITMQ_USER=guest
@@ -592,14 +612,14 @@ services:
       context: ./njila-frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_GATEWAY_URL=http://njila-proxy-service:8888
+        - VITE_API_GATEWAY_URL=http://localhost:8888
         - VITE_APP_NAME=NJILA
         - VITE_BASE_URL=/
     ports:
       - "5174:80" # Changé de 5173:5173 à 5173:80
     environment:
       - NODE_ENV=production
-      - VITE_API_GATEWAY_URL=http://njila-proxy-service:8888
+      - VITE_API_GATEWAY_URL=http://localhost:8888
     volumes:
       - ./njila-frontend/public:/usr/share/nginx/html/public:ro
     networks:
@@ -612,6 +632,18 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  njila-redis:
+    image: redis:7-alpine
+    container_name: njila-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - njila-redis-data:/data
+    restart: unless-stopped
+    networks:
+    - njila-network
+  
+
 networks:
   njila-network:
     driver: bridge
@@ -623,5 +655,6 @@ volumes:
   njila-notification-data:
   njila-rabbitmq-data:
   njila-auth-data:
+  njila-redis-data:
   njila-payement-data:
   njila-booking-data:

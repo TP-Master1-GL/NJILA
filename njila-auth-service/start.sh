@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 echo "================================================="
@@ -6,41 +6,69 @@ echo "  NJILA - njila-auth-service"
 echo "================================================="
 echo ""
 
-source venv/bin/activate
+# ── Etape 0 : attendre les dépendances ────────────────────────────────────────
+echo "⏳ Attente des services..."
 
-# Installer gunicorn si nécessaire
-pip install gunicorn -q
+# PostgreSQL
+while ! nc -z njila-auth-db 5432; do
+  echo "⏳ Waiting for PostgreSQL..."
+  sleep 2
+done
 
-# ── Etape 1 : port depuis njila-conf-service ──────────────────────────────────
-echo "[START] Etape 1 - Lecture config sur njila-conf-service (8080)..."
+# Config Server
+while ! nc -z njila-conf-service 8080; do
+  echo "⏳ Waiting for Config Server..."
+  sleep 2
+done
 
-PORT=$(python3 -c "
+# Eureka
+while ! nc -z njila-registry-service 8761; do
+  echo "⏳ Waiting for Eureka..."
+  sleep 2
+done
+
+echo "✅ Tous les services sont disponibles"
+echo ""
+
+# ── Etape 1 : récupérer la config distante ────────────────────────────────────
+echo "[START] Etape 1 - Lecture config depuis njila-conf-service..."
+
+PORT=$(python3 - <<EOF
 import sys, os
-sys.path.insert(0, '$(pwd)')
+sys.path.insert(0, "$(pwd)")
 from auth_config.cloud import fetch_remote_config
 cfg = fetch_remote_config()
-print(int(cfg.get('server.port', 8081)))
-")
+print(int(cfg.get("server.port", 8081)))
+EOF
+)
 
 echo "[START] Port resolu : $PORT"
 echo ""
 
-# ── Etape 2 : enregistrement Eureka ───────────────────────────────────────────
-echo "[START] Etape 2 - Enregistrement sur njila-registry-service (8761)..."
+# ── Etape 2 : migrations base de données ──────────────────────────────────────
+echo "[START] Etape 2 - Application des migrations..."
 
-python3 -c "
+python manage.py migrate --noinput
+
+echo "✅ Migrations OK"
+echo ""
+
+# ── Etape 3 : enregistrement Eureka ───────────────────────────────────────────
+echo "[START] Etape 3 - Enregistrement sur Eureka..."
+
+python3 - <<EOF
 import sys, os
-sys.path.insert(0, '$(pwd)')
+sys.path.insert(0, "$(pwd)")
 from auth_config.cloud import register_to_eureka
 register_to_eureka($PORT)
-"
+EOF
+
 echo ""
 
-# ── Etape 3 : demarrage Django avec Gunicorn ──────────────────────────────────
-echo "[START] Etape 3 - Demarrage Django sur le port $PORT..."
+# ── Etape 4 : démarrage du service ────────────────────────────────────────────
+echo "[START] Etape 4 - Démarrage Gunicorn sur le port $PORT..."
 echo ""
 
-# Démarrer avec gunicorn (maintient les threads correctement)
 exec gunicorn auth_config.wsgi:application \
     --bind 0.0.0.0:$PORT \
     --workers 2 \

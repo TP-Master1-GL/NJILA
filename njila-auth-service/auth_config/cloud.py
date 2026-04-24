@@ -14,7 +14,7 @@ _eureka_client = None
 
 
 def fetch_remote_config() -> dict:
-    url = f"{CONFIG_SERVER_URL}/{APP_NAME}/{PROFILE}"
+    url = f"{APP_NAME}/{PROFILE}"
     sys.stderr.write(f"[CONFIG] Connexion a njila-conf-service : {url}\n")
     try:
         response = requests.get(url, timeout=50)
@@ -37,9 +37,9 @@ def register_to_eureka(port: int):
     import py_eureka_client.eureka_client as eureka_client
 
     try:
-        host = socket.gethostbyname(socket.gethostname())
+        host = os.getenv("EUREKA_INSTANCE_HOSTNAME", "njila-auth-service")
     except Exception:
-        host = "127.0.0.1"
+        host = "njila-auth-service"
 
     sys.stderr.write(f"[EUREKA] Enregistrement : {APP_NAME} @ {host}:{port}\n")
     

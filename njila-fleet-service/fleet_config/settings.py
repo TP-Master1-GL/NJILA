@@ -246,7 +246,7 @@ SIMPLE_JWT = {
 }
 
 # ============ AUTH SERVICE CONFIGURATION ============
-AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:8081')
+AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://njila-auth-service:8081')
 AUTH_SERVICE_TOKEN_VALIDATION_URL = f"{AUTH_SERVICE_URL}/api/auth/validate-token"
 INTERNAL_SERVICE_TOKEN = os.getenv('INTERNAL_SERVICE_TOKEN', 'njila-shared-secret-2026')
 if 'test' in sys.argv:

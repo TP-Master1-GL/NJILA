@@ -77,7 +77,7 @@ WSGI_APPLICATION = "njila_subscribe_service.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE":   "django.db.backends.postgresql",
-        "HOST":     _get("db.host",     "localhost"),
+        "HOST":     _get("db.host",     "njila-subscribe-db"),
         "PORT":     _get("db.port",     "5432"),
         "NAME":     _get("db.name",     "njila-subscribe-db"),
         "USER":     _get("db.username", "njila"),
@@ -101,7 +101,7 @@ CACHES = {
 # ─── RabbitMQ / Celery ────────────────────────────────────────────────────────
 # Clés : rabbitmq.*
 
-RABBITMQ_HOST     = _get("rabbitmq.host",     "localhost")
+RABBITMQ_HOST     = _get("rabbitmq.host",     "njila-rabbitmq")
 RABBITMQ_PORT     = int(_get("rabbitmq.port", "5672"))
 RABBITMQ_USER     = _get("rabbitmq.username", "guest")
 RABBITMQ_PASSWORD = _get("rabbitmq.password", "guest")

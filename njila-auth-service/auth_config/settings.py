@@ -101,7 +101,7 @@ DATABASES = {
     }
 }
 
-_redis_host = _get("redis.host", "REDIS_HOST", default="localhost")
+_redis_host = _get("redis.host", "REDIS_HOST", default="njila-redis")
 _redis_port = _get("redis.port", "REDIS_PORT", cast=int, default=6379)
 
 CACHES = {

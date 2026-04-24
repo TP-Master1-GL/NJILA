@@ -49,7 +49,7 @@ class RabbitMQClient:
     """Client RabbitMQ pour la communication inter-services"""
 
     def __init__(self):
-        self.host     = getattr(settings, 'RABBITMQ_HOST',     'localhost')
+        self.host     = getattr(settings, 'RABBITMQ_HOST',     'njila-rabbitmq')
         self.port     = getattr(settings, 'RABBITMQ_PORT',     5672)
         self.user     = getattr(settings, 'RABBITMQ_USER',     'guest')
         self.password = getattr(settings, 'RABBITMQ_PASSWORD', 'guest')
