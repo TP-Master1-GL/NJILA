@@ -1,10 +1,17 @@
 import requests
 import sys
+import threading
+import time
+import socket
+import os
 
 CONFIG_SERVER_URL = "http://njila-conf-service:8080"
 EUREKA_URL        = "http://njila-registry-service:8761/eureka/"
 APP_NAME          = "njila-fleet-service"
 PROFILE           = "default"
+
+# Variable globale pour garder une référence au client
+_eureka_client = None
 
 
 def fetch_remote_config() -> dict:
@@ -27,29 +34,44 @@ def fetch_remote_config() -> dict:
 
 
 def register_to_eureka(port: int):
-    import socket
+    global _eureka_client
     import py_eureka_client.eureka_client as eureka_client
 
     try:
-        host = socket.gethostbyname(socket.gethostname())
+        # Utiliser le nom du service comme hostname pour Docker
+        host = os.getenv("EUREKA_INSTANCE_HOSTNAME", "njila-fleet-service")
     except Exception:
-        host = "127.0.0.1"
+        host = "njila-fleet-service"
 
-    instance_id = f"{host}:{APP_NAME}:{port}"   # ✅ format correct
     sys.stderr.write(f"[EUREKA] Enregistrement : {APP_NAME} @ {host}:{port}\n")
-
+    
     try:
+        # Initialiser le client Eureka
         eureka_client.init(
             eureka_server            = EUREKA_URL,
             app_name                 = APP_NAME,
-            instance_id              = instance_id,
             instance_port            = port,
             instance_host            = host,
             renewal_interval_in_secs = 30,
             duration_in_secs         = 90,
             health_check_url         = f"http://{host}:{port}/api/fleet/health",
-            status_page_url          = f"http://{host}:{port}/api/fleet/health",
         )
+        
+        _eureka_client = eureka_client
+        
         sys.stderr.write("[EUREKA] OK - njila-fleet-service enregistre\n")
+        sys.stderr.write("[EUREKA] Les heartbeats sont envoyés automatiquement toutes les 30s\n")
+        
     except Exception as e:
         sys.stderr.write(f"[EUREKA] WARN - Enregistrement echoue : {e}\n")
+
+
+def stop_eureka():
+    """Appeler cette fonction à l'arrêt du service pour désenregistrement propre"""
+    global _eureka_client
+    if _eureka_client:
+        try:
+            _eureka_client.stop()
+            sys.stderr.write("[EUREKA] Désenregistrement propre effectué\n")
+        except Exception as e:
+            sys.stderr.write(f"[EUREKA] Erreur lors du désenregistrement : {e}\n")

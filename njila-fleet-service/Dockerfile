@@ -6,10 +6,11 @@ ENV PORT=8088
 
 WORKDIR /app
 
-# Dépendances système (PostgreSQL + build)
+# Dépendances système (PostgreSQL + build + netcat pour healthcheck)
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    netcat-openbsd \
     python3-dev \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -22,5 +23,8 @@ RUN pip install --upgrade pip --no-cache-dir && \
 # Copier le code
 COPY . .
 
-# Commande de démarrage
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8088"]
+# Copier et rendre exécutable le script de démarrage
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 echo "================================================="
@@ -33,14 +33,13 @@ echo ""
 # ── Etape 1 : récupérer la config distante ────────────────────────────────────
 echo "[START] Etape 1 - Lecture config depuis njila-conf-service..."
 
-PORT=$(python3 - <<EOF
+PORT=$(python3 -c "
 import sys, os
-sys.path.insert(0, "$(pwd)")
+sys.path.insert(0, '$(pwd)')
 from auth_config.cloud import fetch_remote_config
 cfg = fetch_remote_config()
-print(int(cfg.get("server.port", 8081)))
-EOF
-)
+print(int(cfg.get('server.port', 8081)))
+")
 
 echo "[START] Port resolu : $PORT"
 echo ""
@@ -53,20 +52,29 @@ python manage.py migrate --noinput
 echo "✅ Migrations OK"
 echo ""
 
-# ── Etape 3 : enregistrement Eureka ───────────────────────────────────────────
-echo "[START] Etape 3 - Enregistrement sur Eureka..."
+# ── Etape 3 : collecte des fichiers statiques ─────────────────────────────────
+echo "[START] Etape 3 - Collecte des fichiers statiques..."
 
-python3 - <<EOF
-import sys, os
-sys.path.insert(0, "$(pwd)")
-from auth_config.cloud import register_to_eureka
-register_to_eureka($PORT)
-EOF
+python manage.py collectstatic --noinput 2>/dev/null || echo "⚠️ collectstatic ignoré"
 
+echo "✅ Static files collected (ou ignoré)"
 echo ""
 
-# ── Etape 4 : démarrage du service ────────────────────────────────────────────
-echo "[START] Etape 4 - Démarrage Gunicorn sur le port $PORT..."
+# ── Etape 4 : enregistrement Eureka ───────────────────────────────────────────
+echo "[START] Etape 4 - Enregistrement sur Eureka..."
+
+python3 -c "
+import sys, os
+sys.path.insert(0, '$(pwd)')
+from auth_config.cloud import register_to_eureka
+register_to_eureka($PORT)
+"
+
+echo "✅ Enregistrement Eureka effectué"
+echo ""
+
+# ── Etape 5 : démarrage du service avec Gunicorn ──────────────────────────────
+echo "[START] Etape 5 - Démarrage Gunicorn sur le port $PORT..."
 echo ""
 
 exec gunicorn auth_config.wsgi:application \

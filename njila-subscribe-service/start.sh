@@ -2,7 +2,7 @@
 set -e
 
 echo "================================================="
-echo "  NJILA - njila-fleet-service"
+echo "  NJILA - njila-subscribe-service"
 echo "================================================="
 echo ""
 
@@ -10,7 +10,7 @@ echo ""
 echo "⏳ Attente des services..."
 
 # PostgreSQL
-while ! nc -z njila-fleet-db 5432; do
+while ! nc -z njila-subscribe-db 5432; do
   echo "⏳ Waiting for PostgreSQL..."
   sleep 2
 done
@@ -33,12 +33,13 @@ echo ""
 # ── Etape 1 : récupérer la config distante ────────────────────────────────────
 echo "[START] Etape 1 - Lecture config depuis njila-conf-service..."
 
+# IMPORTANT: cloud.py est à la racine, donc import direct sans préfixe
 PORT=$(python3 -c "
 import sys, os
 sys.path.insert(0, '$(pwd)')
-from fleet_config.cloud import fetch_remote_config
+from cloud import fetch_remote_config
 cfg = fetch_remote_config()
-print(int(cfg.get('server.port', 8088)))
+print(int(cfg.get('server.port', 8090)))
 ")
 
 echo "[START] Port resolu : $PORT"
@@ -66,7 +67,7 @@ echo "[START] Etape 4 - Enregistrement sur Eureka..."
 python3 -c "
 import sys, os
 sys.path.insert(0, '$(pwd)')
-from fleet_config.cloud import register_to_eureka
+from cloud import register_to_eureka
 register_to_eureka($PORT)
 "
 
@@ -77,7 +78,7 @@ echo ""
 echo "[START] Etape 5 - Démarrage Gunicorn sur le port $PORT..."
 echo ""
 
-exec gunicorn fleet_config.wsgi:application \
+exec gunicorn njila_subscribe_service.wsgi:application \
     --bind 0.0.0.0:$PORT \
     --workers 2 \
     --threads 2 \

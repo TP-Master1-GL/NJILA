@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.10-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -6,7 +6,7 @@ ENV PORT=8081
 
 WORKDIR /app
 
-# Dépendances système (PostgreSQL + build)
+# Dépendances système (PostgreSQL + build + netcat)
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \

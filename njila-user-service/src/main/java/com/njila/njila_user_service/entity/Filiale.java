@@ -37,7 +37,6 @@ public class Filiale {
     @Column(name = "agence_id", nullable = false)
     private UUID agenceId;
 
-    // ✅ NOUVEAUX CHAMPS (sans modifier les existants)
     @Column(name = "code", length = 50)
     private String code;
 
