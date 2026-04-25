@@ -32,7 +32,8 @@ class Email extends NotificationStrategy {
             mailOptions.attachments.push({
                 filename: notification.attachment.filename || 'ticket_njila.pdf',
                 content: notification.attachment.content, // Le Buffer (byte[]) décodé
-                contentType: 'application/pdf'
+                contentType: 'application/pdf',
+                encoding: 'base64'
             });
         }
 
