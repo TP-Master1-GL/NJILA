@@ -185,44 +185,48 @@ public class UserServiceImpl implements UserService, IUserSubject {
 	}
 
 	@Override
-	@CacheEvict(value = "profiles", key = "#userId.toString()")
-	@Transactional
-	public UserProfileResponse updatePhoto(UUID userId, UpdatePhotoRequest request, JwtClaims caller) {
-		roleManager.assertCanUpdateProfile(caller, userId);
+    @CacheEvict(value = "profiles", key = "#userId.toString()")
+    @Transactional
+    public UserProfileResponse updatePhoto(UUID userId, UpdatePhotoRequest request, JwtClaims caller) {
+        roleManager.assertCanUpdateProfile(caller, userId);
 
-		UserProfile profile = userRepository.findById(userId)
-		    .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
+        UserProfile profile = userRepository.findById(userId)
+            .orElseThrow(() -> new ProfileNotFoundException(userId.toString()));
 
-		String newPhoto = request.getPhotoProfil();
-		if (newPhoto != null && !newPhoto.equals(profile.getPhotoProfil())) {
-		    profile.setPhotoProfil(newPhoto);
-		    userRepository.save(profile);
+        String newPhoto = request.getPhotoProfil();
+        if (newPhoto != null && !newPhoto.equals(profile.getPhotoProfil())) {
+            profile.setPhotoProfil(newPhoto);
+            userRepository.save(profile);
 
-		    // Envoyer l'événement à auth-service pour mettre à jour la photo
-		    eventPublisher.publishUserUpdateToAuth(
-		        userId.toString(),
-		        profile.getEmail(),
-		        profile.getName(),
-		        profile.getSurname(),
-		        profile.getPhone(),
-		        profile.getAdresse(),
-		        newPhoto,
-		        false  // email unchanged
-		    );
+            // ✅ Un seul événement complet vers auth-service sur "user.updated"
+            // (routing key écoutée par le consumer auth dans _handle_user_updated)
+            eventPublisher.publishUserUpdateToAuth(
+                userId.toString(),
+                profile.getEmail(),
+                profile.getName(),
+                profile.getSurname(),
+                profile.getPhone(),
+                profile.getAdresse(),
+                newPhoto,       // ← nouvelle photo
+                false           // email inchangé
+            );
 
-		    notifyObservers(UserEvent.of(
-		        UserEventType.PHOTO_MISE_A_JOUR,
-		        caller != null ? caller.getUserId() : null,
-		        userId,
-		        Map.of("userId", userId.toString(), "photoUrl", newPhoto)
-		    ));
+            // Notifier les observateurs internes (cache, etc.)
+            notifyObservers(UserEvent.of(
+                UserEventType.PHOTO_MISE_A_JOUR,
+                caller != null ? caller.getUserId() : null,
+                userId,
+                Map.of(
+                    "userId",    userId.toString(),
+                    "photo_url", newPhoto
+                )
+            ));
 
-		    eventPublisher.publishPhotoUpdated(userId.toString(), newPhoto);
-		    log.info("[SERVICE] Photo mise à jour | userId={}", userId);
-		}
+            log.info("[SERVICE] Photo mise à jour | userId={}", userId);
+        }
 
-		return toResponse(profile);
-	}
+        return toResponse(profile);
+    }
 
     @Override
     @CacheEvict(value = "profiles", key = "#userId.toString()")

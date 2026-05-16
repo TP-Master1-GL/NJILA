@@ -1326,12 +1326,12 @@ class VoyageListCreateView(generics.ListCreateAPIView):
     filterset_fields = ['status', 'type_voyage', 'Id_trajet', 'IdBus']
     search_fields    = ['Id_trajet__filiale_depart__nom', 'Id_trajet__filiale_arrive__nom']
     ordering_fields  = ['date_heure_depart', 'prix', 'created_at']
-
+ 
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsManagerLocal()]
         return [AllowAny()]
-
+ 
     def get_queryset(self):
         queryset = Voyage.objects.all()
         date_debut = self.request.query_params.get('date_debut')
@@ -1343,13 +1343,23 @@ class VoyageListCreateView(generics.ListCreateAPIView):
         agence_id = self.request.query_params.get('agence_id')
         if agence_id:
             queryset = queryset.filter(IdBus__Id_agence_id=agence_id)
-        return queryset.select_related('Id_trajet', 'IdBus', 'id_chauffeur').order_by('date_heure_depart')
-
+ 
+        # FIX : select_related étendu aux relations profondes pour que
+        # VoyageListSerializer.get_codeAgence() et get_codeFiliale()
+        # puissent accéder à IdBus.Id_agence.name et
+        # Id_trajet.filiale_depart.code sans requêtes N+1 ni None.
+        return queryset.select_related(
+            'Id_trajet__filiale_depart',
+            'Id_trajet__filiale_arrive',
+            'IdBus__Id_agence',
+            'id_chauffeur',
+        ).order_by('date_heure_depart')
+ 
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return VoyageCreateUpdateSerializer
         return VoyageListSerializer
-
+ 
     @extend_schema(
         tags=['Voyages'], summary="Liste des voyages",
         description="Récupère la liste des voyages (accès public). Possibilité de filtrer par dates, statut, etc.",
@@ -1368,7 +1378,7 @@ class VoyageListCreateView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
-
+ 
     @extend_schema(
         tags=['Voyages'], summary="Programmer un voyage",
         description="Programme un nouveau voyage (nécessite droits Manager Local)",
@@ -1395,12 +1405,11 @@ class VoyageListCreateView(generics.ListCreateAPIView):
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
-
+ 
     @transaction.atomic
     def perform_create(self, serializer):
         voyage = serializer.save()
-
-        # ✅ Mettre à jour la disponibilité du chauffeur
+ 
         if voyage.id_chauffeur:
             chauffeur = voyage.id_chauffeur
             if chauffeur.est_disponible:
@@ -1410,17 +1419,16 @@ class VoyageListCreateView(generics.ListCreateAPIView):
                     "Chauffeur %s %s marqué indisponible (assigné au voyage %s)",
                     chauffeur.name, chauffeur.surname, voyage.Id_voyage
                 )
-
-        # Mettre le bus en voyage
+ 
         bus = voyage.IdBus
         bus.etat = StatusBus.EN_VOYAGE
         bus.save()
-
+ 
         events_status = {
-            'bus_updated':     publish_bus_updated_for_booking(bus),
-            'voyage_updated':  publish_voyage_updated_for_booking(voyage),
+            'bus_updated':    publish_bus_updated_for_booking(bus),
+            'voyage_updated': publish_voyage_updated_for_booking(voyage),
         }
-
+ 
         all_sent = all(events_status.values())
         if all_sent:
             logger.info(
@@ -1432,6 +1440,8 @@ class VoyageListCreateView(generics.ListCreateAPIView):
                 "Voyage programmé: %s | RabbitMQ: certains événements ont échoué ✗ | %s",
                 voyage, events_status
             )
+ 
+ 
 
 
 class VoyageDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -1665,12 +1675,12 @@ class VoyageSearchView(generics.ListAPIView):
     """GET: Recherche de voyages disponibles (Public)"""
     serializer_class   = VoyageListSerializer
     permission_classes = [AllowAny]
-
+ 
     def get_queryset(self):
         depart  = self.request.query_params.get('depart')
         arrivee = self.request.query_params.get('arrivee')
         date    = self.request.query_params.get('date')
-
+ 
         queryset = Voyage.objects.filter(
             status=StatusVoyage.PROGRAMME,
             places_disponibles__gt=0,
@@ -1682,8 +1692,18 @@ class VoyageSearchView(generics.ListAPIView):
             queryset = queryset.filter(Id_trajet__filiale_arrive__ville=arrivee)
         if date:
             queryset = queryset.filter(date_heure_depart__date=date)
-        return queryset.select_related('Id_trajet', 'IdBus').order_by('date_heure_depart')
-
+ 
+        # FIX : select_related étendu aux relations profondes pour que
+        # VoyageListSerializer.get_codeAgence() et get_codeFiliale()
+        # puissent accéder à IdBus.Id_agence.name et
+        # Id_trajet.filiale_depart.code sans requêtes N+1 ni None.
+        return queryset.select_related(
+            'Id_trajet__filiale_depart',
+            'Id_trajet__filiale_arrive',
+            'IdBus__Id_agence',
+            'id_chauffeur',
+        ).order_by('date_heure_depart')
+ 
     @extend_schema(
         tags=['Voyages'], summary="Rechercher des voyages",
         description="Recherche des voyages disponibles pour une ville de départ, d'arrivée et une date (accès public)",
@@ -1696,7 +1716,6 @@ class VoyageSearchView(generics.ListAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
-
 
 # ==============================================================================
 # ANNONCES

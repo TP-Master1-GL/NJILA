@@ -474,10 +474,12 @@ services:
       - njila-conf-service
       - njila-registry-service
       - njila-notification-db
-      - njila-redis        # ← ajout
-      - njila-rabbitmq     # ← ajout
+      - njila-redis
+      - njila-rabbitmq
     ports:
       - "8085:8085"
+    env_file:
+      - ./njila-notification-service/.env
     environment:
       - NODE_ENV=production
       - PORT=8085
@@ -498,6 +500,7 @@ services:
       - RABBITMQ_PASSWORD=guest
       - RABBITMQ_URL=amqp://njila-rabbitmq:5672
       - RABBITMQ_EXCHANGE=njila-notification-exchange
+
     networks:
       - njila-network
     healthcheck:

@@ -100,6 +100,25 @@ RABBITMQ_USER     = _get('rabbitmq.user',     'RABBITMQ_USER',     default='gues
 RABBITMQ_PASSWORD = _get('rabbitmq.password', 'RABBITMQ_PASSWORD', default='guest')
 RABBITMQ_VHOST    = _get('rabbitmq.vhost',    'RABBITMQ_VHOST',    default='/')
 
+# ============ APSCHEDULER CONFIGURATION ============
+SCHEDULER_AUTOSTART = env('SCHEDULER_AUTOSTART', cast=bool, default=True)
+SCHEDULER_TIMEZONE = 'UTC'
+SCHEDULER_MAX_WORKERS = 4
+
+SCHEDULER_CONFIG = {
+    'apscheduler.schedulers.background.BackgroundScheduler': {
+        'type': 'background'
+    },
+    'apscheduler.job_stores.default': {
+        'type': 'memory'
+    },
+    'apscheduler.executors.default': {
+        'class': 'apscheduler.executors.pool:ThreadPoolExecutor',
+        'max_workers': SCHEDULER_MAX_WORKERS
+    },
+    'apscheduler.timezone': SCHEDULER_TIMEZONE,
+}
+
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.AllowAny',
@@ -129,6 +148,10 @@ SPECTACULAR_SETTINGS = {
     
     ## Endpoints protégés
     Les endpoints POST, PUT, PATCH, DELETE nécessitent les droits appropriés.
+    
+    ## Tâches planifiées
+    - **Auto-completion des voyages**: Les voyages sont automatiquement marqués comme terminés
+      lorsque l'heure d'arrivée prévue est atteinte. Le bus et le chauffeur sont libérés automatiquement.
     ''',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
@@ -260,6 +283,18 @@ LOGGING = {
         },
         # Logger pour consumers.py
         'fleet.consumers': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Logger pour scheduler.py
+        'fleet.scheduler': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Logger pour apscheduler
+        'apscheduler': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,

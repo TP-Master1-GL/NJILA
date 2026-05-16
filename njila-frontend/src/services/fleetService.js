@@ -100,22 +100,29 @@ export const fleetService = {
   //  NORMALISATION (snake_case → camelCase)
   // ═══════════════════════════════════════════════════════════
   _normaliserVoyage: (v) => ({
-    id:                 v.Id_voyage      || v.id,
+    id:                 v.Id_voyage           || v.id,
     dateHeureDepart:    v.date_heure_depart,
     dateHeureArrivee:   v.date_heure_arrive_prevue,
     prix:               parseFloat(v.prix),
-    typeVoyage:         (v.type_voyage   || "standard").toUpperCase(),
+    typeVoyage:         (v.type_voyage        || "standard").toUpperCase(),
     status:             v.status,
     placesDisponibles:  v.places_disponibles,
-    placesRestantes:    v.places_restantes ?? v.places_disponibles,
-    trajetInfo:         v.trajet_info    || "",
-    // Extraction du nom d'agence depuis trajet_info
-    // ex: "sunset baf → sunset mvan" → "sunset"
-    codeAgence:         v.trajet_info
-                          ? v.trajet_info.split(" ")[0]
-                          : "NJILA",
+    placesRestantes:    v.places_restantes    ?? v.places_disponibles,
+    capacite:           v.capacite            ?? null,
+    trajetInfo:         v.trajet_info         || "",
+    origine:            v.origine             || null,
+    destination:        v.destination         || null,
     busImmatriculation: v.bus_immatriculation,
     chauffeurNom:       v.chauffeur_nom,
+
+    // ── FIX : codeAgence et codeFiliale viennent directement du backend ──
+    // VoyageListSerializer expose désormais ces deux champs :
+    //   codeAgence  → voyage.IdBus.Id_agence.name
+    //   codeFiliale → voyage.Id_trajet.filiale_depart.code
+    // On ne les reconstruit plus depuis trajet_info (approche fragile).
+    codeAgence:         v.codeAgence          || null,
+    codeFiliale:        v.codeFiliale         || null,
+
     _raw:               v,
   }),
 
@@ -162,16 +169,13 @@ export const fleetService = {
     const { data: tous } = await api.get("/api/voyages/", { params: fallbackParams });
 
     const voyagesFiltres = (Array.isArray(tous) ? tous : []).filter((v) => {
-      // Exclure les voyages annulés et terminés
       if (["annule", "termine"].includes(v.status)) return false;
 
-      // Filtre ville de départ (depuis trajet_info)
       if (depart && v.trajet_info) {
         const info = v.trajet_info.toLowerCase();
         if (!info.includes(depart)) return false;
       }
 
-      // Filtre ville d'arrivée (depuis trajet_info)
       if (arrivee && v.trajet_info) {
         const info = v.trajet_info.toLowerCase();
         if (!info.includes(arrivee)) return false;

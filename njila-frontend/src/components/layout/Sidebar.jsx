@@ -15,9 +15,10 @@ import { cn } from "../../utils/cn";
 import { ROLES } from "../../utils/constants";
 import EditProfilModal from "../shared/EditProfilModal";
 import EditAgenceModal from "../shared/EditAgenceModal";
+import NjilaLogo from "../ui/NjilaLogo";
 import toast from "react-hot-toast";
 
-// ─── Liens navigation (identiques à avant) ────────────────────────────────────
+// ─── Liens navigation ─────────────────────────────────────────────────────────
 const BASE_MANAGER_LINKS = [
   { to: "/manager",            icon: LayoutDashboard, label: "Dashboard"    },
   { to: "/manager/voyages",    icon: Calendar,        label: "Voyages"      },
@@ -29,8 +30,8 @@ const GLOBAL_ONLY_LINKS = [
   { to: "/manager/filiales", icon: Network, label: "Filiales" },
 ];
 const LOCAL_ONLY_LINKS = [
-  { to: "/manager/personnel", icon: UserCog, label: "Personnel" },
-  { to: "/manager/chauffeurs", icon: Users,           label: "Chauffeurs"   },
+  { to: "/manager/personnel",  icon: UserCog, label: "Personnel" },
+  { to: "/manager/chauffeurs", icon: Users,   label: "Chauffeurs" },
 ];
 const guichetierLinks = [
   { to: "/guichet",           icon: Ticket, label: "Point de vente"    },
@@ -43,17 +44,18 @@ const adminLinks = [
   { to: "/admin/abonnements",  icon: CreditCard,      label: "Abonnements"  },
   { to: "/admin/utilisateurs", icon: Users,           label: "Utilisateurs" },
 ];
+
 function getLinks(role) {
   switch (role) {
-    case ROLES.ADMIN:         return adminLinks;
-    case ROLES.GUICHETIER:    return guichetierLinks;
+    case ROLES.ADMIN:          return adminLinks;
+    case ROLES.GUICHETIER:     return guichetierLinks;
     case ROLES.MANAGER_GLOBAL: return [...BASE_MANAGER_LINKS, ...GLOBAL_ONLY_LINKS];
     case ROLES.MANAGER_LOCAL:  return [...BASE_MANAGER_LINKS, ...LOCAL_ONLY_LINKS];
     default:                   return BASE_MANAGER_LINKS;
   }
 }
 
-// ─── Modal détail profil (lecture seule + bouton éditer) ──────────────────────
+// ─── Modal détail profil ──────────────────────────────────────────────────────
 function ProfileViewModal({ isOpen, onClose, profil, agence, role, onEditProfil, onEditAgence }) {
   const [tab, setTab] = useState("info");
   if (!isOpen) return null;
@@ -84,7 +86,9 @@ function ProfileViewModal({ isOpen, onClose, profil, agence, role, onEditProfil,
           {["info", "agency"].map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-                tab === t ? "text-[#135bec] border-b-2 border-[#135bec]" : "text-slate-400 hover:text-slate-600"
+                tab === t
+                  ? "text-[#135bec] border-b-2 border-[#135bec]"
+                  : "text-slate-400 hover:text-slate-600"
               }`}>
               {t === "info" ? "Informations" : "Agence"}
             </button>
@@ -94,22 +98,17 @@ function ProfileViewModal({ isOpen, onClose, profil, agence, role, onEditProfil,
         {/* Tab info */}
         {tab === "info" && (
           <div className="px-6 py-4 space-y-3">
-            <div className="flex items-center gap-3 text-sm">
-              <Mail className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-700">{profil?.email || "—"}</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <Phone className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-700">{profil?.phone || "—"}</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <MapPinIcon className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-700">{profil?.adresse || "—"}</span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
-              <Briefcase className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-700 capitalize">{role?.replace(/_/g, " ")}</span>
-            </div>
+            {[
+              { icon: <Mail      className="w-4 h-4 text-slate-400" />, val: profil?.email   },
+              { icon: <Phone     className="w-4 h-4 text-slate-400" />, val: profil?.phone   },
+              { icon: <MapPinIcon className="w-4 h-4 text-slate-400" />, val: profil?.adresse },
+              { icon: <Briefcase className="w-4 h-4 text-slate-400" />, val: role?.replace(/_/g, " "), cls: "capitalize" },
+            ].map(({ icon, val, cls }, i) => (
+              <div key={i} className="flex items-center gap-3 text-sm">
+                {icon}
+                <span className={`text-slate-700 ${cls || ""}`}>{val || "—"}</span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -118,28 +117,22 @@ function ProfileViewModal({ isOpen, onClose, profil, agence, role, onEditProfil,
           <div className="px-6 py-4 space-y-3">
             {agence ? (
               <>
-                {/* Logo agence */}
                 {(agence.logo_url || agence.logo_image) && (
                   <div className="flex justify-center mb-2">
                     <img src={agence.logo_url || agence.logo_image} alt="logo" className="w-16 h-16 rounded-xl object-cover" />
                   </div>
                 )}
-                <div className="flex items-center gap-3 text-sm">
-                  <Building className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-700 font-semibold">{agence.name}</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <Phone className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-700">{agence.telephone || "—"}</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <Mail className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-700">{agence.email_officiel || "—"}</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <MapPinIcon className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-700">{agence.adresse || "—"}</span>
-                </div>
+                {[
+                  { icon: <Building  className="w-4 h-4 text-slate-400" />, val: agence.name,           cls: "font-semibold" },
+                  { icon: <Phone     className="w-4 h-4 text-slate-400" />, val: agence.telephone       },
+                  { icon: <Mail      className="w-4 h-4 text-slate-400" />, val: agence.email_officiel  },
+                  { icon: <MapPinIcon className="w-4 h-4 text-slate-400" />, val: agence.adresse         },
+                ].map(({ icon, val, cls }, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm">
+                    {icon}
+                    <span className={`text-slate-700 ${cls || ""}`}>{val || "—"}</span>
+                  </div>
+                ))}
               </>
             ) : (
               <p className="text-slate-400 text-sm text-center py-4">Aucune agence associée</p>
@@ -147,24 +140,19 @@ function ProfileViewModal({ isOpen, onClose, profil, agence, role, onEditProfil,
           </div>
         )}
 
-        {/* Footer avec boutons d'édition */}
+        {/* Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3">
-          {/* Modifier profil (tous les rôles) */}
           <button onClick={() => { onClose(); onEditProfil(); }}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 border-2 border-[#135bec] text-[#135bec] font-bold rounded-xl hover:bg-blue-50 transition-colors text-sm">
             <Edit3 className="w-3.5 h-3.5" /> Mon profil
           </button>
 
-          {/* Modifier agence (manager global uniquement) */}
-          {role === ROLES.MANAGER_GLOBAL && agence && (
+          {role === ROLES.MANAGER_GLOBAL && agence ? (
             <button onClick={() => { onClose(); onEditAgence(); }}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#135bec] text-white font-bold rounded-xl hover:bg-blue-700 transition-colors text-sm">
               <Building2 className="w-3.5 h-3.5" /> L'agence
             </button>
-          )}
-
-          {/* Fermer si pas de bouton agence */}
-          {role !== ROLES.MANAGER_GLOBAL && (
+          ) : (
             <button onClick={onClose}
               className="flex-1 py-2.5 bg-[#135bec] text-white font-bold rounded-xl hover:bg-blue-700 transition-colors text-sm">
               Fermer
@@ -176,38 +164,41 @@ function ProfileViewModal({ isOpen, onClose, profil, agence, role, onEditProfil,
   );
 }
 
-
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
 export default function Sidebar({ onMobileClose, mobileOpen }) {
   const location = useLocation();
   const { logout } = useAuth();
   const { user: authUser, role } = useAuthStore();
 
-  // ✅ Données réelles depuis les services
   const { profil, updateProfil, isUpdating, updatePhoto } = useProfile();
   const agenceId = authUser?.agenceId;
   const { agence, updateAgence, isUpdating: isUpdatingAgence, updateLogo } = useAgence(agenceId);
 
-  const [collapsed,        setCollapsed]        = useState(false);
-  const [viewModalOpen,    setViewModalOpen]    = useState(false);
-  const [editProfilOpen,   setEditProfilOpen]   = useState(false);
-  const [editAgenceOpen,   setEditAgenceOpen]   = useState(false);
+  const [collapsed,      setCollapsed]      = useState(false);
+  const [viewModalOpen,  setViewModalOpen]  = useState(false);
+  const [editProfilOpen, setEditProfilOpen] = useState(false);
+  const [editAgenceOpen, setEditAgenceOpen] = useState(false);
 
   const links = getLinks(role);
 
-  // Affichage
+  // Affichage utilisateur
   const displayPhoto   = profil?.photoProfil || profil?.photo_url || null;
   const displayName    = profil?.name    || authUser?.name    || "";
   const displaySurname = profil?.surname || authUser?.surname || "";
   const initiales      = `${displayName?.[0] || ""}${displaySurname?.[0] || ""}`.toUpperCase() || "?";
 
-  // Logo agence
-  const logoUrl = agence?.logo_url || agence?.logo_image || null;
+  // Logo & nom agence
+  const logoUrl     = agence?.logo_url || agence?.logo_image || null;
   const agenceShort = agence?.name
     ? agence.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
     : role === ROLES.ADMIN ? "NJ" : "MG";
-  const agenceName = role === ROLES.ADMIN
+  const agenceName  = role === ROLES.ADMIN
     ? "NJILA Platform"
     : (agence?.name || authUser?.agenceNom || "Chargement...");
+
+  // ── Admin : section logo = NjilaLogo ──────────────────────────────────────
+  // ── Autres rôles : logo agence classique ──────────────────────────────────
+  const isAdmin = role === ROLES.ADMIN;
 
   const handleSaveProfil = (form) => {
     updateProfil(form, {
@@ -246,9 +237,7 @@ export default function Sidebar({ onMobileClose, mobileOpen }) {
       <ProfileViewModal
         isOpen={viewModalOpen}
         onClose={() => setViewModalOpen(false)}
-        profil={profil}
-        agence={agence}
-        role={role}
+        profil={profil} agence={agence} role={role}
         onEditProfil={() => setEditProfilOpen(true)}
         onEditAgence={() => setEditAgenceOpen(true)}
       />
@@ -269,7 +258,7 @@ export default function Sidebar({ onMobileClose, mobileOpen }) {
         onLogoUploaded={handleLogoUploaded}
       />
 
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <aside className={cn(
         "flex flex-col bg-slate-900 transition-all duration-300 z-50",
         "hidden lg:flex",
@@ -278,31 +267,59 @@ export default function Sidebar({ onMobileClose, mobileOpen }) {
         mobileOpen ? "flex w-72" : "hidden lg:flex"
       )}>
 
-        {/* Logo agence */}
+        {/* ── Section logo ── */}
         <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-800">
-          <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 bg-[#135bec]">
-            {logoUrl
-              ? <img src={logoUrl} alt="logo" className="w-full h-full object-cover" />
-              : <span className="text-white font-black text-sm">{agenceShort}</span>}
-          </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-extrabold text-sm truncate">{agenceName}</p>
-              <p className="text-slate-400 text-[10px] truncate mt-0.5">Powered by NJILA</p>
-            </div>
+
+          {isAdmin ? (
+            /* Admin : NjilaLogo blanc centré / réduit si collapsed */
+            <>
+              {collapsed ? (
+                /* Icône seule quand collapsed */
+                <div className="w-9 h-9 rounded-xl bg-[#135bec] flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-black text-sm">NJ</span>
+                </div>
+              ) : (
+                /* Logo complet avec texte blanc */
+                <div className="flex-1 min-w-0">
+                  <NjilaLogo size="md" white />
+                  <p className="text-slate-500 text-[10px] mt-1 pl-1">Admin Console</p>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Autres rôles : logo de l'agence */
+            <>
+              <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 bg-[#135bec]">
+                {logoUrl
+                  ? <img src={logoUrl} alt="logo" className="w-full h-full object-cover" />
+                  : <span className="text-white font-black text-sm">{agenceShort}</span>}
+              </div>
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-extrabold text-sm truncate">{agenceName}</p>
+                  <p className="text-slate-400 text-[10px] truncate mt-0.5">Powered by NJILA</p>
+                </div>
+              )}
+            </>
           )}
-          <button onClick={() => setCollapsed(!collapsed)}
-            className="hidden lg:flex w-7 h-7 bg-slate-800 hover:bg-slate-700 rounded-lg items-center justify-center transition-colors flex-shrink-0">
+
+          {/* Bouton collapse (desktop) */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="hidden lg:flex w-7 h-7 bg-slate-800 hover:bg-slate-700 rounded-lg items-center justify-center transition-colors flex-shrink-0"
+          >
             {collapsed
               ? <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
               : <ChevronLeft  className="w-3.5 h-3.5 text-slate-400" />}
           </button>
+
+          {/* Bouton fermer (mobile) */}
           <button onClick={onMobileClose} className="lg:hidden w-7 h-7 bg-slate-800 rounded-lg flex items-center justify-center">
             <X className="w-3.5 h-3.5 text-slate-400" />
           </button>
         </div>
 
-        {/* Nav */}
+        {/* ── Navigation ── */}
         <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
           {links.map(({ to, icon: Icon, label }) => {
             const active = location.pathname === to;
@@ -324,9 +341,8 @@ export default function Sidebar({ onMobileClose, mobileOpen }) {
           })}
         </nav>
 
-        {/* User section */}
+        {/* ── User section ── */}
         <div className="px-2 py-3 border-t border-slate-800">
-          {/* Clic → modal détail profil */}
           <button onClick={() => setViewModalOpen(true)} className="w-full text-left">
             <div className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-800 transition-colors">
               <div className="w-8 h-8 rounded-xl overflow-hidden bg-[#135bec] flex items-center justify-center flex-shrink-0">

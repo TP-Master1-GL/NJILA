@@ -84,7 +84,7 @@ public class BookingController {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // NOUVEL ENDPOINT AJOUTÉ
+    // GET /api/bookings/voyage/{voyageId}/passagers
     // ─────────────────────────────────────────────────────────────────────────
     @GetMapping("/voyage/{voyageId}/passagers")
     @Operation(
@@ -100,6 +100,51 @@ public class BookingController {
     public ResponseEntity<VoyagePassagersResponse> getPassagersVoyage(
             @PathVariable String voyageId) {
         return ResponseEntity.ok(reservationService.getPassagersVoyage(voyageId));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /api/bookings/ticket/by-numero/{numeroTicket}
+    // FIX : permet au guichetier de rechercher un billet par son numéro string
+    // sans avoir besoin de l'ID Long de la réservation.
+    // ─────────────────────────────────────────────────────────────────────────
+    @GetMapping("/ticket/by-numero/{numeroTicket}")
+    @Operation(
+        summary = "Récupérer un ticket par son numéro unique",
+        description = """
+            Recherche un billet par son numéro unique (ex: SUNSET BAF-WEB-20260516-SUNDLA-000001).
+            Utilisé par le guichetier lors de la vérification avant conversion en billet d'embarquement.
+            Retourne les informations du billet : voyageur, trajet, statut, type (WEB ou EMB).
+            """
+    )
+    public ResponseEntity<TicketResponse> getTicketByNumero(
+            @PathVariable String numeroTicket) {
+        Ticket ticket = ticketRepository.findByNumeroTicket(numeroTicket)
+                .orElseThrow(() -> new RuntimeException(
+                        "Billet introuvable : " + numeroTicket));
+        String type = (ticket instanceof TicketElectronique) ? "WEB" : "EMB";
+        return ResponseEntity.ok(toTicketResponse(ticket, type));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PATCH /api/bookings/ticket/convert-by-numero
+    // FIX : convertit un billet électronique en billet d'embarquement
+    // en passant directement le numéro de ticket (string), sans ID Long.
+    // ─────────────────────────────────────────────────────────────────────────
+    @PatchMapping("/ticket/convert-by-numero")
+    @Operation(
+        summary = "Convertir un billet électronique en billet d'embarquement par numéro",
+        description = """
+            Le guichetier saisit le numéro unique du billet électronique présenté par le voyageur.
+            Ce endpoint convertit directement le billet sans avoir besoin de l'ID Long de la réservation.
+            Le billet électronique est marqué CONVERTI et ne peut plus être réutilisé.
+            Un billet d'embarquement est créé et retourné immédiatement.
+            """
+    )
+    public ResponseEntity<TicketResponse> convertirParNumero(
+            @Valid @RequestBody ConfirmerReservationRequest request) {
+        TicketEmbarquement ticket = reservationService.convertirBilletElectronique(
+                request.getNumeroTicketElectronique(), request.getIdGuichetier());
+        return ResponseEntity.ok(toTicketResponse(ticket, "EMB"));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -224,12 +269,10 @@ public class BookingController {
     // ─────────────────────────────────────────────────────────────────────────
     @PatchMapping("/{id}/convert-ticket")
     @Operation(
-        summary = "Convertir billet électronique en billet d'embarquement",
+        summary = "Convertir billet électronique en billet d'embarquement (par ID réservation)",
         description = """
-            Le voyageur présente son billet électronique (QR code / numéro) au guichetier.
-            Ce dernier le scanne/saisit ici pour obtenir un billet d'embarquement physique.
-            Le billet électronique est marqué CONVERTI et ne peut plus être réutilisé.
-            Uniquement disponible pour les réservations WEB déjà payées en ligne.
+            Version alternative utilisant l'ID Long de la réservation.
+            Préférer /ticket/convert-by-numero pour le flux guichetier standard.
             """
     )
     public ResponseEntity<TicketResponse> convertirBilletElectronique(
@@ -244,7 +287,7 @@ public class BookingController {
     // GET /api/bookings/{id}/ticket
     // ─────────────────────────────────────────────────────────────────────────
     @GetMapping("/{id}/ticket")
-    @Operation(summary = "Informations du billet lié à une réservation")
+    @Operation(summary = "Informations du billet lié à une réservation (par ID Long)")
     public ResponseEntity<TicketResponse> getTicket(@PathVariable Long id) {
         Reservation reservation = reservationService.getReservation(id);
         Ticket ticket = reservation.getTickets().stream()
@@ -335,14 +378,14 @@ public class BookingController {
     public ResponseEntity<Map<String, Object>> getFidelite(
             @PathVariable String idVoyageur,
             @RequestParam String codeAgence) {
-        int nombreVoyages = fideliteService.getNombreVoyages(idVoyageur, codeAgence);
+        int nombreVoyages     = fideliteService.getNombreVoyages(idVoyageur, codeAgence);
         boolean voyageGratuit = fideliteService.estVoyageGratuit(idVoyageur, codeAgence);
-        int voyagesRestants = voyageGratuit ? 0 : 10 - (nombreVoyages % 10);
+        int voyagesRestants   = voyageGratuit ? 0 : 10 - (nombreVoyages % 10);
         return ResponseEntity.ok(Map.of(
-                "idVoyageur", idVoyageur,
-                "codeAgence", codeAgence,
-                "nombreVoyages", nombreVoyages,
-                "voyageGratuit", voyageGratuit,
+                "idVoyageur",      idVoyageur,
+                "codeAgence",      codeAgence,
+                "nombreVoyages",   nombreVoyages,
+                "voyageGratuit",   voyageGratuit,
                 "voyagesRestants", voyagesRestants,
                 "message", voyageGratuit
                         ? "Votre prochain voyage est GRATUIT !"

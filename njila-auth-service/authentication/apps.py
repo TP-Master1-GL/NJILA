@@ -15,8 +15,8 @@ class AuthenticationConfig(AppConfig):
         import os
         import sys
 
-        # Créer ou mettre à jour le compte administrateur
-        self._create_or_update_admin_user()
+        # Créer ou mettre à jour le compte administrateur (sans sync immédiate)
+        admin_user = self._create_or_update_admin_user()
 
         # ── Démarrage du consumer RabbitMQ ─────────────────────────────────
         # • Django runserver  → RUN_MAIN == "true" dans le processus fils
@@ -31,8 +31,25 @@ class AuthenticationConfig(AppConfig):
 
         if (is_runserver or is_gunicorn) and not is_manage_cmd:
             self._start_consumer()
+
+            # Synchronisation différée : on attend 1 minute que tous les
+            # services (user-service, RabbitMQ…) soient prêts, puis on
+            # publie TOUJOURS l'événement, que l'admin ait été créé ou
+            # simplement trouvé en base.
+            if admin_user:
+                self._schedule_admin_sync(admin_user, delay=60)
+            else:
+                logger.warning(
+                    "[APP] Aucun utilisateur admin disponible pour la synchronisation différée."
+                )
         else:
-            logger.debug("[APP] Consumer RabbitMQ non démarré (commande manage.py ou processus maître)")
+            logger.debug(
+                "[APP] Consumer RabbitMQ non démarré (commande manage.py ou processus maître)"
+            )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Consumer RabbitMQ
+    # ──────────────────────────────────────────────────────────────────────
 
     def _start_consumer(self):
         """Lance le consumer RabbitMQ dans un thread daemon après un court délai."""
@@ -48,8 +65,45 @@ class AuthenticationConfig(AppConfig):
 
         threading.Thread(target=_boot, daemon=True, name="rabbitmq-boot").start()
 
+    # ──────────────────────────────────────────────────────────────────────
+    # Synchronisation différée de l'admin
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _schedule_admin_sync(self, user, delay: int = 60):
+        """
+        Attend `delay` secondes (pour laisser le temps à tous les services
+        de démarrer), puis publie SYSTÉMATIQUEMENT l'événement de création
+        de l'admin vers le user-service — que le compte ait été créé ou
+        déjà présent en base.
+        """
+        def _delayed_sync():
+            logger.info(
+                "[APP] ⏳ Synchronisation admin différée : publication dans %ds "
+                "(attente du démarrage des services)…",
+                delay,
+            )
+            time.sleep(delay)
+            logger.info(
+                "[APP] 🔄 Publication de l'événement admin vers user-service : %s",
+                user.email,
+            )
+            self._sync_admin_with_user_service(user)
+
+        threading.Thread(
+            target=_delayed_sync, daemon=True, name="admin-sync-delayed"
+        ).start()
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Création / mise à jour du compte admin
+    # ──────────────────────────────────────────────────────────────────────
+
     def _create_or_update_admin_user(self):
-        """Crée ou met à jour le compte administrateur et synchronise UNIQUEMENT si nécessaire."""
+        """
+        Crée ou met à jour le compte administrateur.
+        Retourne toujours l'objet utilisateur (ou None en cas d'erreur).
+        La synchronisation avec user-service est gérée séparément
+        via `_schedule_admin_sync`.
+        """
         from authentication.models import NjilaUser, Role
         from django.contrib.auth.hashers import check_password
 
@@ -63,31 +117,30 @@ class AuthenticationConfig(AppConfig):
 
             if user:
                 needs_update = False
-                needs_sync   = False
 
                 if user.role != Role.ADMINISTRATEUR:
                     user.role = Role.ADMINISTRATEUR
-                    needs_update = needs_sync = True
-                    logger.warning("[APP] ⚠ Compte %s : rôle mis à jour → ADMINISTRATEUR", email)
+                    needs_update = True
+                    logger.warning(
+                        "[APP] ⚠ Compte %s : rôle mis à jour → ADMINISTRATEUR", email
+                    )
 
                 if not user.is_staff:
                     user.is_staff = True
-                    needs_update = needs_sync = True
+                    needs_update  = True
 
                 if not user.is_verified:
                     user.is_verified = True
-                    needs_update = True
+                    needs_update     = True
 
                 if user.name != admin_name or user.surname != admin_surname:
                     user.name    = admin_name
                     user.surname = admin_surname
-                    needs_update = needs_sync = True
+                    needs_update = True
 
-                password_changed = False
                 if not check_password(admin_password, user.password):
                     user.set_password(admin_password)
-                    needs_update     = True
-                    password_changed = True
+                    needs_update = True
                     logger.info("[APP] Mot de passe réinitialisé pour %s", email)
 
                 if needs_update:
@@ -96,10 +149,9 @@ class AuthenticationConfig(AppConfig):
                 else:
                     logger.debug("[APP] Compte administrateur déjà à jour : %s", email)
 
-                if needs_sync or password_changed:
-                    self._sync_admin_with_user_service(user)
-                else:
-                    logger.debug("[APP] Aucune synchronisation nécessaire pour %s", email)
+                # On retourne l'utilisateur dans tous les cas ;
+                # la sync différée sera lancée par `ready()`.
+                return user
 
             else:
                 user = NjilaUser(
@@ -122,18 +174,24 @@ class AuthenticationConfig(AppConfig):
                 logger.info("[APP]    ID: %s", user.id)
                 logger.info("=" * 60)
 
-                self._sync_admin_with_user_service(user)
+                return user
 
         except Exception as e:
-            logger.error("[APP] Erreur création/récupération admin: %s", e, exc_info=True)
+            logger.error(
+                "[APP] Erreur création/récupération admin: %s", e, exc_info=True
+            )
+            return None
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Publication de l'événement vers user-service
+    # ──────────────────────────────────────────────────────────────────────
 
     def _sync_admin_with_user_service(self, user):
-        """Synchronise le compte admin avec le user-service via RabbitMQ."""
+        """Publie l'événement de création/mise-à-jour admin vers le user-service via RabbitMQ."""
         from authentication.events.publisher import EventPublisher
 
         try:
             publisher = EventPublisher()
-            time.sleep(0.5)
 
             publisher.publish_user_registered(
                 user_id=str(user.id),
@@ -142,13 +200,17 @@ class AuthenticationConfig(AppConfig):
                 surname=user.surname,
                 role=user.role,
                 phone=user.phone or "",
-                adresse=user.adresse or "",
+                adresse=user.adresse or "yaounde",
                 photo_url=user.photo_url or "",
                 filiale_id=None,
                 agence_id=None,
             )
 
-            logger.info("[APP] Admin synchronisé avec user-service : %s", user.email)
+            logger.info(
+                "[APP] ✅ Admin synchronisé avec user-service : %s", user.email
+            )
 
         except Exception as e:
-            logger.warning("[APP] Impossible de synchroniser l'admin avec user-service: %s", e)
+            logger.warning(
+                "[APP] ❌ Impossible de synchroniser l'admin avec user-service: %s", e
+            )

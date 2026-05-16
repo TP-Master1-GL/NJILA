@@ -8,15 +8,20 @@ import java.time.LocalDateTime;
 
 @Data @Builder
 public class TicketResponse {
-    private Long         id;
-    private String       numeroTicket;
-    private String       type;            // WEB ou EMB
-    private String       nomVoyageur;
-    private String       origine;
-    private String       destination;
-    private LocalDate    dateDepart;
-    private String       immatriculationBus;
-    private StatutTicket statut;
+    private Long          id;
+    private String        numeroTicket;
+    private String        type;              // WEB ou EMB
+    private String        nomVoyageur;
+    private String        origine;
+    private String        destination;
+    private LocalDate     dateDepart;
+    private String        immatriculationBus;
+    private StatutTicket  statut;
     private LocalDateTime dateEmission;
-    private String       cheminPdf;       // null si billet embarquement
+    private String        cheminPdf;         // null si billet embarquement
+    private String        numeroPlace;       // numéro de siège (EMB uniquement)
+
+    // FIX : ID de réservation (Long) nécessaire pour le frontend
+    // afin d'appeler GET /api/bookings/{idReservation}/ticket/pdf
+    private Long          idReservation;
 }
