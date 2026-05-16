@@ -2,8 +2,7 @@ import json
 import logging
 import threading
 import time
-from typing import List, Optional
-from uuid import UUID
+from typing import Optional
 
 from authentication.repositories.auth_repository import AuthRepository
 from authentication.services.redis_cache import RedisSessionCache
@@ -16,11 +15,11 @@ EXCHANGE_SUBSCRIBE   = "njila.subscribe.exchange"
 EXCHANGE_DEAD_LETTER = "njila.dead.letter.exchange"
 
 # ── Queues consommées par l'auth-service ──────────────────────────────────────
-QUEUE_USER_REGISTERED       = "njila.user.registered.queue"
-QUEUE_USER_UPDATED          = "njila.user.updated.queue"
-QUEUE_STAFF_TO_AUTH         = "njila.auth.staff-creation.queue"
-QUEUE_SUBSCRIPTION_EXPIRED  = "njila.auth.subscription.expired.queue"
-QUEUE_SUBSCRIPTION_RENEWED  = "njila.auth.subscription.renewed.queue"
+QUEUE_USER_REGISTERED      = "njila.user.registered.queue"
+QUEUE_USER_UPDATED         = "njila.user.updated.queue"
+QUEUE_STAFF_TO_AUTH        = "njila.auth.staff-creation.queue"
+QUEUE_SUBSCRIPTION_EXPIRED = "njila.auth.subscription.expired.queue"
+QUEUE_SUBSCRIPTION_RENEWED = "njila.auth.subscription.renewed.queue"
 
 MAX_RETRIES = 5
 
@@ -29,6 +28,9 @@ DEAD_LETTER_ARGS = {
     "x-dead-letter-routing-key": "dead.letter",
     "x-message-ttl":             86400000,
 }
+
+# Sentinel pour distinguer "champ absent du payload" de "champ présent mais vide"
+_MISSING = object()
 
 
 def uuid_to_str(value) -> Optional[str]:
@@ -192,10 +194,15 @@ class EventConsumer:
 
     def _handle_user_updated(self, data: dict):
         """
-        Met à jour les données de l'utilisateur en BDD uniquement.
-        Aucune invalidation de session ni régénération de token :
-        le token contient l'id (immuable), et le frontend récupère
-        le profil directement depuis le user-service.
+        Met à jour les données de l'utilisateur en BDD (profil ET photo).
+
+        Règles de mise à jour :
+        - Un champ absent du payload (clé inexistante) → ignoré, on ne touche pas à la BDD.
+        - Un champ présent mais vide string ("") → on l'écrit tel quel (l'utilisateur
+          a effacé la valeur côté user-service, on répercute).
+        - Un champ présent avec une valeur identique à la BDD → ignoré (pas de save inutile).
+
+        Champs gérés : name, surname, phone, adresse, photo_url, email (si emailChanged=True).
         """
         user_id = data.get("userId")
         if not user_id:
@@ -209,48 +216,61 @@ class EventConsumer:
             return
 
         updated = False
+        updated_fields = []
 
-        name = data.get("name")
-        if name and name != user.name:
-            user.name = name
-            updated = True
+        # ── Champs texte simples ──────────────────────────────────────────────
+        # On utilise _MISSING pour distinguer "absent" de "présent mais vide".
+        text_fields = [
+            ("name",      "name"),
+            ("surname",   "surname"),
+            ("phone",     "phone"),
+            ("adresse",   "adresse"),
+            ("photo_url", "photo_url"),  # ← photo de profil
+        ]
 
-        surname = data.get("surname")
-        if surname and surname != user.surname:
-            user.surname = surname
-            updated = True
+        for payload_key, model_attr in text_fields:
+            value = data.get(payload_key, _MISSING)
 
-        phone = data.get("phone")
-        if phone and phone != user.phone:
-            user.phone = phone
-            updated = True
+            # Clé absente du payload → on ne touche pas ce champ
+            if value is _MISSING:
+                continue
 
-        adresse = data.get("adresse")
-        if adresse and adresse != user.adresse:
-            user.adresse = adresse
-            updated = True
+            # Normaliser None → "" pour comparaison homogène
+            current = getattr(user, model_attr) or ""
+            incoming = value if value is not None else ""
 
-        photo_url = data.get("photo_url")
-        if photo_url and photo_url != user.photo_url:
-            user.photo_url = photo_url
-            updated = True
-
-        email_changed = data.get("emailChanged", False)
-        new_email     = data.get("email")
-        if email_changed and new_email and new_email != user.email:
-            if repo.exists_by_email(new_email):
-                logger.warning(
-                    "[CONSUMER] user.updated: nouvel email déjà utilisé %s", new_email
-                )
-            else:
-                user.email = new_email.lower().strip()
+            if incoming != current:
+                setattr(user, model_attr, incoming if incoming != "" else None)
                 updated = True
+                updated_fields.append(payload_key)
 
+        # ── Email (uniquement si emailChanged=True) ───────────────────────────
+        email_changed = data.get("emailChanged", False)
+        new_email     = data.get("email", _MISSING)
+
+        if email_changed and new_email is not _MISSING and new_email:
+            new_email_clean = new_email.lower().strip()
+            if new_email_clean != (user.email or ""):
+                if repo.exists_by_email(new_email_clean):
+                    logger.warning(
+                        "[CONSUMER] user.updated: nouvel email déjà utilisé %s", new_email_clean
+                    )
+                else:
+                    user.email = new_email_clean
+                    updated = True
+                    updated_fields.append("email")
+
+        # ── Persistance ───────────────────────────────────────────────────────
         if updated:
             repo.save_user(user)
-            logger.info("[CONSUMER] Profil mis à jour en BDD | userId=%s", user_id)
+            logger.info(
+                "[CONSUMER] Profil mis à jour en BDD | userId=%s | champs=%s",
+                user_id, updated_fields,
+            )
         else:
-            logger.debug("[CONSUMER] user.updated : aucune modification détectée | userId=%s", user_id)
+            logger.debug(
+                "[CONSUMER] user.updated : aucune modification détectée | userId=%s", user_id
+            )
 
     def _handle_staff_to_auth(self, data: dict):
         logger.info(
@@ -366,8 +386,8 @@ class EventConsumer:
 
         final_user_id = user_id or str(uuid.uuid4())
 
-        meta_data    = {}
-        poste        = data.get("poste")
+        meta_data     = {}
+        poste         = data.get("poste")
         numero_permis = data.get("numeroPermis")
         if poste:
             meta_data["poste"] = poste
@@ -375,20 +395,20 @@ class EventConsumer:
             meta_data["numeroPermis"] = numero_permis
 
         user = NjilaUser(
-            id         = final_user_id,
-            email      = email,
-            name       = name,
-            surname    = surname,
-            phone      = phone,
-            adresse    = adresse,
-            role       = role.upper(),
-            photo_url  = photo_url,
-            filiale_id = filiale_id,
-            agence_id  = agence_id,
-            is_active  = True,
+            id          = final_user_id,
+            email       = email,
+            name        = name,
+            surname     = surname,
+            phone       = phone,
+            adresse     = adresse,
+            role        = role.upper(),
+            photo_url   = photo_url,
+            filiale_id  = filiale_id,
+            agence_id   = agence_id,
+            is_active   = True,
             is_verified = True,
-            created_by = "SYSTEM",
-            meta_data  = meta_data if meta_data else None,
+            created_by  = "SYSTEM",
+            meta_data   = meta_data if meta_data else None,
         )
         user.set_password(password)
         repo.save_user(user)

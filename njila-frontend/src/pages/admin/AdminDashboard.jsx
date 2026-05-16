@@ -8,16 +8,16 @@ import {
 import {
   Building2, TrendingUp, Users, AlertTriangle,
   Clock, ArrowUp, Download, RefreshCw,
-  Globe, Bell, MoreVertical, ExternalLink, Star,
-  ChevronRight, Zap, Activity, CheckCircle2,
+  Bell, MoreVertical, ExternalLink, Star,
+  Zap, Activity,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { subscribeService } from "../../services/subscribeService";
 import { agenceService } from "../../services/agenceService";
 import { paymentService } from "../../services/paymentService";
-import { userService } from "../../services/userService";
 import { formatMontant } from "../../utils/formatters";
 import Spinner from "../../components/ui/Spinner";
+import NjilaLogo from "../../components/ui/NjilaLogo";
 
 // ── Tooltip personnalisé ────────────────────────────────────────────────────
 const CustomTooltip = ({ active, payload, label }) => {
@@ -38,17 +38,17 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 // ── Configuration des plans ────────────────────────────────────────────────
 const PLAN_CFG = {
-  "ANNUEL":      { color: "bg-blue-100 text-blue-700",     label: "Annuel",       icon: "📅" },
-  "TRIMESTRIEL": { color: "bg-emerald-100 text-emerald-700", label: "Trimestriel", icon: "📊" },
-  "MENSUEL":     { color: "bg-amber-100 text-amber-700",   label: "Mensuel",      icon: "📆" },
-  "ESSAI":       { color: "bg-slate-100 text-slate-600",   label: "Essai",        icon: "🎯" },
+  "ANNUEL":      { color: "bg-blue-100 text-blue-700",       label: "Annuel",       icon: "📅" },
+  "TRIMESTRIEL": { color: "bg-emerald-100 text-emerald-700", label: "Trimestriel",  icon: "📊" },
+  "MENSUEL":     { color: "bg-amber-100 text-amber-700",     label: "Mensuel",      icon: "📆" },
+  "ESSAI":       { color: "bg-slate-100 text-slate-600",     label: "Essai",        icon: "🎯" },
 };
 
 const STATUT_CFG = {
   "ACTIVE":    { dot: "bg-emerald-500", label: "Actif",          color: "emerald" },
-  "TRIAL":     { dot: "bg-blue-500",    label: "Essai",          color: "blue" },
-  "EXPIRING":  { dot: "bg-amber-500",   label: "Expire bientôt", color: "amber" },
-  "SUSPENDED": { dot: "bg-red-500",     label: "Suspendu",       color: "red" },
+  "TRIAL":     { dot: "bg-blue-500",    label: "Essai",          color: "blue"    },
+  "EXPIRING":  { dot: "bg-amber-500",   label: "Expire bientôt", color: "amber"   },
+  "SUSPENDED": { dot: "bg-red-500",     label: "Suspendu",       color: "red"     },
 };
 
 export default function AdminDashboard() {
@@ -59,7 +59,7 @@ export default function AdminDashboard() {
   const { data: tableauData, isLoading: loadingTableau, error: errorTableau } = useQuery({
     queryKey: ["admin-tableau-de-bord"],
     queryFn: subscribeService.getTableauDeBord,
-    staleTime: 5 * 60 * 1000, // 5 min
+    staleTime: 5 * 60 * 1000,
     retry: 2,
   });
 
@@ -81,32 +81,27 @@ export default function AdminDashboard() {
   const resume = tableauData?.resume || {};
   const abonnementsExpirant = tableauData?.abonnements_expirant_bientot || [];
 
-  // Calculs dérivés
-  const agencesActives = allAgences?.filter(a => a.statut_global === "active")?.length || 0;
-  const agencesEssai = allAgences?.filter(a => a.statut_global === "en_attente")?.length || 0;
-  const agencesSuspendues = allAgences?.filter(a => a.statut_global === "suspendue")?.length || 0;
-  const agencesExpirees = allAgences?.filter(a => a.statut_global === "expiree")?.length || 0;
-  const totalAgences = allAgences?.length || 0;
+  const agencesActives    = allAgences?.filter(a => a.statut_global === "active")?.length    || 0;
+  const agencesEssai      = allAgences?.filter(a => a.statut_global === "en_attente")?.length || 0;
+  const agencesSuspendues = allAgences?.filter(a => a.statut_global === "suspendue")?.length  || 0;
+  const agencesExpirees   = allAgences?.filter(a => a.statut_global === "expiree")?.length    || 0;
+  const totalAgences      = allAgences?.length || 0;
 
   const recetteTotale = resume.recette_totale_fcfa || 0;
-  const totalPaiements = allPayments?.length ?? 0;
 
   // ── Données pour graphiques ────────────────────────────────────────────
   const chartDataAgences = useMemo(() => {
     if (!allAgences?.length) return [];
     const monthMap = {};
     const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
-    
-    // Simuler les données mensuelles (en prod, viendrait du backend)
+
     allAgences.forEach(agence => {
       const dateInsc = new Date(agence.date_inscription);
-      const monthKey = dateInsc.getMonth();
-      const monthLabel = months[monthKey];
+      const monthLabel = months[dateInsc.getMonth()];
       if (!monthMap[monthLabel]) {
         monthMap[monthLabel] = { mois: monthLabel, agences: 0, recettes: 0 };
       }
       monthMap[monthLabel].agences += 1;
-      // Simuler recettes (would come from subscription data in prod)
       monthMap[monthLabel].recettes += 50000 + Math.random() * 100000;
     });
 
@@ -120,31 +115,21 @@ export default function AdminDashboard() {
       const plan = a.plan_actif?.plan_type || "ESSAI";
       planCounts[plan] = (planCounts[plan] || 0) + 1;
     });
-    
     const colors = {
-      ANNUEL: "#135bec",
-      TRIMESTRIEL: "#10b981",
-      MENSUEL: "#f59e0b",
-      ESSAI: "#94a3b8",
+      ANNUEL: "#135bec", TRIMESTRIEL: "#10b981", MENSUEL: "#f59e0b", ESSAI: "#94a3b8",
     };
-
     return Object.entries(planCounts).map(([name, value]) => ({
-      name,
-      value,
-      color: colors[name] || "#94a3b8",
+      name, value, color: colors[name] || "#94a3b8",
     }));
   }, [allAgences]);
 
-  const statutDistribution = useMemo(() => {
-    return [
-      { name: "Actives", value: agencesActives, fill: "#10b981" },
-      { name: "Essai", value: agencesEssai, fill: "#135bec" },
-      { name: "Expirant", value: agencesExpirees, fill: "#f59e0b" },
-      { name: "Suspendues", value: agencesSuspendues, fill: "#ef4444" },
-    ].filter(s => s.value > 0);
-  }, [agencesActives, agencesEssai, agencesExpirees, agencesSuspendues]);
+  const statutDistribution = useMemo(() => [
+    { name: "Actives",    value: agencesActives,    fill: "#10b981" },
+    { name: "Essai",      value: agencesEssai,      fill: "#135bec" },
+    { name: "Expirant",   value: agencesExpirees,   fill: "#f59e0b" },
+    { name: "Suspendues", value: agencesSuspendues, fill: "#ef4444" },
+  ].filter(s => s.value > 0), [agencesActives, agencesEssai, agencesExpirees, agencesSuspendues]);
 
-  // Top agences par recettes
   const topAgences = useMemo(() => {
     if (!allAgences?.length) return [];
     return allAgences
@@ -152,18 +137,17 @@ export default function AdminDashboard() {
       .sort((a, b) => (b.recettes_estimees || 0) - (a.recettes_estimees || 0))
       .slice(0, 5)
       .map(ag => ({
-        nom: ag.name,
-        plan: ag.plan_actif?.plan_type || "ESSAI",
+        nom:      ag.name,
+        plan:     ag.plan_actif?.plan_type || "ESSAI",
         recettes: ag.recettes_estimees || 0,
         voyageurs: ag.nombre_utilisateurs || 0,
-        note: ag.rating || 4.5,
-        statut: ag.statut_global === "active" ? "ACTIVE" : 
-                ag.statut_global === "en_attente" ? "TRIAL" :
-                ag.statut_global === "expiree" ? "EXPIRING" : "SUSPENDED",
+        note:     ag.rating || 4.5,
+        statut:   ag.statut_global === "active"     ? "ACTIVE"    :
+                  ag.statut_global === "en_attente" ? "TRIAL"     :
+                  ag.statut_global === "expiree"    ? "EXPIRING"  : "SUSPENDED",
       }));
   }, [allAgences]);
 
-  // Actualisation manuelle
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -178,46 +162,51 @@ export default function AdminDashboard() {
   };
 
   const isLoading = loadingTableau || loadingAgences;
-  const hasError = errorTableau;
 
   return (
     <DashboardLayout>
+
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-[#135bec] to-blue-700 rounded-2xl flex items-center justify-center shadow-lg shadow-[#135bec]/30">
-            <Globe className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-900">NJILA Admin Console</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse inline-block" />
-              <p className="text-sm text-slate-400">Supervision globale • {totalAgences} agences</p>
-            </div>
+
+        {/* Logo + sous-titre */}
+        <div className="flex flex-col gap-1">
+          <NjilaLogo size="md" />
+          <div className="flex items-center gap-2 pl-1 mt-0.5">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse inline-block" />
+            <p className="text-sm text-slate-400">
+              Supervision globale • {totalAgences} agences
+            </p>
           </div>
         </div>
+
+        {/* Actions */}
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={handleRefresh}
             disabled={refreshing}
             className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 text-slate-500 ${refreshing ? "animate-spin" : ""}`} />
           </button>
+
           <button className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors relative">
             <Bell className="w-4 h-4 text-slate-500" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
           </button>
+
           <button className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold px-4 py-2.5 rounded-xl transition-colors">
             <Download className="w-4 h-4" /> Rapport
           </button>
+
           <button className="flex items-center gap-2 bg-[#135bec] hover:bg-blue-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-colors">
             <Building2 className="w-4 h-4" /> Nouvelle agence
           </button>
         </div>
       </div>
 
-      {hasError && (
+      {/* ── Erreur ── */}
+      {errorTableau && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-8">
           <p className="text-sm text-red-700 font-semibold">
             ⚠️ Erreur lors du chargement du tableau de bord. Veuillez actualiser.
@@ -229,9 +218,9 @@ export default function AdminDashboard() {
         <Spinner size="lg" className="py-20" />
       ) : (
         <>
-          {/* ── KPIs Row ── */}
+          {/* ── KPIs ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-            {/* KPI 1: Agences Actives */}
+
             <div className="bg-gradient-to-br from-[#135bec] to-blue-800 rounded-2xl p-5 text-white relative overflow-hidden group hover:shadow-lg transition-shadow">
               <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
@@ -240,12 +229,13 @@ export default function AdminDashboard() {
                 <p className="text-blue-200 text-sm mt-0.5">Agences actives</p>
                 <div className="flex items-center gap-1 mt-2">
                   <ArrowUp className="w-3 h-3 text-emerald-300" />
-                  <span className="text-xs text-emerald-300 font-bold">+{Math.max(0, agencesActives - 5)} ce mois</span>
+                  <span className="text-xs text-emerald-300 font-bold">
+                    +{Math.max(0, agencesActives - 5)} ce mois
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* KPI 2: Recettes Totales */}
             <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-5 text-white relative overflow-hidden group hover:shadow-lg transition-shadow">
               <div className="absolute -top-4 -right-4 w-20 h-20 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
@@ -259,7 +249,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* KPI 3: Essais en cours */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition-shadow">
               <Clock className="w-5 h-5 mb-3 text-amber-500" />
               <p className="text-3xl font-extrabold text-slate-900">{agencesEssai}</p>
@@ -269,7 +258,6 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            {/* KPI 4: Expirations */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition-shadow">
               <AlertTriangle className="w-5 h-5 mb-3 text-red-500" />
               <p className="text-3xl font-extrabold text-slate-900">{abonnementsExpirant.length}</p>
@@ -278,9 +266,9 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* ── Row 1: Charts ── */}
+          {/* ── Row 1 : Croissance + Statuts ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            {/* Croissance */}
+
             <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
               <div className="flex items-center justify-between mb-5">
                 <div>
@@ -296,22 +284,21 @@ export default function AdminDashboard() {
                 <AreaChart data={chartDataAgences}>
                   <defs>
                     <linearGradient id="gradAdmin" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#135bec" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#135bec" stopOpacity={0} />
+                      <stop offset="5%"  stopColor="#135bec" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#135bec" stopOpacity={0}   />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="mois" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                  <YAxis yAxisId="left"  tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area yAxisId="left" type="monotone" dataKey="recettes" name="Recettes" stroke="#135bec" strokeWidth={2.5} fill="url(#gradAdmin)" />
-                  <Line yAxisId="right" type="monotone" dataKey="agences" name="Agences" stroke="#10b981" strokeWidth={2.5} dot={{ fill: "#10b981", r: 3 }} />
+                  <Area  yAxisId="left"  type="monotone" dataKey="recettes" name="Recettes" stroke="#135bec" strokeWidth={2.5} fill="url(#gradAdmin)" />
+                  <Line  yAxisId="right" type="monotone" dataKey="agences"  name="Agences"  stroke="#10b981" strokeWidth={2.5} dot={{ fill: "#10b981", r: 3 }} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Statut des agences */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
               <h3 className="font-extrabold text-slate-900 mb-4">Répartition statuts</h3>
               <div className="flex justify-center mb-4">
@@ -338,18 +325,18 @@ export default function AdminDashboard() {
                 ))}
               </div>
               <div className="mt-4 pt-4 border-t border-slate-100 text-center">
-                <p className="text-xs text-slate-400">Total : <span className="font-bold text-slate-700">{totalAgences} agences</span></p>
+                <p className="text-xs text-slate-400">
+                  Total : <span className="font-bold text-slate-700">{totalAgences} agences</span>
+                </p>
               </div>
             </div>
           </div>
 
-          {/* ── Row 2: Distribution & Activité ── */}
+          {/* ── Row 2 : Distribution plans + État plateforme ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Distribution des plans */}
+
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-extrabold text-slate-900">Distribution des plans</h3>
-              </div>
+              <h3 className="font-extrabold text-slate-900 mb-5">Distribution des plans</h3>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 {distributionPlans.map(plan => (
                   <div key={plan.name} className="p-4 rounded-xl border-2 border-slate-100 hover:border-slate-200 transition-colors">
@@ -375,7 +362,6 @@ export default function AdminDashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* Activité plateforme */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
               <div className="flex items-center justify-between mb-5">
                 <div>
@@ -388,32 +374,24 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-blue-500" />
-                    <span className="text-sm font-semibold text-slate-700">Requêtes API</span>
+                {[
+                  { icon: <Zap className="w-4 h-4 text-blue-500" />,     label: "Requêtes API",        value: "2.4K/min" },
+                  { icon: <Activity className="w-4 h-4 text-emerald-500" />, label: "Réservations",    value: "145/jour" },
+                  { icon: <Users className="w-4 h-4 text-amber-500" />,   label: "Utilisateurs actifs", value: "3.2K"     },
+                ].map(({ icon, label, value }) => (
+                  <div key={label} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      {icon}
+                      <span className="text-sm font-semibold text-slate-700">{label}</span>
+                    </div>
+                    <span className="text-lg font-extrabold text-slate-900">{value}</span>
                   </div>
-                  <span className="text-lg font-extrabold text-slate-900">2.4K/min</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-emerald-500" />
-                    <span className="text-sm font-semibold text-slate-700">Réservations</span>
-                  </div>
-                  <span className="text-lg font-extrabold text-slate-900">145/jour</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-amber-500" />
-                    <span className="text-sm font-semibold text-slate-700">Utilisateurs actifs</span>
-                  </div>
-                  <span className="text-lg font-extrabold text-slate-900">3.2K</span>
-                </div>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* ── Top agences table ── */}
+          {/* ── Top agences ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div>
@@ -434,7 +412,7 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {topAgences.map((ag, i) => {
-                  const planCfg = PLAN_CFG[ag.plan] || {};
+                  const planCfg   = PLAN_CFG[ag.plan]     || {};
                   const statusCfg = STATUT_CFG[ag.statut] || {};
                   const initiales = ag.nom?.slice(0, 2) ?? "??";
                   return (

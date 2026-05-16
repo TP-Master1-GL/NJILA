@@ -25,30 +25,23 @@ export const bookingService = {
   },
 
   // ─── Manifeste & Sièges ───────────────────────────────────────────────────
-  /**
-   * Récupère le manifeste complet des passagers d'un voyage
-   * (avec numéro de siège, distinction WEB / GUICHET, etc.)
-   */
   getPassagersVoyage: async (voyageId) => {
     const { data } = await api.get(`/api/bookings/voyage/${voyageId}/passagers`);
     return data;
   },
 
-  /**
-   * Récupère le plan des sièges (disponibles, occupés, en attente)
-   */
   getSiegesVoyage: async (voyageId) => {
     const { data } = await api.get(`/api/bookings/voyage/${voyageId}/sieges`);
     return data;
   },
 
-  // ─── Liste des réservations d'un voyage ───────────────────────────────────
   getReservationsVoyage: async (voyageId) => {
     const { data } = await api.get(`/api/bookings/voyage/${voyageId}`);
     return data;
   },
 
-  // ─── Billets ───────────────────────────────────────────────────────────────
+  // ─── Billets par ID numérique ──────────────────────────────────────────────
+  // Ces méthodes attendent un Long (ID numérique de réservation)
   getTicket: async (id) => {
     const { data } = await api.get(`/api/bookings/${id}/ticket`);
     return data;
@@ -61,17 +54,42 @@ export const bookingService = {
     return response.data;
   },
 
-  // Note : confirmerBillet semble correspondre à la conversion de billet
-  confirmerBillet: async (id, payload) => {
-    const { data } = await api.patch(`/api/bookings/${id}/confirm`, payload);
-    return data;
-  },
-
   convertirBilletElectronique: async (id, payload) => {
     const { data } = await api.patch(`/api/bookings/${id}/convert-ticket`, payload);
     return data;
   },
 
+  // ─── Billets par numéro unique (string) ───────────────────────────────────
+  // FIX : ces méthodes utilisent le numéro de ticket string (ex: SUNSET-BAF-WEB-...)
+  // Nécessite les nouveaux endpoints backend :
+  //   GET  /api/bookings/ticket/by-numero/{numeroTicket}
+  //   PATCH /api/bookings/ticket/convert-by-numero
+
+  /**
+   * Récupère les infos d'un ticket depuis son numéro unique (string).
+   * Utilisé par le guichetier dans VerificationBillet.
+   */
+  getTicketByNumero: async (numeroTicket) => {
+    const { data } = await api.get(
+      `/api/bookings/ticket/by-numero/${encodeURIComponent(numeroTicket)}`
+    );
+    return data;
+  },
+
+  /**
+   * Convertit un billet électronique en billet d'embarquement
+   * en passant directement le numéro de ticket (string).
+   * Utilisé par le guichetier dans VerificationBillet.
+   */
+  convertirParNumero: async (numeroTicketElectronique, idGuichetier) => {
+    const { data } = await api.patch("/api/bookings/ticket/convert-by-numero", {
+      numeroTicketElectronique,
+      idGuichetier,
+    });
+    return data;
+  },
+
+  // ─── Départ ────────────────────────────────────────────────────────────────
   validerBilletDepart: async (payload) => {
     const { data } = await api.post("/api/bookings/depart/valider-billet", payload);
     return data;
@@ -93,12 +111,6 @@ export const bookingService = {
   },
 
   // ─── Recettes ──────────────────────────────────────────────────────────────
-  /**
-   * Recettes d'une agence ventilées par canal.
-   *
-   * @param {string} codeAgence - ex : "GEN", "BNM"
-   * @param {string} [devise] - ex : "XAF"
-   */
   getRecettesAgence: async (codeAgence, devise = "XAF") => {
     const { data } = await api.get(
       `/api/bookings/recettes/agence/${codeAgence}`,
@@ -107,12 +119,6 @@ export const bookingService = {
     return data;
   },
 
-  /**
-   * Recettes d'une filiale ventilées par canal.
-   *
-   * @param {string} codeFiliale - ex : "BYDE", "DKLA"
-   * @param {string} [devise] - ex : "XAF"
-   */
   getRecettesFiliale: async (codeFiliale, devise = "XAF") => {
     const { data } = await api.get(
       `/api/bookings/recettes/filiale/${codeFiliale}`,

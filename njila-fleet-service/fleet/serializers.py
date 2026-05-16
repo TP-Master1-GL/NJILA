@@ -294,17 +294,30 @@ class VoyageSerializer(serializers.ModelSerializer):
 
 
 class VoyageListSerializer(serializers.ModelSerializer):
-    trajet_info = serializers.SerializerMethodField()
-    bus_immatriculation = serializers.CharField(source='IdBus.immatriculation', read_only=True)
-    chauffeur_nom = serializers.SerializerMethodField()
-    places_restantes = serializers.SerializerMethodField()
+    trajet_info          = serializers.SerializerMethodField()
+    bus_immatriculation  = serializers.CharField(source='IdBus.immatriculation', read_only=True)
+    chauffeur_nom        = serializers.SerializerMethodField()
+    places_restantes     = serializers.SerializerMethodField()
+    capacite             = serializers.IntegerField(source='IdBus.capacite', read_only=True)
+
+    # ── Champs nécessaires au booking-service ────────────────────────────────
+    # codeAgence  : code de l'agence propriétaire du bus
+    # codeFiliale : code de la filiale de départ du trajet
+    # Ces deux valeurs sont obligatoires dans ReservationRequest (backend Java).
+    codeAgence  = serializers.SerializerMethodField()
+    codeFiliale = serializers.SerializerMethodField()
+
+    # Alias lisibles pour le frontend (origine / destination)
+    origine     = serializers.SerializerMethodField()
+    destination = serializers.SerializerMethodField()
 
     class Meta:
         model = Voyage
         fields = [
             'Id_voyage', 'date_heure_depart', 'date_heure_arrive_prevue', 'prix',
             'type_voyage', 'status', 'places_disponibles', 'places_total_reservees',
-            'trajet_info', 'bus_immatriculation', 'chauffeur_nom', 'places_restantes'
+            'trajet_info', 'bus_immatriculation', 'chauffeur_nom', 'places_restantes',
+            'capacite', 'codeAgence', 'codeFiliale', 'origine', 'destination',
         ]
 
     def get_trajet_info(self, obj):
@@ -317,6 +330,39 @@ class VoyageListSerializer(serializers.ModelSerializer):
 
     def get_places_restantes(self, obj):
         return obj.places_disponibles
+
+    def get_codeAgence(self, obj):
+        """
+        Remonte depuis Voyage → Bus → Agence.
+        Retourne le champ `name` de l'agence (utilisé comme code côté booking).
+        Adaptez si l'agence expose un champ `code` distinct de `name`.
+        """
+        try:
+            return obj.IdBus.Id_agence.name
+        except AttributeError:
+            return None
+
+    def get_codeFiliale(self, obj):
+        """
+        Remonte depuis Voyage → Trajet → filiale_depart.
+        Retourne le champ `code` de la filiale de départ.
+        """
+        try:
+            return obj.Id_trajet.filiale_depart.code
+        except AttributeError:
+            return None
+
+    def get_origine(self, obj):
+        try:
+            return obj.Id_trajet.filiale_depart.ville
+        except AttributeError:
+            return None
+
+    def get_destination(self, obj):
+        try:
+            return obj.Id_trajet.filiale_arrive.ville
+        except AttributeError:
+            return None
 
 
 class VoyageCreateUpdateSerializer(serializers.ModelSerializer):

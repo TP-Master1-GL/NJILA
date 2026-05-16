@@ -15,9 +15,7 @@ import Modal from "../../components/ui/Modal";
 import Spinner from "../../components/ui/Spinner";
 import { fleetService } from "../../services/fleetService";
 import { useAuthStore } from "../../store/authStore";
-import { ROLES } from "../../utils/constants";
 
-// Aligné sur les valeurs Django : disponible|en_panne|en_voyage|maintenance|reserve
 const statutConfig = {
   disponible:  { label: "Disponible",  variant: "success" },
   en_voyage:   { label: "En voyage",   variant: "primary" },
@@ -30,7 +28,7 @@ const ETATS = ["disponible", "en_voyage", "maintenance", "en_panne", "reserve"];
 
 const BUS_FORM_INIT = {
   immatriculation: "",
-  modele: "STANDARD",
+  modele: "",
   capacite: 70,
   etat: "disponible",
 };
@@ -42,21 +40,25 @@ export default function GestionFlotte() {
   const [search, setSearch]           = useState("");
   const [filtreEtat, setFiltreEtat]   = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editBus, setEditBus]         = useState(null); // bus sélectionné pour changer état
+  const [editBus, setEditBus]         = useState(null);
   const [form, setForm]               = useState(BUS_FORM_INIT);
 
-  // GET /api/bus/ pour l'agence du manager global
+  // GET /api/bus/
   const { data: busList = [], isLoading, isError } = useQuery({
     queryKey: ["bus", filtreEtat, user?.agenceId],
-    queryFn: () => fleetService.getBus(filtreEtat ? { etat: filtreEtat, agence_id: user?.agenceId } : { agence_id: user?.agenceId }),
+    queryFn: () => fleetService.getBus(
+      filtreEtat
+        ? { etat: filtreEtat, agence_id: user?.agenceId }
+        : { agence_id: user?.agenceId }
+    ),
     enabled: !!user?.agenceId,
     retry: 1,
   });
 
-  // GET /api/stats/ — statistiques globales flotte
+  // GET /api/stats/
   const { data: stats } = useQuery({
     queryKey: ["bus-stats", user?.agenceId],
-    queryFn: () => fleetService.getBusStats(),
+    queryFn:  () => fleetService.getBusStats(),
     retry: 1,
   });
 
@@ -70,7 +72,29 @@ export default function GestionFlotte() {
       setIsModalOpen(false);
       setForm(BUS_FORM_INIT);
     },
-    onError: (err) => toast.error(err?.response?.data?.error || "Erreur lors de l'ajout du bus."),
+    onError: (err) => {
+      // Log détaillé pour diagnostiquer les erreurs 400
+      const detail = err?.response?.data;
+      console.error("[GestionFlotte] Erreur ajout bus:", JSON.stringify(detail));
+
+      // Affiche le premier message d'erreur champ par champ si disponible
+      let message = "Erreur lors de l'ajout du bus.";
+      if (detail) {
+        if (typeof detail === "string") {
+          message = detail;
+        } else if (detail.error) {
+          message = detail.error;
+        } else {
+          // Django retourne souvent { immatriculation: ["..."], capacite: ["..."] }
+          const firstField = Object.keys(detail)[0];
+          if (firstField) {
+            const firstError = detail[firstField];
+            message = `${firstField} : ${Array.isArray(firstError) ? firstError[0] : firstError}`;
+          }
+        }
+      }
+      toast.error(message, { duration: 6000 });
+    },
   });
 
   // PUT /api/bus/{IdBus}/etat/
@@ -82,17 +106,25 @@ export default function GestionFlotte() {
       qc.invalidateQueries({ queryKey: ["bus-stats"] });
       setEditBus(null);
     },
-    onError: () => toast.error("Erreur lors de la mise à jour."),
+    onError: (err) => {
+      const detail = err?.response?.data;
+      console.error("[GestionFlotte] Erreur changement état:", JSON.stringify(detail));
+      toast.error(detail?.error || "Erreur lors de la mise à jour.");
+    },
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.immatriculation || !form.capacite)
-      return toast.error("Immatriculation et capacité requis.");
+    if (!form.immatriculation.trim()) return toast.error("Immatriculation requise.");
+    if (!form.capacite)              return toast.error("Capacité requise.");
+    if (!user?.agenceId)             return toast.error("Agence introuvable. Reconnectez-vous.");
+
     ajouterBus({
-      ...form,
-      capacite: parseInt(form.capacite, 10),
-      Id_agence: user?.agenceId,
+      immatriculation: form.immatriculation.trim().toUpperCase(),
+      modele:          form.modele.trim() || "Standard",
+      capacite:        parseInt(form.capacite, 10),
+      etat:            form.etat,
+      Id_agence:       user.agenceId,
     });
   };
 
@@ -100,15 +132,15 @@ export default function GestionFlotte() {
     const q = search.toLowerCase();
     return (
       (b.immatriculation || "").toLowerCase().includes(q) ||
-      (b.modele || "").toLowerCase().includes(q)
+      (b.modele          || "").toLowerCase().includes(q)
     );
   });
 
   const kpis = [
-    { label: "Total flotte",   value: stats?.total      ?? busList.length,                                    color: "text-slate-900",   bg: "bg-slate-50"   },
-    { label: "Disponibles",    value: stats?.disponibles ?? busList.filter(b => b.etat === "disponible").length, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "En voyage",      value: stats?.en_voyage   ?? busList.filter(b => b.etat === "en_voyage").length,  color: "text-[#135bec]",   bg: "bg-blue-50"    },
-    { label: "Maintenance",    value: stats?.maintenance ?? busList.filter(b => b.etat === "maintenance").length, color: "text-amber-600",   bg: "bg-amber-50"   },
+    { label: "Total flotte",  value: stats?.total_bus  ?? busList.length,                                     color: "text-slate-900",   bg: "bg-slate-50"   },
+    { label: "Disponibles",   value: busList.filter((b) => b.etat === "disponible").length,                   color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "En voyage",     value: busList.filter((b) => b.etat === "en_voyage").length,                    color: "text-[#135bec]",   bg: "bg-blue-50"    },
+    { label: "Maintenance",   value: busList.filter((b) => ["maintenance","en_panne"].includes(b.etat)).length, color: "text-amber-600",   bg: "bg-amber-50"   },
   ];
 
   return (
@@ -116,9 +148,7 @@ export default function GestionFlotte() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">Gestion de la Flotte</h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Vue consolidée de tous vos bus
-          </p>
+          <p className="text-slate-400 text-sm mt-1">Vue consolidée de tous vos bus</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
@@ -141,7 +171,9 @@ export default function GestionFlotte() {
       {isLoading ? (
         <Spinner size="lg" className="py-20" />
       ) : isError ? (
-        <div className="text-center py-16 text-slate-400 text-sm">Impossible de charger la flotte.</div>
+        <div className="text-center py-16 text-slate-400 text-sm">
+          Impossible de charger la flotte.
+        </div>
       ) : (
         <Card padding={false}>
           {/* Filtres */}
@@ -225,31 +257,51 @@ export default function GestionFlotte() {
         </Card>
       )}
 
-      {/* Modal Ajout Bus */}
+      {/* ── Modal Ajout Bus ── */}
       <Modal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); setForm(BUS_FORM_INIT); }}
         title="Ajouter un Bus à la Flotte"
         size="md"
         footer={
           <>
-            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-semibold border border-slate-200 rounded-xl hover:bg-slate-50">Annuler</button>
-            <button onClick={handleSubmit} disabled={isPending} className="px-5 py-2 bg-[#135bec] hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl">
+            <button
+              onClick={() => { setIsModalOpen(false); setForm(BUS_FORM_INIT); }}
+              className="px-4 py-2 text-sm font-semibold border border-slate-200 rounded-xl hover:bg-slate-50"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isPending}
+              className="px-5 py-2 bg-[#135bec] hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl"
+            >
               {isPending ? "Ajout…" : "Ajouter le bus"}
             </button>
           </>
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+
+          {/* Info agence */}
+          {user?.agenceId && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
+              Bus rattaché à l'agence : <strong>{user?.agenceNom || user?.agenceId}</strong>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Immatriculation *</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Immatriculation * <span className="text-slate-400 font-normal text-xs">(lettres majuscules et chiffres uniquement)</span>
+              </label>
               <input
-                placeholder="Ex: LT 789 CD"
+                placeholder="Ex: LT789CD ou LTCD45"
                 value={form.immatriculation}
-                onChange={(e) => setForm((f) => ({ ...f, immatriculation: e.target.value }))}
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                onChange={(e) => setForm((f) => ({ ...f, immatriculation: e.target.value.toUpperCase() }))}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec] uppercase"
               />
+              <p className="text-xs text-slate-400 mt-1">Sans tirets ni caractères spéciaux. Espaces autorisés.</p>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Modèle</label>
@@ -264,7 +316,7 @@ export default function GestionFlotte() {
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">Capacité (places) *</label>
               <input
                 type="number"
-                min="10"
+                min="1"
                 max="100"
                 placeholder="70"
                 value={form.capacite}
@@ -288,7 +340,7 @@ export default function GestionFlotte() {
         </form>
       </Modal>
 
-      {/* Modal Changement d'état */}
+      {/* ── Modal Changement d'état ── */}
       {editBus && (
         <Modal
           open={!!editBus}
@@ -296,14 +348,17 @@ export default function GestionFlotte() {
           title={`Modifier l'état — ${editBus.immatriculation}`}
           size="sm"
           footer={
-            <>
-              <button onClick={() => setEditBus(null)} className="px-4 py-2 text-sm font-semibold border border-slate-200 rounded-xl hover:bg-slate-50">Annuler</button>
-            </>
+            <button
+              onClick={() => setEditBus(null)}
+              className="px-4 py-2 text-sm font-semibold border border-slate-200 rounded-xl hover:bg-slate-50"
+            >
+              Fermer
+            </button>
           }
         >
           <div className="space-y-2">
             {ETATS.map((etat) => {
-              const cfg = statutConfig[etat];
+              const cfg      = statutConfig[etat];
               const isActive = editBus.etat === etat;
               return (
                 <button
@@ -317,7 +372,11 @@ export default function GestionFlotte() {
                   } disabled:opacity-50`}
                 >
                   <span>{cfg.label}</span>
-                  {isActive && <span className="text-xs bg-[#135bec] text-white px-2 py-0.5 rounded-full">Actuel</span>}
+                  {isActive && (
+                    <span className="text-xs bg-[#135bec] text-white px-2 py-0.5 rounded-full">
+                      Actuel
+                    </span>
+                  )}
                 </button>
               );
             })}

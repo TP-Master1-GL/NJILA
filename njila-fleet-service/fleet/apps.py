@@ -18,3 +18,19 @@ class FleetConfig(AppConfig):
                 logger.info("✅ Consumer RabbitMQ démarré")
             except Exception as e:
                 logger.error(f"❌ Erreur démarrage consumer: {e}")
+
+
+        import fleet.signals  # noqa
+ 
+        # Initialiser APScheduler
+        try:
+            from fleet.scheduler import start_scheduler
+            start_scheduler()
+            logger.info("✓ Scheduler initialisé avec succès")
+        except ImportError:
+            logger.warning(
+                "⚠ APScheduler non disponible. "
+                "Installez-le avec: pip install apscheduler"
+            )
+        except Exception as e:
+            logger.error(f"✗ Erreur lors du démarrage du scheduler: {str(e)}")

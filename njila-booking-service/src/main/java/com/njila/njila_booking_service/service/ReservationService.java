@@ -52,16 +52,13 @@ public class ReservationService {
     private final PrixGroupeStrategy              prixGroupe;
     private final PrixPromoStrategy               prixPromo;
 
-    // Statuts considérés comme "payés / actifs"
-    private static final StatutReservation S_PAYEE     = StatutReservation.PAYEE;
-    private static final StatutReservation S_CONFIRMEE = StatutReservation.CONFIRMEE;
-    private static final StatutReservation S_EMBARQUEE = StatutReservation.EMBARQUEE;
-    private static final StatutReservation S_ANNULEE   = StatutReservation.ANNULEE;
-    private static final StatutReservation S_EXPIREE   = StatutReservation.EXPIREE;
+    private static final StatutReservation S_PAYEE      = StatutReservation.PAYEE;
+    private static final StatutReservation S_CONFIRMEE  = StatutReservation.CONFIRMEE;
+    private static final StatutReservation S_EMBARQUEE  = StatutReservation.EMBARQUEE;
+    private static final StatutReservation S_ANNULEE    = StatutReservation.ANNULEE;
+    private static final StatutReservation S_EXPIREE    = StatutReservation.EXPIREE;
     private static final StatutReservation S_EN_ATTENTE = StatutReservation.EN_ATTENTE;
 
-    // Durée maximale d'attente d'un paiement WEB avant expiration automatique
-    // Doit être cohérente avec le TTL Redis du SeatLockManager
     static final int PAIEMENT_TIMEOUT_MINUTES = 15;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -89,10 +86,8 @@ public class ReservationService {
             String telephonePaiement,
             String operateurPaiement) {
 
-        // ── 1. Résoudre le voyage ─────────────────────────────────────────────
         VoyageData voyageData = voyageDataRepository.findById(idVoyage)
-                .orElseThrow(() -> new RuntimeException(
-                        "Voyage introuvable : " + idVoyage));
+                .orElseThrow(() -> new RuntimeException("Voyage introuvable : " + idVoyage));
 
         if (voyageData.getPlacesDisponibles() < nombrePlaces) {
             throw new RuntimeException(
@@ -100,26 +95,20 @@ public class ReservationService {
                     + " (" + voyageData.getPlacesDisponibles() + " disponible(s))");
         }
 
-        // ── 2. Capacité du bus ────────────────────────────────────────────────
         int capaciteBus = resolverCapaciteBus(voyageData);
 
-        // ── 3. Attribuer les sièges ───────────────────────────────────────────
         List<Integer> siegesAttribues = attribuerSieges(
                 idVoyage, capaciteBus, nombrePlaces, siegesDemandes);
 
-        // ── 4. Résoudre le voyageur ───────────────────────────────────────────
         UserData voyageur = resolverVoyageur(
-                idVoyageur, nomVoyageur, prenomVoyageur,
-                telephoneVoyageur, emailVoyageur);
+                idVoyageur, nomVoyageur, prenomVoyageur, telephoneVoyageur, emailVoyageur);
 
-        // ── 5. Acquérir les verrous Redis (TTL = PAIEMENT_TIMEOUT_MINUTES) ────
         if (!seatLockManager.acquerirVerrouSieges(idVoyage, idVoyageur, siegesAttribues)) {
             throw new RuntimeException(
                     "Les sièges demandés viennent d'être réservés par un autre client. "
                     + "Veuillez sélectionner d'autres places.");
         }
 
-        // ── 6. Persister la réservation EN_ATTENTE ────────────────────────────
         Reservation saved = reservationRepository.save(
                 Reservation.builder()
                         .idVoyage(idVoyage)
@@ -137,7 +126,6 @@ public class ReservationService {
         );
 
         try {
-            // ── 7. Calculer le montant ────────────────────────────────────────
             double prixBase = voyageData.getPrix();
             PricingStrategy strategie = switch (typeTarif) {
                 case GROUPE -> prixGroupe;
@@ -147,7 +135,6 @@ public class ReservationService {
             double montantTotal = strategie.calculerPrix(saved, prixBase, nombrePlaces);
             saved.setMontantTotal(montantTotal);
 
-            // ── 8. Créer les PlaceReservee ────────────────────────────────────
             int indexSiege = 0;
 
             PlaceReservee placeResponsable = PlaceReservee.builder()
@@ -182,7 +169,6 @@ public class ReservationService {
 
             reservationRepository.save(saved);
 
-            // ── 9. Historique ─────────────────────────────────────────────────
             historiqueRepository.save(HistoriqueReservation.creer(
                     saved, TypeAction.CREATION, idVoyageur,
                     "Canal=" + canal + " Tarif=" + typeTarif
@@ -193,7 +179,6 @@ public class ReservationService {
             log.info("[BOOKING] Réservation créée id={} canal={} tarif={} montant={} sièges={}",
                     saved.getId(), canal, typeTarif, montantTotal, siegesAttribues);
 
-            // ── 10. Routing guichet vs web ────────────────────────────────────
             if (canal == CanalReservation.GUICHET) {
                 return confirmerReservationGuichet(
                         saved, voyageData, voyageur,
@@ -201,7 +186,6 @@ public class ReservationService {
                         siegesAttribues);
             }
 
-            // ── 11. Canal WEB : déléguer le paiement au payment-service ───────
             String phoneNumberPaiement = (telephonePaiement != null && !telephonePaiement.isBlank())
                     ? telephonePaiement
                     : voyageur.getTelephone();
@@ -238,15 +222,14 @@ public class ReservationService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CONFIRMER APRÈS PAIEMENT EN LIGNE (appelé par PaymentEventConsumer)
+    // CONFIRMER APRÈS PAIEMENT EN LIGNE
     // ─────────────────────────────────────────────────────────────────────────
 
     @Transactional
     public void confirmerApresPaiement(Long bookingId, String transactionId) {
 
         Reservation reservation = reservationRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Réservation introuvable : " + bookingId));
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable : " + bookingId));
 
         if (reservation.getStatut() == StatutReservation.PAYEE) {
             log.warn("[BOOKING] confirmerApresPaiement : réservation {} déjà PAYEE — ignoré", bookingId);
@@ -256,15 +239,13 @@ public class ReservationService {
         if (reservation.getStatut() != StatutReservation.EN_ATTENTE) {
             throw new RuntimeException(
                     "Impossible de confirmer la réservation " + bookingId
-                    + " : statut=" + reservation.getStatut()
-                    + " (attendu: EN_ATTENTE)");
+                    + " : statut=" + reservation.getStatut() + " (attendu: EN_ATTENTE)");
         }
 
         if (reservation.getCanal() != CanalReservation.WEB) {
             throw new RuntimeException(
                     "Impossible de confirmer via paiement en ligne la réservation " + bookingId
-                    + " : canal=" + reservation.getCanal()
-                    + " (attendu: WEB)");
+                    + " : canal=" + reservation.getCanal() + " (attendu: WEB)");
         }
 
         reservation.setStatut(StatutReservation.PAYEE);
@@ -331,15 +312,14 @@ public class ReservationService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // SUPPRIMER APRÈS ÉCHEC PAIEMENT (appelé par PaymentEventConsumer)
+    // SUPPRIMER APRÈS ÉCHEC PAIEMENT
     // ─────────────────────────────────────────────────────────────────────────
 
     @Transactional
     public void supprimerApresEchecPaiement(Long bookingId, String motif) {
 
         Reservation reservation = reservationRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Réservation introuvable : " + bookingId));
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable : " + bookingId));
 
         if (reservation.getStatut() == StatutReservation.ANNULEE
                 || reservation.getStatut() == StatutReservation.EXPIREE) {
@@ -384,10 +364,7 @@ public class ReservationService {
 
         List<Reservation> expirees = reservationRepository
                 .findByStatutAndCanalAndDateReservationBefore(
-                        StatutReservation.EN_ATTENTE,
-                        CanalReservation.WEB,
-                        limite
-                );
+                        StatutReservation.EN_ATTENTE, CanalReservation.WEB, limite);
 
         if (expirees.isEmpty()) return;
 
@@ -450,15 +427,14 @@ public class ReservationService {
 
         String numeroPlace = (siegesAttribues != null && !siegesAttribues.isEmpty())
                 ? String.valueOf(siegesAttribues.get(0))
-                : null;
+                : "0";
         ticket.setNumeroPlace(numeroPlace);
         ticket.setIdGuichetier(idGuichetier);
         ticketRepository.save(ticket);
 
         historiqueRepository.save(HistoriqueReservation.creer(
                 reservation, TypeAction.CONFIRMATION, idGuichetier,
-                "Paiement espèces guichet — billet=" + numeroTicket
-                + " sièges=" + siegesAttribues));
+                "Paiement espèces guichet — billet=" + numeroTicket + " sièges=" + siegesAttribues));
 
         fideliteService.incrementer(reservation.getIdVoyageur(), reservation.getCodeAgence());
 
@@ -487,8 +463,7 @@ public class ReservationService {
     public Reservation annulerReservation(Long bookingId, String idUtilisateur) {
 
         Reservation reservation = reservationRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Réservation introuvable : " + bookingId));
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable : " + bookingId));
 
         if (reservation.getStatut() == StatutReservation.EMBARQUEE) {
             throw new RuntimeException("Impossible d'annuler une réservation déjà embarquée.");
@@ -514,8 +489,7 @@ public class ReservationService {
         seatLockManager.libererSieges(reservation.getIdVoyage(), sieges);
 
         historiqueRepository.save(HistoriqueReservation.creer(
-                reservation, TypeAction.ANNULATION,
-                idUtilisateur,
+                reservation, TypeAction.ANNULATION, idUtilisateur,
                 "Annulation par l'utilisateur — sièges " + sieges + " libérés"));
 
         if (etaitPayee) {
@@ -528,8 +502,7 @@ public class ReservationService {
             );
         }
 
-        log.info("[BOOKING] Réservation annulée id={} par={} sièges={}",
-                bookingId, idUtilisateur, sieges);
+        log.info("[BOOKING] Réservation annulée id={} par={} sièges={}", bookingId, idUtilisateur, sieges);
         return reservation;
     }
 
@@ -542,8 +515,7 @@ public class ReservationService {
             String numeroTicketElec, String idGuichetier) {
 
         Ticket ticketBase = ticketRepository.findByNumeroTicket(numeroTicketElec)
-                .orElseThrow(() -> new RuntimeException(
-                        "Billet introuvable : " + numeroTicketElec));
+                .orElseThrow(() -> new RuntimeException("Billet introuvable : " + numeroTicketElec));
 
         if (!(ticketBase instanceof TicketElectronique ticketElec)) {
             throw new RuntimeException("Ce numéro ne correspond pas à un billet électronique.");
@@ -557,6 +529,23 @@ public class ReservationService {
         ticketRepository.save(ticketElec);
 
         Reservation reservation = ticketElec.getReservation();
+
+        // ── FIX : extraire le numéro de siège du passager responsable ────────
+        // La contrainte NOT NULL sur tickets_embarquement.numero_place exige
+        // une valeur non nulle. On remonte le numéro de siège depuis les
+        // places réservées (passager responsable en priorité, sinon premier siège).
+        String numeroPlace = reservation.getPlacesReservees().stream()
+                .filter(p -> Boolean.TRUE.equals(p.getEstResponsable()))
+                .map(p -> String.valueOf(p.getNumeroSiege()))
+                .findFirst()
+                .orElseGet(() ->
+                    reservation.getPlacesReservees().stream()
+                            .map(p -> String.valueOf(p.getNumeroSiege()))
+                            .findFirst()
+                            .orElse("0")
+                );
+        // ─────────────────────────────────────────────────────────────────────
+
         String numeroEmb = ticketNumberGenerator.genererBilletEmbarquement(
                 reservation.getCodeAgence(), reservation.getCodeFiliale());
 
@@ -573,9 +562,13 @@ public class ReservationService {
                         agenceDataRepository.findById(reservation.getCodeAgence())
                                 .map(AgenceData::getLogoUrl).orElse(null)
                 );
+
+        // ── FIX : setter numeroPlace AVANT ticketRepository.save() ───────────
+        ticketEmb.setNumeroPlace(numeroPlace);
         ticketEmb.setIdTicketElectronique(ticketElec.getId());
         ticketEmb.setIdGuichetier(idGuichetier);
         ticketRepository.save(ticketEmb);
+        // ─────────────────────────────────────────────────────────────────────
 
         ticketElec.setIdTicketEmbarquement(ticketEmb.getId());
         ticketRepository.save(ticketElec);
@@ -585,9 +578,11 @@ public class ReservationService {
 
         historiqueRepository.save(HistoriqueReservation.creer(
                 reservation, TypeAction.VERIFICATION_TICKET, idGuichetier,
-                "Conversion " + numeroTicketElec + " → " + numeroEmb));
+                "Conversion " + numeroTicketElec + " → " + numeroEmb
+                + " siège=" + numeroPlace));
 
-        log.info("[BOOKING] Billet électronique converti : {} → {}", numeroTicketElec, numeroEmb);
+        log.info("[BOOKING] Billet électronique converti : {} → {} siège={}",
+                numeroTicketElec, numeroEmb, numeroPlace);
         return ticketEmb;
     }
 
@@ -599,8 +594,7 @@ public class ReservationService {
     public Ticket validerBilletDepart(String numeroBillet, String idManager) {
 
         Ticket ticket = ticketRepository.findByNumeroTicket(numeroBillet)
-                .orElseThrow(() -> new RuntimeException(
-                        "Billet introuvable : " + numeroBillet));
+                .orElseThrow(() -> new RuntimeException("Billet introuvable : " + numeroBillet));
 
         if (ticket.getStatut() == StatutTicket.EMBARQUEE) {
             throw new RuntimeException("Ce billet est déjà validé : " + numeroBillet);
@@ -671,41 +665,21 @@ public class ReservationService {
     // PASSAGERS D'UN VOYAGE
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Retourne le manifeste complet des passagers d'un voyage :
-     * <ul>
-     *   <li>Résumé d'occupation (places totales, occupées, libres)</li>
-     *   <li>Ensemble des numéros de sièges occupés</li>
-     *   <li>Compteurs par canal (WEB vs GUICHET)</li>
-     *   <li>Liste détaillée de chaque passager avec son siège et son canal de paiement</li>
-     * </ul>
-     *
-     * <p>Les réservations ANNULEE et EXPIREE sont exclues.
-     * Les verrous Redis (sièges EN_ATTENTE) sont également remontés dans les compteurs
-     * afin de donner une vision temps réel.</p>
-     *
-     * @param idVoyage identifiant du voyage
-     * @return {@link VoyagePassagersResponse}
-     */
     @Transactional(readOnly = true)
     public VoyagePassagersResponse getPassagersVoyage(String idVoyage) {
 
-        // ── 1. Résoudre la capacité du bus ────────────────────────────────────
         VoyageData voyageData = voyageDataRepository.findById(idVoyage)
                 .orElseThrow(() -> new RuntimeException("Voyage introuvable : " + idVoyage));
         int capacite = resolverCapaciteBus(voyageData);
 
-        // ── 2. Récupérer tous les passagers actifs via la projection ──────────
         List<ReservationRepository.PassagerProjection> projections =
                 reservationRepository.findPassagersByVoyage(idVoyage, S_ANNULEE, S_EXPIREE);
 
-        // ── 3. Construire les détails passagers ───────────────────────────────
         List<VoyagePassagersResponse.PassagerDetail> passagers = projections.stream()
                 .map(p -> {
                     String canalLibelle = p.getCanal() == CanalReservation.WEB
                             ? "En ligne (mobile money)"
                             : "Guichet (espèces)";
-
                     return VoyagePassagersResponse.PassagerDetail.builder()
                             .numeroSiege(p.getNumeroSiege())
                             .nomPassager(p.getNomPassager())
@@ -727,10 +701,9 @@ public class ReservationService {
                 })
                 .collect(Collectors.toList());
 
-        // ── 4. Calculer les agrégats ──────────────────────────────────────────
         Set<Integer> siegesOccupes = projections.stream()
                 .map(ReservationRepository.PassagerProjection::getNumeroSiege)
-                .collect(Collectors.toCollection(TreeSet::new)); // TreeSet = trié
+                .collect(Collectors.toCollection(TreeSet::new));
 
         long nbWeb     = passagers.stream().filter(p -> p.getCanal() == CanalReservation.WEB).count();
         long nbGuichet = passagers.stream().filter(p -> p.getCanal() == CanalReservation.GUICHET).count();
@@ -760,11 +733,9 @@ public class ReservationService {
     public ReservationStatsResponse getStatsFiliale(String codeFiliale) {
 
         List<ReservationRepository.StatutCount> counts =
-                reservationRepository.countByStatutForFiliale(
-                        codeFiliale, S_EN_ATTENTE, S_EXPIREE);
+                reservationRepository.countByStatutForFiliale(codeFiliale, S_EN_ATTENTE, S_EXPIREE);
 
-        long totalReservations = 0, confirmees = 0, annulees = 0,
-             enAttente = 0, embarquees = 0;
+        long totalReservations = 0, confirmees = 0, annulees = 0, enAttente = 0, embarquees = 0;
 
         for (ReservationRepository.StatutCount sc : counts) {
             totalReservations += sc.getTotal();
@@ -772,18 +743,15 @@ public class ReservationService {
                 case CONFIRMEE, PAYEE -> confirmees += sc.getTotal();
                 case ANNULEE, EXPIREE -> annulees   += sc.getTotal();
                 case EN_ATTENTE       -> enAttente  += sc.getTotal();
-                case EMBARQUEE        -> {
-                    embarquees += sc.getTotal();
-                    confirmees += sc.getTotal();
-                }
+                case EMBARQUEE        -> { embarquees += sc.getTotal(); confirmees += sc.getTotal(); }
             }
         }
 
         double chiffreAffaires = reservationRepository.sumMontantByCodeFiliale(
                 codeFiliale, S_PAYEE, S_CONFIRMEE, S_EMBARQUEE);
-        long placesVendues     = reservationRepository.sumPlacesVenduesByCodeFiliale(
+        long placesVendues = reservationRepository.sumPlacesVenduesByCodeFiliale(
                 codeFiliale, S_PAYEE, S_CONFIRMEE, S_EMBARQUEE);
-        double tauxConversion  = totalReservations > 0
+        double tauxConversion = totalReservations > 0
                 ? Math.round((confirmees * 100.0 / totalReservations) * 10.0) / 10.0
                 : 0.0;
 
@@ -804,15 +772,6 @@ public class ReservationService {
     // RECETTES AGENCE
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Retourne la ventilation des recettes d'une agence :
-     * - Recette totale (WEB + GUICHET)
-     * - Recette en ligne (WEB / mobile money)
-     * - Recette guichet (espèces reçues localement)
-     *
-     * @param codeAgence code de l'agence (ex : "GEN", "BNM")
-     * @param devise     devise d'affichage (null → "XAF")
-     */
     @Transactional(readOnly = true)
     public RecettesResponse getRecettesAgence(String codeAgence, String devise) {
 
@@ -823,12 +782,9 @@ public class ReservationService {
         double recetteGuichet = reservationRepository.sumRecetteByAgenceAndCanal(
                 codeAgence, CanalReservation.GUICHET, S_PAYEE, S_CONFIRMEE, S_EMBARQUEE);
 
-        long nbEnLigne  = 0;
-        long nbGuichet  = 0;
-
+        long nbEnLigne = 0, nbGuichet = 0;
         for (ReservationRepository.CanalCount cc :
-                reservationRepository.countAndSumByCanal(
-                        codeAgence, S_PAYEE, S_CONFIRMEE, S_EMBARQUEE)) {
+                reservationRepository.countAndSumByCanal(codeAgence, S_PAYEE, S_CONFIRMEE, S_EMBARQUEE)) {
             if (cc.getCanal() == CanalReservation.WEB)     nbEnLigne = cc.getTotal();
             if (cc.getCanal() == CanalReservation.GUICHET) nbGuichet = cc.getTotal();
         }
@@ -856,15 +812,6 @@ public class ReservationService {
     // RECETTES FILIALE
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Retourne la ventilation des recettes d'une filiale :
-     * - Recette totale (WEB + GUICHET)
-     * - Recette en ligne (WEB / mobile money)
-     * - Recette guichet (espèces reçues localement)
-     *
-     * @param codeFiliale code de la filiale (ex : "BYDE", "DKLA")
-     * @param devise      devise d'affichage (null → "XAF")
-     */
     @Transactional(readOnly = true)
     public RecettesResponse getRecettesFiliale(String codeFiliale, String devise) {
 
@@ -875,9 +822,7 @@ public class ReservationService {
         double recetteGuichet = reservationRepository.sumRecetteByFilialeAndCanal(
                 codeFiliale, CanalReservation.GUICHET, S_PAYEE, S_CONFIRMEE, S_EMBARQUEE);
 
-        long nbEnLigne  = 0;
-        long nbGuichet  = 0;
-
+        long nbEnLigne = 0, nbGuichet = 0;
         for (ReservationRepository.CanalCount cc :
                 reservationRepository.countAndSumByCanalForFiliale(
                         codeFiliale, S_PAYEE, S_CONFIRMEE, S_EMBARQUEE)) {
@@ -927,8 +872,7 @@ public class ReservationService {
 
         int capacite = resolverCapaciteBus(voyage);
 
-        Set<Integer> occupesDB    = reservationRepository.findSiegesOccupes(
-                idVoyage, S_ANNULEE, S_EXPIREE);
+        Set<Integer> occupesDB    = reservationRepository.findSiegesOccupes(idVoyage, S_ANNULEE, S_EXPIREE);
         Set<Integer> occupesRedis = seatLockManager.getSiegesVerrouilles(idVoyage);
 
         Set<Integer> totalOccupes = new HashSet<>(occupesDB);
@@ -954,31 +898,22 @@ public class ReservationService {
     // ─────────────────────────────────────────────────────────────────────────
 
     private List<Integer> attribuerSieges(String idVoyage, int capaciteBus,
-                                          int nombrePlaces,
-                                          List<Integer> siegesDemandes) {
-        Set<Integer> occupesDB    = reservationRepository.findSiegesOccupes(
-                idVoyage, S_ANNULEE, S_EXPIREE);
+                                          int nombrePlaces, List<Integer> siegesDemandes) {
+        Set<Integer> occupesDB    = reservationRepository.findSiegesOccupes(idVoyage, S_ANNULEE, S_EXPIREE);
         Set<Integer> occupesRedis = seatLockManager.getSiegesVerrouilles(idVoyage);
-
         Set<Integer> totalOccupes = new HashSet<>(occupesDB);
         totalOccupes.addAll(occupesRedis);
 
         if (siegesDemandes != null && !siegesDemandes.isEmpty()) {
             for (int siege : siegesDemandes) {
-                if (siege < 1 || siege > capaciteBus) {
-                    throw new RuntimeException(
-                            "Siège " + siege + " invalide (capacité bus : " + capaciteBus + ")");
-                }
-                if (totalOccupes.contains(siege)) {
-                    throw new RuntimeException(
-                            "Le siège " + siege + " est déjà réservé ou en cours de réservation.");
-                }
+                if (siege < 1 || siege > capaciteBus)
+                    throw new RuntimeException("Siège " + siege + " invalide (capacité bus : " + capaciteBus + ")");
+                if (totalOccupes.contains(siege))
+                    throw new RuntimeException("Le siège " + siege + " est déjà réservé ou en cours de réservation.");
             }
-            if (siegesDemandes.size() != nombrePlaces) {
-                throw new RuntimeException(
-                        "Nombre de sièges demandés (" + siegesDemandes.size()
+            if (siegesDemandes.size() != nombrePlaces)
+                throw new RuntimeException("Nombre de sièges demandés (" + siegesDemandes.size()
                         + ") ne correspond pas au nombre de places (" + nombrePlaces + ")");
-            }
             return new ArrayList<>(siegesDemandes);
         }
 
@@ -988,26 +923,22 @@ public class ReservationService {
                 .limit(nombrePlaces)
                 .collect(Collectors.toList());
 
-        if (libres.size() < nombrePlaces) {
-            throw new RuntimeException(
-                    "Impossible d'attribuer " + nombrePlaces + " siège(s) — "
+        if (libres.size() < nombrePlaces)
+            throw new RuntimeException("Impossible d'attribuer " + nombrePlaces + " siège(s) — "
                     + libres.size() + " siège(s) libre(s) restant(s)");
-        }
 
         log.debug("[BOOKING] Sièges attribués automatiquement : {}", libres);
         return libres;
     }
 
     private int resolverCapaciteBus(VoyageData voyageData) {
-        if (voyageData.getCapaciteBus() != null && voyageData.getCapaciteBus() > 0) {
+        if (voyageData.getCapaciteBus() != null && voyageData.getCapaciteBus() > 0)
             return voyageData.getCapaciteBus();
-        }
         if (voyageData.getImmatriculationBus() != null) {
             return busDataRepository.findByImmatriculation(voyageData.getImmatriculationBus())
                     .map(BusData::getCapacite)
                     .orElseGet(() -> {
-                        log.warn("[BOOKING] Bus '{}' absent — capacité par défaut 50",
-                                voyageData.getImmatriculationBus());
+                        log.warn("[BOOKING] Bus '{}' absent — capacité par défaut 50", voyageData.getImmatriculationBus());
                         return 50;
                     });
         }
@@ -1015,37 +946,28 @@ public class ReservationService {
         return 50;
     }
 
-    private UserData resolverVoyageur(
-            String idVoyageur, String nom, String prenom,
-            String telephone, String email) {
-
+    private UserData resolverVoyageur(String idVoyageur, String nom, String prenom,
+                                      String telephone, String email) {
         return userDataRepository.findById(idVoyageur)
                 .orElseGet(() -> {
                     log.warn("[BOOKING] Voyageur {} absent — création à la volée", idVoyageur);
                     UserData nouveau = UserData.builder()
                             .id(idVoyageur)
-                            .nom(nom      != null ? nom      : "Client")
-                            .prenom(prenom  != null ? prenom  : "")
+                            .nom(nom       != null ? nom       : "Client")
+                            .prenom(prenom != null ? prenom    : "")
                             .telephone(telephone != null ? telephone : "")
-                            .email(email    != null ? email   : "")
-                            .adresse("")
-                            .photoUrl("")
-                            .role("VOYAGEUR")
+                            .email(email   != null ? email     : "")
+                            .adresse("").photoUrl("").role("VOYAGEUR")
                             .build();
                     userDataRepository.save(nouveau);
                     return nouveau;
                 });
     }
 
-    /**
-     * Calcule les parts en ligne / guichet sur le total.
-     *
-     * @return double[0] = partEnLigne%, double[1] = partGuichet%
-     */
     private double[] calculerParts(double enLigne, double guichet, double total) {
         if (total <= 0) return new double[]{0.0, 0.0};
-        double pEnLigne  = Math.round((enLigne  / total * 100.0) * 10.0) / 10.0;
-        double pGuichet  = Math.round((guichet  / total * 100.0) * 10.0) / 10.0;
+        double pEnLigne = Math.round((enLigne / total * 100.0) * 10.0) / 10.0;
+        double pGuichet = Math.round((guichet / total * 100.0) * 10.0) / 10.0;
         return new double[]{pEnLigne, pGuichet};
     }
 }

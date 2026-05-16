@@ -8,7 +8,7 @@ import { useAuthStore } from "../../store/authStore";
 import { useAuth } from "../../hooks/useAuth";
 import { useProfile } from "../../hooks/useProfile";
 import EditProfilModal from "../shared/EditProfilModal";
-import NjilaLogo from "../../components/ui/NjilaLogo"; // adapte le chemin selon ton projet
+import NjilaLogo from "../../components/ui/NjilaLogo"; 
 import toast from "react-hot-toast";
 
 export default function Navbar() {
