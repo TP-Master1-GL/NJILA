@@ -1,0 +1,177 @@
+# ============================================================
+# GATEWAY + FRONTEND
+# ============================================================
+
+# ──────────────────────────────────────────────────────────
+# PROXY SERVICE (API Gateway / Spring Cloud Gateway)
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: njila-proxy-service
+  namespace: njila
+  labels:
+    app: njila-proxy-service
+    tier: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-proxy-service
+  template:
+    metadata:
+      labels:
+        app: njila-proxy-service
+        tier: gateway
+    spec:
+      initContainers:
+        - name: wait-for-registry
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://njila-registry-service:8761/actuator/health; do
+                echo "Waiting for registry-service..."
+                sleep 5
+              done
+      containers:
+        - name: njila-proxy-service
+          image: njila/proxy-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8888
+          env:
+            - name: SPRING_APPLICATION_NAME
+              value: "njila-proxy-service"
+            - name: SPRING_CLOUD_CONFIG_URI
+              value: "http://njila-conf-service:8080/"
+            - name: SPRING_CONFIG_IMPORT
+              value: "configserver:http://njila-conf-service:8080/"
+            - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+              value: "http://njila-registry-service:8761/eureka/"
+            - name: EUREKA_CLIENT_ENABLED
+              value: "true"
+            - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+              value: "false"
+            - name: EUREKA_INSTANCE_HOSTNAME
+              value: "njila-proxy-service"
+            - name: EUREKA_CLIENT_FETCH_REGISTRY
+              value: "true"
+            - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+              value: "true"
+            - name: EUREKA_INSTANCE_APPNAME
+              value: "njila-PROXY-SERVICE"
+            - name: EUREKA_INSTANCE_INSTANCE-ID
+              value: "njila-proxy-service:8888"
+            - name: CORS_ALLOWED_ORIGINS
+              value: "http://localhost:3000,http://localhost:5174,http://njila-frontend"
+            - name: CORS_ALLOWED_METHODS
+              value: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8888
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8888
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-proxy-service
+  namespace: njila
+  labels:
+    app: njila-proxy-service
+spec:
+  selector:
+    app: njila-proxy-service
+  ports:
+    - name: http
+      port: 8888
+      targetPort: 8888
+  type: ClusterIP
+
+---
+# ──────────────────────────────────────────────────────────
+# FRONTEND (React / Vite served via NGINX)
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: njila-frontend
+  namespace: njila
+  labels:
+    app: njila-frontend
+    tier: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-frontend
+  template:
+    metadata:
+      labels:
+        app: njila-frontend
+        tier: frontend
+    spec:
+      containers:
+        - name: njila-frontend
+          image: njila/frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: VITE_API_GATEWAY_URL
+              value: "http://njila-proxy-service:8888"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-frontend
+  namespace: njila
+  labels:
+    app: njila-frontend
+spec:
+  selector:
+    app: njila-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  type: ClusterIP

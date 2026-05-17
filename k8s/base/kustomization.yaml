@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: njila
+
+resources:
+  - namespace.yaml
+  - configmaps/configmaps.yaml
+  - secrets/secrets.yaml
+  - statefulsets/redis.yaml
+  - statefulsets/rabbitmq.yaml
+  - statefulsets/postgres-dbs.yaml
+  - deployments/core-services.yaml
+  - deployments/microservices.yaml
+  - deployments/gateway-frontend.yaml
+  - ingress/ingress.yaml
+  - hpa/hpa.yaml
+  - network-policies/network-policies.yaml

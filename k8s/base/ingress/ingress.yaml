@@ -1,0 +1,63 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: njila-ingress
+  namespace: njila
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization,Content-Type,Accept,Origin,X-Requested-With"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+spec:
+  ingressClassName: nginx
+  rules:
+    # ── Frontend React
+    - host: njila.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: njila-frontend
+                port:
+                  number: 80
+    # ── API Gateway (proxy-service)
+    - host: api.njila.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: njila-proxy-service
+                port:
+                  number: 8888
+    # ── Eureka Dashboard (optionnel)
+    - host: eureka.njila.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: njila-registry-service
+                port:
+                  number: 8761
+    # ── RabbitMQ Management Dashboard (optionnel)
+    - host: rabbitmq.njila.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: njila-rabbitmq
+                port:
+                  number: 15672

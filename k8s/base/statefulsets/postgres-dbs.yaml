@@ -1,0 +1,597 @@
+# ============================================================
+# 7 bases PostgreSQL en StatefulSets distincts
+# ============================================================
+
+# ──────────────────────────────────────────────────────────
+# 1. AUTH DB
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: njila-auth-db
+  namespace: njila
+  labels:
+    app: njila-auth-db
+    tier: database
+    service: auth
+spec:
+  serviceName: njila-auth-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-auth-db
+  template:
+    metadata:
+      labels:
+        app: njila-auth-db
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "njila_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: auth-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: auth-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-auth-db
+  namespace: njila
+spec:
+  selector:
+    app: njila-auth-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+
+---
+# ──────────────────────────────────────────────────────────
+# 2. FLEET DB
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: njila-fleet-db
+  namespace: njila
+  labels:
+    app: njila-fleet-db
+    tier: database
+    service: fleet
+spec:
+  serviceName: njila-fleet-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-fleet-db
+  template:
+    metadata:
+      labels:
+        app: njila-fleet-db
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "njila_fleet_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: fleet-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: fleet-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-fleet-db
+  namespace: njila
+spec:
+  selector:
+    app: njila-fleet-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+
+---
+# ──────────────────────────────────────────────────────────
+# 3. SUBSCRIBE DB
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: njila-subscribe-db
+  namespace: njila
+  labels:
+    app: njila-subscribe-db
+    tier: database
+    service: subscribe
+spec:
+  serviceName: njila-subscribe-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-subscribe-db
+  template:
+    metadata:
+      labels:
+        app: njila-subscribe-db
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "njila_subscribe_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: subscribe-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: subscribe-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-subscribe-db
+  namespace: njila
+spec:
+  selector:
+    app: njila-subscribe-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+
+---
+# ──────────────────────────────────────────────────────────
+# 4. USER DB
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: njila-user-db
+  namespace: njila
+  labels:
+    app: njila-user-db
+    tier: database
+    service: user
+spec:
+  serviceName: njila-user-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-user-db
+  template:
+    metadata:
+      labels:
+        app: njila-user-db
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "njila_user_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: user-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: user-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-user-db
+  namespace: njila
+spec:
+  selector:
+    app: njila-user-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+
+---
+# ──────────────────────────────────────────────────────────
+# 5. BOOKING DB
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: njila-booking-db
+  namespace: njila
+  labels:
+    app: njila-booking-db
+    tier: database
+    service: booking
+spec:
+  serviceName: njila-booking-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-booking-db
+  template:
+    metadata:
+      labels:
+        app: njila-booking-db
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "njila_booking_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: booking-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: booking-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-booking-db
+  namespace: njila
+spec:
+  selector:
+    app: njila-booking-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+
+---
+# ──────────────────────────────────────────────────────────
+# 6. PAYEMENT DB
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: njila-payement-db
+  namespace: njila
+  labels:
+    app: njila-payement-db
+    tier: database
+    service: payement
+spec:
+  serviceName: njila-payement-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-payement-db
+  template:
+    metadata:
+      labels:
+        app: njila-payement-db
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "njila_payement_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: payement-db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payement-db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: payement-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: payement-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-payement-db
+  namespace: njila
+spec:
+  selector:
+    app: njila-payement-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None
+
+---
+# ──────────────────────────────────────────────────────────
+# 7. NOTIFICATION DB
+# ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: njila-notification-db
+  namespace: njila
+  labels:
+    app: njila-notification-db
+    tier: database
+    service: notification
+spec:
+  serviceName: njila-notification-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: njila-notification-db
+  template:
+    metadata:
+      labels:
+        app: njila-notification-db
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "njila_notification_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "njila"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: notification-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: notification-db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: njila-notification-db
+  namespace: njila
+spec:
+  selector:
+    app: njila-notification-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None

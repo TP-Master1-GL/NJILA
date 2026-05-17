@@ -1,0 +1,376 @@
+# ============================================================
+# NETWORK POLICIES – Isolation des services (comme dans le diagramme)
+# Principe : deny-all par défaut, puis ouvrir explicitement
+# ============================================================
+
+# ── 1. Deny ALL par défaut dans le namespace njila ────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: njila
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# ── 2. Autoriser le trafic DNS (CoreDNS) pour tous les pods ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: njila
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# ── 3. Conf-service : accès depuis tous les services ──────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-conf-service-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-conf-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: njila
+      ports:
+        - port: 8080
+
+---
+# ── 4. Registry-service : accès depuis tous les services ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-registry-service-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-registry-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: njila
+      ports:
+        - port: 8761
+
+---
+# ── 5. RabbitMQ : accès depuis les microservices ──────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rabbitmq-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-rabbitmq
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: microservice
+        - podSelector:
+            matchLabels:
+              tier: gateway
+      ports:
+        - port: 5672
+    # Management UI via Ingress
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 15672
+
+---
+# ── 6. Redis : accès depuis les microservices uniquement ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: microservice
+        - podSelector:
+            matchLabels:
+              tier: gateway
+      ports:
+        - port: 6379
+
+---
+# ── 7. Bases PostgreSQL : accès depuis le microservice correspondant seulement ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-db-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-auth-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-auth-service
+      ports:
+        - port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fleet-db-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-fleet-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-fleet-service
+      ports:
+        - port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-subscribe-db-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-subscribe-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-subscribe-service
+      ports:
+        - port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-user-db-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-user-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-user-service
+      ports:
+        - port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-booking-db-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-booking-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-booking-service
+      ports:
+        - port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-payement-db-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-payement-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-payement-service
+      ports:
+        - port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-notification-db-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-notification-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-notification-service
+      ports:
+        - port: 5432
+
+---
+# ── 8. Microservices : accès depuis le proxy (API Gateway) uniquement ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-microservices-from-proxy
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      tier: microservice
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: njila-proxy-service
+
+---
+# ── 9. Proxy-service : accès depuis l'Ingress Controller ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-proxy-from-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-proxy-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 8888
+
+---
+# ── 10. Frontend : accès depuis l'Ingress Controller ──────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-from-ingress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 80
+
+---
+# ── 11. Egress microservices : autoriser les appels sortants ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-microservices-egress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      tier: microservice
+  policyTypes:
+    - Egress
+  egress:
+    # Vers conf-service
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-conf-service
+      ports:
+        - port: 8080
+    # Vers registry-service
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-registry-service
+      ports:
+        - port: 8761
+    # Vers RabbitMQ
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-rabbitmq
+      ports:
+        - port: 5672
+    # Vers Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-redis
+      ports:
+        - port: 6379
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

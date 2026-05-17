@@ -1,0 +1,60 @@
+# ============================================================
+# ArgoCD Application – NJILA
+# Déploiement GitOps : ArgoCD surveille ce dépôt Git
+# et synchronise automatiquement les changements K8s
+# ============================================================
+# Installation ArgoCD :
+#   kubectl create namespace argocd
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# Appliquer cette Application :
+#   kubectl apply -f k8s/argocd/application.yaml
+# ============================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: njila
+  namespace: argocd
+  labels:
+    project: njila
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # ── Source : ce dépôt Git ────────────────────────────────
+  source:
+    # Remplacez par l'URL de votre dépôt
+    repoURL: https://github.com/TP-Master1-GL/NJILA.git
+    targetRevision: main
+    path: k8s/overlays/prod
+
+  # ── Destination : votre cluster Kubernetes ───────────────
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: njila
+
+  # ── Politique de synchronisation ─────────────────────────
+  syncPolicy:
+    automated:
+      prune: true        # Supprime les ressources orphelines
+      selfHeal: true     # Corrige les drifts automatiquement
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # ── Health checks personnalisés ───────────────────────────
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
