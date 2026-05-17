@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: njila
+data:
+  SPRING_CLOUD_CONFIG_URI: "http://njila-conf-service:8080/"
+  SPRING_CONFIG_IMPORT: "configserver:http://njila-conf-service:8080/"
+  EUREKA_URL: "http://njila-registry-service:8761/eureka/"
+  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: "http://njila-registry-service:8761/eureka/"
+  EUREKA_HOST: "njila-registry-service"
+  EUREKA_PORT: "8761"
+  CONFIG_SERVICE_URL: "http://njila-conf-service:8080"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: messaging-config
+  namespace: njila
+data:
+  RABBITMQ_HOST: "njila-rabbitmq"
+  RABBITMQ_PORT: "5672"
+  SPRING_RABBITMQ_HOST: "njila-rabbitmq"
+  SPRING_RABBITMQ_PORT: "5672"
+  REDIS_HOST: "njila-redis"
+  REDIS_PORT: "6379"
+  SPRING_DATA_REDIS_HOST: "njila-redis"
+  SPRING_DATA_REDIS_PORT: "6379"
