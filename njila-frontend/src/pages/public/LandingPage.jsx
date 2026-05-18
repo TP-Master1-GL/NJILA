@@ -14,7 +14,7 @@ const VILLES = [
   "Bamenda", "Kribi", "Bertoua", "Ebolowa", "Maroua",
 ];
 
-const POPULAR_CITIES = [
+const POPULAR_CITIES = [ 
   { nom: "Douala",     img: IMAGES.DOUALA,     desc: "Hub économique" },
   { nom: "Yaoundé",    img: IMAGES.YAOUNDE,    desc: "Capitale politique" },
   { nom: "Bafoussam",  img: IMAGES.BAFOUSSAM,  desc: "Capitale de l'Ouest" },
@@ -60,7 +60,7 @@ const HOW_IT_WORKS = [
   { step: "04", title: "Recevez votre billet",     desc: "Votre billet électronique avec numéro unique vous est envoyé par email et SMS.", icon: "qr_code_2" },
 ];
 
-// Badge couleur selon le nombre de filiales / bus
+// Badge couleur selon index
 const getBadge = (agence, index) => {
   const badges = [
     { type: "PREMIUM", bg: "bg-emerald-500" },
@@ -70,7 +70,7 @@ const getBadge = (agence, index) => {
   return badges[index % badges.length];
 };
 
-// Fallback image si logo_image absent
+// Fallback image si logo absent
 const AGENCY_FALLBACKS = [IMAGES.AGENCY_1, IMAGES.AGENCY_2, IMAGES.AGENCY_3];
 
 export default function LandingPage() {
@@ -90,7 +90,7 @@ export default function LandingPage() {
   const { data: agencesData, isLoading: agencesLoading } = useQuery({
     queryKey: ["agences-landing"],
     queryFn: () => agenceService.getAgences({ statut_global: "active" }),
-    staleTime: 5 * 60 * 1000, // 5 min cache
+    staleTime: 5 * 60 * 1000,
   });
 
   // On prend les 3 premières agences actives pour la section partenaires
@@ -466,7 +466,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── AGENCES PARTENAIRES (chargées depuis le backend) ─────────────── */}
+      {/* ══════════════════════════════════════════════════════════════════
+          ── AGENCES PARTENAIRES ──────────────────────────────────────────
+          La carte entière est cliquable → profil agence
+          Le bouton "Voir les voyages →" redirige vers /recherche
+          Le bouton "Voir le profil →"  redirige vers /agences/:id
+      ══════════════════════════════════════════════════════════════════ */}
       <section id="agences" className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-end justify-between mb-12">
@@ -505,15 +510,21 @@ export default function LandingPage() {
           {!agencesLoading && agences.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {agences.map((agence, index) => {
-                const badge = getBadge(agence, index);
+                const badge       = getBadge(agence, index);
                 const fallbackImg = AGENCY_FALLBACKS[index % AGENCY_FALLBACKS.length];
 
                 return (
+                  // ── Carte entière cliquable → page profil ──────────────
                   <div
                     key={agence.id_agence}
-                    className="group cursor-pointer rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100"
+                    onClick={() => navigate(`/agences/${agence.id_agence}`)}
+                    className="group cursor-pointer rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:-translate-y-1"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && navigate(`/agences/${agence.id_agence}`)}
+                    aria-label={`Voir le profil de ${agence.name}`}
                   >
-                    {/* Image / Logo */}
+                    {/* ── Image / Logo ── */}
                     <div className="relative overflow-hidden aspect-video bg-gradient-to-br from-slate-100 to-blue-50">
                       {agence.logo_image ? (
                         <img
@@ -522,7 +533,7 @@ export default function LandingPage() {
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                           onError={e => {
                             e.target.style.display = "none";
-                            e.target.nextSibling.style.display = "flex";
+                            e.target.nextSibling.style.display = "block";
                           }}
                         />
                       ) : null}
@@ -534,21 +545,31 @@ export default function LandingPage() {
                         style={{ display: agence.logo_image ? "none" : "block" }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
                       {/* Badge type */}
                       <div className="absolute top-3 left-3">
                         <span className={`${badge.bg} text-white text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest`}>
                           {badge.type}
                         </span>
                       </div>
+
+                      {/* Indicateur "Voir le profil" au survol */}
+                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <span className="bg-white/90 backdrop-blur text-[#135bec] text-[10px] px-2 py-1 rounded-lg font-bold flex items-center gap-1">
+                          <span className="material-icons text-xs">open_in_new</span>
+                          Voir le profil
+                        </span>
+                      </div>
+
                       {/* Nom agence */}
                       <div className="absolute bottom-4 left-4">
                         <h4 className="text-white font-extrabold text-xl drop-shadow">{agence.name}</h4>
                       </div>
                     </div>
 
-                    {/* Détail agence */}
+                    {/* ── Détail agence ── */}
                     <div className="p-4">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2 mb-3">
                         <div className="flex-1 min-w-0">
                           {agence.adresse && (
                             <p className="text-sm text-slate-500 flex items-center gap-1 truncate">
@@ -578,13 +599,30 @@ export default function LandingPage() {
                         </div>
                       </div>
 
-                      {/* CTA */}
-                      <button
-                        onClick={() => navigate("/recherche")}
-                        className="mt-3 w-full text-sm font-bold text-[#135bec] border border-[#135bec]/20 hover:bg-[#135bec] hover:text-white py-2 rounded-xl transition-all"
-                      >
-                        Voir les voyages →
-                      </button>
+                      {/* ── Deux boutons côte à côte ── */}
+                      <div className="flex gap-2">
+                        {/* Bouton 1 : Voir les voyages → /recherche */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation(); // empêche le clic de remonter à la carte
+                            navigate("/recherche");
+                          }}
+                          className="flex-1 text-sm font-bold text-[#135bec] border border-[#135bec]/20 hover:bg-[#135bec] hover:text-white py-2 rounded-xl transition-all"
+                        >
+                          Voir les voyages →
+                        </button>
+
+                        {/* Bouton 2 : Voir le profil → /agences/:id */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation(); // empêche la double navigation
+                            navigate(`/agences/${agence.id_agence}`);
+                          }}
+                          className="flex-1 text-sm font-bold text-slate-600 border border-slate-200 hover:bg-slate-700 hover:text-white hover:border-slate-700 py-2 rounded-xl transition-all"
+                        >
+                          Voir le profil
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -742,11 +780,11 @@ export default function LandingPage() {
           <div>
             <h4 className="text-white font-bold mb-4">Support</h4>
             <ul className="space-y-2 text-sm">
-              <li><a href="#aide"                  className="hover:text-white transition-colors">Centre d'aide</a></li>
+              <li><a href="#aide"                   className="hover:text-white transition-colors">Centre d'aide</a></li>
               <li><a href="mailto:contact@njila.cm" className="hover:text-white transition-colors">Nous contacter</a></li>
-              <li><a href="#"                       className="hover:text-white transition-colors">Politique de remboursement</a></li>
-              <li><a href="#"                       className="hover:text-white transition-colors">Conditions d'utilisation</a></li>
-              <li><a href="#"                       className="hover:text-white transition-colors">Confidentialité</a></li>
+              <li><a href="#"                        className="hover:text-white transition-colors">Politique de remboursement</a></li>
+              <li><a href="#"                        className="hover:text-white transition-colors">Conditions d'utilisation</a></li>
+              <li><a href="#"                        className="hover:text-white transition-colors">Confidentialité</a></li>
             </ul>
           </div>
 

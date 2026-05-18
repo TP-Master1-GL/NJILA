@@ -114,15 +114,8 @@ export const fleetService = {
     destination:        v.destination         || null,
     busImmatriculation: v.bus_immatriculation,
     chauffeurNom:       v.chauffeur_nom,
-
-    // ── FIX : codeAgence et codeFiliale viennent directement du backend ──
-    // VoyageListSerializer expose désormais ces deux champs :
-    //   codeAgence  → voyage.IdBus.Id_agence.name
-    //   codeFiliale → voyage.Id_trajet.filiale_depart.code
-    // On ne les reconstruit plus depuis trajet_info (approche fragile).
     codeAgence:         v.codeAgence          || null,
     codeFiliale:        v.codeFiliale         || null,
-
     _raw:               v,
   }),
 
@@ -228,5 +221,83 @@ export const fleetService = {
   getFilialeStats: async (id_filiale) => {
     const { data } = await api.get(`/api/filiales/${id_filiale}/stats/`);
     return data;
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  //  PROFIL PUBLIC AGENCE
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Retourne le profil public complet d'une agence :
+   * filiales, bus, trajets, voyages, annonces, avis.
+   * Aucune information sur le personnel.
+   *
+   * @param {string} id_agence   - UUID de l'agence
+   * @param {object} filtres     - Filtres optionnels :
+   *   - statut_voyage  : "programme"|"en_cours"|"termine"|"annule"|"retarde"|"confirme"
+   *   - ville_depart   : ex. "Douala"
+   *   - ville_arrivee  : ex. "Yaoundé"
+   *
+   * @returns {object} {
+   *   agence, resume, filiales, bus, trajets, voyages, annonces, avis
+   * }
+   */
+  getAgenceProfil: async (id_agence, filtres = {}) => {
+    const params = {};
+
+    if (filtres.statut_voyage) params.statut_voyage = filtres.statut_voyage;
+    if (filtres.ville_depart)  params.ville_depart  = filtres.ville_depart;
+    if (filtres.ville_arrivee) params.ville_arrivee = filtres.ville_arrivee;
+
+    const { data } = await api.get(
+      `/api/agences/${id_agence}/profil/`,
+      { params }
+    );
+    return data;
+  },
+
+  /**
+   * Normalise les voyages contenus dans le profil public
+   * pour les rendre compatibles avec le reste du frontend.
+   *
+   * @param {object} profil  - Résultat brut de getAgenceProfil()
+   * @returns {object}       - Profil avec voyages normalisés
+   */
+  normaliserProfilAgence: (profil) => {
+    if (!profil) return null;
+
+    return {
+      ...profil,
+      voyages: (profil.voyages || []).map((v) => ({
+        id:                   v.id_voyage,
+        origine:              v.origine,
+        destination:          v.destination,
+        filialeDepart:        v.filiale_depart,
+        filialeArrivee:       v.filiale_arrivee,
+        dateHeureDepart:      v.date_heure_depart,
+        dateHeureArrivee:     v.date_heure_arrivee,
+        prix:                 parseFloat(v.prix),
+        typeVoyage:           (v.type_voyage || "standard").toUpperCase(),
+        status:               v.status,
+        statusLabel:          v.status_label,
+        placesDisponibles:    v.places_disponibles,
+        placesReservees:      v.places_total_reservees,
+        busImmatriculation:   v.bus_immatriculation,
+        busModele:            v.bus_modele,
+        busCapacite:          v.bus_capacite,
+      })),
+    };
+  },
+
+  /**
+   * Raccourci : récupère ET normalise le profil en une seule étape.
+   *
+   * @param {string} id_agence
+   * @param {object} filtres
+   * @returns {object} profil normalisé
+   */
+  getAgenceProfilNormalise: async (id_agence, filtres = {}) => {
+    const profil = await fleetService.getAgenceProfil(id_agence, filtres);
+    return fleetService.normaliserProfilAgence(profil);
   },
 };

@@ -56,6 +56,31 @@ from .permissions import (
     IsManagerGlobal, IsGuichetier, IsChauffeur, IsVoyageur
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Helper : extraire les identifiants RBAC depuis request.user_info
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_user_role(request):
+    """Retourne le rôle de l'utilisateur connecté, ou '' si non authentifié."""
+    return getattr(request, 'user_info', {}).get('role', '')
+
+
+def _get_user_agence_id(request):
+    """
+    Retourne l'agenceId (camelCase) injecté par le middleware JWT.
+    Renvoie None si absent ou non authentifié.
+    """
+    val = getattr(request, 'user_info', {}).get('agenceId')
+    return str(val) if val else None
+
+
+def _get_user_filiale_id(request):
+    """
+    Retourne le filialeId (camelCase) injecté par le middleware JWT.
+    Renvoie None si absent ou non authentifié.
+    """
+    val = getattr(request, 'user_info', {}).get('filialeId')
+    return str(val) if val else None
 
 # ==============================================================================
 # AGENCES
@@ -321,6 +346,10 @@ class FilialeListCreateView(generics.ListCreateAPIView):
     """
     GET:  Liste des filiales (Public)
     POST: Créer une filiale (Manager Global ou Admin)
+
+    Filtrage RBAC :
+      MANAGER_GLOBAL → uniquement les filiales de son agence   (agenceId JWT)
+      MANAGER_LOCAL  → uniquement sa propre filiale             (filialeId JWT)
     """
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['ville', 'est_active', 'agence']
@@ -334,18 +363,42 @@ class FilialeListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Filiale.objects.all()
+
+        # ── Filtres query_params (disponibles pour tout le monde) ─────────────
         agence_id = self.request.query_params.get('agence_id')
         if agence_id:
             queryset = queryset.filter(agence_id=agence_id)
+
         ville = self.request.query_params.get('ville')
         if ville:
             queryset = queryset.filter(ville=ville)
 
-        if hasattr(self.request, 'user_info') and self.request.method != 'POST':
-            role = self.request.user_info.get('role')
-            if role == 'MANAGER_GLOBAL':
-                user_agence_id = self.request.user_info.get('agence_id')
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role == 'MANAGER_GLOBAL':
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
                 queryset = queryset.filter(agence_id=user_agence_id)
+                logger.debug(
+                    "[FilialeList] MANAGER_GLOBAL %s → filtre agence_id=%s",
+                    self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                logger.warning("[FilialeList] MANAGER_GLOBAL sans agenceId → queryset vide")
+                queryset = queryset.none()
+
+        elif role == 'MANAGER_LOCAL':
+            user_filiale_id = _get_user_filiale_id(self.request)
+            if user_filiale_id:
+                queryset = queryset.filter(id_filiale=user_filiale_id)
+                logger.debug(
+                    "[FilialeList] MANAGER_LOCAL %s → filtre id_filiale=%s",
+                    self.request.user_info.get('userId'), user_filiale_id
+                )
+            else:
+                logger.warning("[FilialeList] MANAGER_LOCAL sans filialeId → queryset vide")
+                queryset = queryset.none()
 
         return queryset.select_related('agence').order_by('-created_at')
 
@@ -397,23 +450,15 @@ class FilialeListCreateView(generics.ListCreateAPIView):
     @transaction.atomic
     def perform_create(self, serializer):
         filiale = serializer.save()
-
         events_status = {
             'filiale_created': publish_filiale_created(filiale),
             'booking_sync':    publish_filiale_updated_for_booking(filiale),
         }
-
         all_sent = all(events_status.values())
         if all_sent:
-            logger.info(
-                "Filiale créée: %s | RabbitMQ: tous les événements envoyés ✓ | %s",
-                filiale.nom, events_status
-            )
+            logger.info("Filiale créée: %s | RabbitMQ ✓ | %s", filiale.nom, events_status)
         else:
-            logger.warning(
-                "Filiale créée: %s | RabbitMQ: certains événements ont échoué ✗ | %s",
-                filiale.nom, events_status
-            )
+            logger.warning("Filiale créée: %s | RabbitMQ ✗ | %s", filiale.nom, events_status)
 
 
 class FilialeDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -552,6 +597,10 @@ class BusListCreateView(generics.ListCreateAPIView):
     """
     GET:  Liste des bus (Public)
     POST: Ajouter un bus (Manager Local ou supérieur)
+
+    Filtrage RBAC :
+      MANAGER_GLOBAL → bus de son agence  (agenceId JWT)
+      MANAGER_LOCAL  → bus de son agence  (agenceId JWT)
     """
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['etat', 'Id_agence']
@@ -565,21 +614,34 @@ class BusListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Bus.objects.all()
+
+        # ── Filtres query_params ──────────────────────────────────────────────
         agence_id = self.request.query_params.get('agence_id')
         if agence_id:
             queryset = queryset.filter(Id_agence_id=agence_id)
+
         etat = self.request.query_params.get('etat')
         if etat:
             queryset = queryset.filter(etat=etat)
+
         disponible = self.request.query_params.get('disponible')
         if disponible and disponible.lower() == 'true':
             queryset = queryset.filter(etat=StatusBus.DISPONIBLE)
 
-        if hasattr(self.request, 'user_info'):
-            role = self.request.user_info.get('role')
-            if role == 'MANAGER_LOCAL':
-                user_agence_id = self.request.user_info.get('agence_id')
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role in ('MANAGER_GLOBAL', 'MANAGER_LOCAL'):
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
                 queryset = queryset.filter(Id_agence_id=user_agence_id)
+                logger.debug(
+                    "[BusList] %s %s → filtre agence_id=%s",
+                    role, self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                logger.warning("[BusList] %s sans agenceId → queryset vide", role)
+                queryset = queryset.none()
 
         return queryset.select_related('Id_agence').order_by('-created_at')
 
@@ -639,7 +701,6 @@ class BusListCreateView(generics.ListCreateAPIView):
             logger.info("Bus créé: %s | RabbitMQ: booking_sync ✓", bus.immatriculation)
         else:
             logger.warning("Bus créé: %s | RabbitMQ: booking_sync ✗", bus.immatriculation)
-
 
 class BusRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -848,6 +909,14 @@ class BusDisponiblesListView(generics.ListAPIView):
 # ==============================================================================
 
 class ChauffeurListCreateView(generics.ListCreateAPIView):
+    """
+    GET:  Liste des chauffeurs (Public)
+    POST: Créer un chauffeur (Manager Local ou supérieur)
+
+    Filtrage RBAC :
+      MANAGER_GLOBAL → chauffeurs de son agence  (agenceId JWT)
+      MANAGER_LOCAL  → chauffeurs de son agence  (agenceId JWT)
+    """
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['est_disponible', 'Id_agence']
     search_fields    = ['name', 'surname', 'email', 'numero_permis']
@@ -859,19 +928,31 @@ class ChauffeurListCreateView(generics.ListCreateAPIView):
         return [AllowAny()]
 
     def get_queryset(self):
-        queryset  = Chauffeur.objects.all()
+        queryset = Chauffeur.objects.all()
+
+        # ── Filtres query_params ──────────────────────────────────────────────
         agence_id = self.request.query_params.get('agence_id')
         if agence_id:
             queryset = queryset.filter(Id_agence_id=agence_id)
+
         disponible = self.request.query_params.get('disponible')
         if disponible and disponible.lower() == 'true':
             queryset = queryset.filter(est_disponible=True)
 
-        if hasattr(self.request, 'user_info'):
-            role = self.request.user_info.get('role')
-            if role == 'MANAGER_LOCAL':
-                user_agence_id = self.request.user_info.get('agenceId')
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role in ('MANAGER_GLOBAL', 'MANAGER_LOCAL'):
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
                 queryset = queryset.filter(Id_agence_id=user_agence_id)
+                logger.debug(
+                    "[ChauffeurList] %s %s → filtre agence_id=%s",
+                    role, self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                logger.warning("[ChauffeurList] %s sans agenceId → queryset vide", role)
+                queryset = queryset.none()
 
         return queryset.select_related('Id_agence').order_by('-created_at')
 
@@ -929,15 +1010,9 @@ class ChauffeurListCreateView(generics.ListCreateAPIView):
             agence_id=chauffeur.Id_agence.id_agence
         )
         if event_sent:
-            logger.info(
-                "Chauffeur créé: %s %s | RabbitMQ: staff_created ✓",
-                chauffeur.name, chauffeur.surname
-            )
+            logger.info("Chauffeur créé: %s %s | RabbitMQ ✓", chauffeur.name, chauffeur.surname)
         else:
-            logger.warning(
-                "Chauffeur créé: %s %s | RabbitMQ: staff_created ✗",
-                chauffeur.name, chauffeur.surname
-            )
+            logger.warning("Chauffeur créé: %s %s | RabbitMQ ✗", chauffeur.name, chauffeur.surname)
 
 
 class ChauffeurDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -1049,7 +1124,14 @@ class ChauffeurStatusUpdateView(APIView):
 # ==============================================================================
 
 class GuichetierListCreateView(generics.ListCreateAPIView):
-    """GET: Liste des guichetiers | POST: Ajouter un guichetier (Manager Local ou supérieur)"""
+    """
+    GET:  Liste des guichetiers (Manager Local ou supérieur)
+    POST: Ajouter un guichetier (Manager Local ou supérieur)
+
+    Filtrage RBAC :
+      MANAGER_GLOBAL → guichetiers de toutes les filiales de son agence  (agenceId JWT)
+      MANAGER_LOCAL  → guichetiers de sa propre filiale seulement         (filialeId JWT)
+    """
     permission_classes = [IsManagerLocal]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields   = ['est_actif', '_id_filiale']
@@ -1057,19 +1139,43 @@ class GuichetierListCreateView(generics.ListCreateAPIView):
     ordering_fields    = ['name', 'created_at']
 
     def get_queryset(self):
-        queryset   = Guichetier.objects.all()
+        queryset = Guichetier.objects.all()
+
+        # ── Filtre query_param ────────────────────────────────────────────────
         filiale_id = self.request.query_params.get('filiale_id')
         if filiale_id:
             queryset = queryset.filter(_id_filiale_id=filiale_id)
+
         actif = self.request.query_params.get('actif')
         if actif and actif.lower() == 'true':
             queryset = queryset.filter(est_actif=True)
 
-        if hasattr(self.request, 'user_info'):
-            role = self.request.user_info.get('role')
-            if role == 'MANAGER_LOCAL':
-                user_filiale_id = self.request.user_info.get('filiale_id')
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role == 'MANAGER_GLOBAL':
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(_id_filiale__agence_id=user_agence_id)
+                logger.debug(
+                    "[GuichetierList] MANAGER_GLOBAL %s → filtre agence_id=%s",
+                    self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                logger.warning("[GuichetierList] MANAGER_GLOBAL sans agenceId → queryset vide")
+                queryset = queryset.none()
+
+        elif role == 'MANAGER_LOCAL':
+            user_filiale_id = _get_user_filiale_id(self.request)
+            if user_filiale_id:
                 queryset = queryset.filter(_id_filiale_id=user_filiale_id)
+                logger.debug(
+                    "[GuichetierList] MANAGER_LOCAL %s → filtre filiale_id=%s",
+                    self.request.user_info.get('userId'), user_filiale_id
+                )
+            else:
+                logger.warning("[GuichetierList] MANAGER_LOCAL sans filialeId → queryset vide")
+                queryset = queryset.none()
 
         return queryset.select_related('_id_filiale').order_by('-created_at')
 
@@ -1124,16 +1230,9 @@ class GuichetierListCreateView(generics.ListCreateAPIView):
             filiale_id=guichetier._id_filiale.id_filiale if guichetier._id_filiale else None
         )
         if event_sent:
-            logger.info(
-                "Guichetier créé: %s %s | RabbitMQ: staff_created ✓",
-                guichetier.name, guichetier.surname
-            )
+            logger.info("Guichetier créé: %s %s | RabbitMQ ✓", guichetier.name, guichetier.surname)
         else:
-            logger.warning(
-                "Guichetier créé: %s %s | RabbitMQ: staff_created ✗",
-                guichetier.name, guichetier.surname
-            )
-
+            logger.warning("Guichetier créé: %s %s | RabbitMQ ✗", guichetier.name, guichetier.surname)
 
 class GuichetierDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET: Détail guichetier | PUT: Modifier | DELETE: Supprimer (Manager Local ou supérieur)"""
@@ -1188,7 +1287,15 @@ class GuichetierDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ==============================================================================
 
 class TrajetListCreateView(generics.ListCreateAPIView):
-    """GET: Liste des trajets | POST: Créer un trajet (Manager Global ou Admin)"""
+    """
+    GET:  Liste des trajets (Public)
+    POST: Créer un trajet (Manager Global ou Admin)
+
+    Filtrage RBAC :
+      MANAGER_GLOBAL → trajets dont la filiale de départ ou d'arrivée
+                       appartient à son agence  (agenceId JWT)
+      MANAGER_LOCAL  → trajets impliquant sa filiale (filialeId JWT)
+    """
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['est_actif', 'filiale_depart', 'filiale_arrive']
     search_fields    = ['filiale_depart__nom', 'filiale_arrive__nom']
@@ -1201,12 +1308,49 @@ class TrajetListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Trajet.objects.all()
-        depart   = self.request.query_params.get('depart')
+
+        # ── Filtres query_params ──────────────────────────────────────────────
+        depart = self.request.query_params.get('depart')
         if depart:
             queryset = queryset.filter(filiale_depart__ville=depart)
-        arrivee  = self.request.query_params.get('arrivee')
+
+        arrivee = self.request.query_params.get('arrivee')
         if arrivee:
             queryset = queryset.filter(filiale_arrive__ville=arrivee)
+
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role == 'MANAGER_GLOBAL':
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(
+                    Q(filiale_depart__agence_id=user_agence_id) |
+                    Q(filiale_arrive__agence_id=user_agence_id)
+                )
+                logger.debug(
+                    "[TrajetList] MANAGER_GLOBAL %s → filtre agence_id=%s",
+                    self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                logger.warning("[TrajetList] MANAGER_GLOBAL sans agenceId → queryset vide")
+                queryset = queryset.none()
+
+        elif role == 'MANAGER_LOCAL':
+            user_filiale_id = _get_user_filiale_id(self.request)
+            if user_filiale_id:
+                queryset = queryset.filter(
+                    Q(filiale_depart_id=user_filiale_id) |
+                    Q(filiale_arrive_id=user_filiale_id)
+                )
+                logger.debug(
+                    "[TrajetList] MANAGER_LOCAL %s → filtre filiale_id=%s",
+                    self.request.user_info.get('userId'), user_filiale_id
+                )
+            else:
+                logger.warning("[TrajetList] MANAGER_LOCAL sans filialeId → queryset vide")
+                queryset = queryset.none()
+
         return queryset.select_related('filiale_depart', 'filiale_arrive').order_by('-created_at')
 
     def get_serializer_class(self):
@@ -1252,8 +1396,7 @@ class TrajetListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         trajet = serializer.save()
-        logger.info(f"Trajet créé: {trajet}")
-
+        logger.info("Trajet créé: %s", trajet)
 
 class TrajetDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET: Détail trajet | PUT: Modifier | DELETE: Supprimer (Manager Global ou Admin)"""
@@ -1321,45 +1464,76 @@ class VoyageListCreateView(generics.ListCreateAPIView):
     """
     GET:  Liste des voyages (Public)
     POST: Programmer un voyage (Manager Local ou supérieur)
+
+    Filtrage RBAC :
+      MANAGER_GLOBAL → voyages dont le bus appartient à son agence  (agenceId JWT)
+      MANAGER_LOCAL  → voyages dont le trajet part de sa filiale    (filialeId JWT)
     """
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'type_voyage', 'Id_trajet', 'IdBus']
     search_fields    = ['Id_trajet__filiale_depart__nom', 'Id_trajet__filiale_arrive__nom']
     ordering_fields  = ['date_heure_depart', 'prix', 'created_at']
- 
+
     def get_permissions(self):
         if self.request.method == 'POST':
             return [IsManagerLocal()]
         return [AllowAny()]
- 
+
     def get_queryset(self):
         queryset = Voyage.objects.all()
+
+        # ── Filtres query_params ──────────────────────────────────────────────
         date_debut = self.request.query_params.get('date_debut')
         if date_debut:
             queryset = queryset.filter(date_heure_depart__gte=date_debut)
+
         date_fin = self.request.query_params.get('date_fin')
         if date_fin:
             queryset = queryset.filter(date_heure_depart__lte=date_fin)
+
         agence_id = self.request.query_params.get('agence_id')
         if agence_id:
             queryset = queryset.filter(IdBus__Id_agence_id=agence_id)
- 
-        # FIX : select_related étendu aux relations profondes pour que
-        # VoyageListSerializer.get_codeAgence() et get_codeFiliale()
-        # puissent accéder à IdBus.Id_agence.name et
-        # Id_trajet.filiale_depart.code sans requêtes N+1 ni None.
+
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role == 'MANAGER_GLOBAL':
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(IdBus__Id_agence_id=user_agence_id)
+                logger.debug(
+                    "[VoyageList] MANAGER_GLOBAL %s → filtre agence_id=%s",
+                    self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                logger.warning("[VoyageList] MANAGER_GLOBAL sans agenceId → queryset vide")
+                queryset = queryset.none()
+
+        elif role == 'MANAGER_LOCAL':
+            user_filiale_id = _get_user_filiale_id(self.request)
+            if user_filiale_id:
+                queryset = queryset.filter(Id_trajet__filiale_depart_id=user_filiale_id)
+                logger.debug(
+                    "[VoyageList] MANAGER_LOCAL %s → filtre filiale_depart_id=%s",
+                    self.request.user_info.get('userId'), user_filiale_id
+                )
+            else:
+                logger.warning("[VoyageList] MANAGER_LOCAL sans filialeId → queryset vide")
+                queryset = queryset.none()
+
         return queryset.select_related(
             'Id_trajet__filiale_depart',
             'Id_trajet__filiale_arrive',
             'IdBus__Id_agence',
             'id_chauffeur',
         ).order_by('date_heure_depart')
- 
+
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return VoyageCreateUpdateSerializer
         return VoyageListSerializer
- 
+
     @extend_schema(
         tags=['Voyages'], summary="Liste des voyages",
         description="Récupère la liste des voyages (accès public). Possibilité de filtrer par dates, statut, etc.",
@@ -1378,7 +1552,7 @@ class VoyageListCreateView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
- 
+
     @extend_schema(
         tags=['Voyages'], summary="Programmer un voyage",
         description="Programme un nouveau voyage (nécessite droits Manager Local)",
@@ -1405,11 +1579,11 @@ class VoyageListCreateView(generics.ListCreateAPIView):
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
- 
+
     @transaction.atomic
     def perform_create(self, serializer):
         voyage = serializer.save()
- 
+
         if voyage.id_chauffeur:
             chauffeur = voyage.id_chauffeur
             if chauffeur.est_disponible:
@@ -1419,28 +1593,20 @@ class VoyageListCreateView(generics.ListCreateAPIView):
                     "Chauffeur %s %s marqué indisponible (assigné au voyage %s)",
                     chauffeur.name, chauffeur.surname, voyage.Id_voyage
                 )
- 
+
         bus = voyage.IdBus
         bus.etat = StatusBus.EN_VOYAGE
         bus.save()
- 
+
         events_status = {
             'bus_updated':    publish_bus_updated_for_booking(bus),
             'voyage_updated': publish_voyage_updated_for_booking(voyage),
         }
- 
         all_sent = all(events_status.values())
         if all_sent:
-            logger.info(
-                "Voyage programmé: %s | RabbitMQ: tous les événements envoyés ✓ | %s",
-                voyage, events_status
-            )
+            logger.info("Voyage programmé: %s | RabbitMQ ✓ | %s", voyage, events_status)
         else:
-            logger.warning(
-                "Voyage programmé: %s | RabbitMQ: certains événements ont échoué ✗ | %s",
-                voyage, events_status
-            )
- 
+            logger.warning("Voyage programmé: %s | RabbitMQ ✗ | %s", voyage, events_status)
  
 
 
@@ -1725,6 +1891,10 @@ class AnnonceListCreateView(generics.ListCreateAPIView):
     """
     GET:  Liste des annonces (Public)
     POST: Publier une annonce (Manager Local ou supérieur)
+
+    Filtrage RBAC :
+      MANAGER_GLOBAL → annonces des voyages de son agence  (agenceId JWT)
+      MANAGER_LOCAL  → annonces des voyages de sa filiale  (filialeId JWT)
     """
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['type', 'Id_voyage']
@@ -1737,10 +1907,42 @@ class AnnonceListCreateView(generics.ListCreateAPIView):
         return [AllowAny()]
 
     def get_queryset(self):
-        queryset  = Annonce.objects.all()
+        queryset = Annonce.objects.all()
+
+        # ── Filtre query_param ────────────────────────────────────────────────
         voyage_id = self.request.query_params.get('voyage_id')
         if voyage_id:
             queryset = queryset.filter(Id_voyage_id=voyage_id)
+
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role == 'MANAGER_GLOBAL':
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(Id_voyage__IdBus__Id_agence_id=user_agence_id)
+                logger.debug(
+                    "[AnnonceList] MANAGER_GLOBAL %s → filtre agence_id=%s",
+                    self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                logger.warning("[AnnonceList] MANAGER_GLOBAL sans agenceId → queryset vide")
+                queryset = queryset.none()
+
+        elif role == 'MANAGER_LOCAL':
+            user_filiale_id = _get_user_filiale_id(self.request)
+            if user_filiale_id:
+                queryset = queryset.filter(
+                    Id_voyage__Id_trajet__filiale_depart_id=user_filiale_id
+                )
+                logger.debug(
+                    "[AnnonceList] MANAGER_LOCAL %s → filtre filiale_id=%s",
+                    self.request.user_info.get('userId'), user_filiale_id
+                )
+            else:
+                logger.warning("[AnnonceList] MANAGER_LOCAL sans filialeId → queryset vide")
+                queryset = queryset.none()
+
         return queryset.select_related('Id_voyage').order_by('-datePublication')
 
     def get_serializer_class(self):
@@ -1784,16 +1986,9 @@ class AnnonceListCreateView(generics.ListCreateAPIView):
         annonce = serializer.save()
         event_sent = publish_annonce_published(annonce)
         if event_sent:
-            logger.info(
-                "Annonce publiée: %s pour voyage %s | RabbitMQ: annonce_published ✓",
-                annonce.get_type_display(), annonce.Id_voyage
-            )
+            logger.info("Annonce publiée pour voyage %s | RabbitMQ ✓", annonce.Id_voyage)
         else:
-            logger.warning(
-                "Annonce publiée: %s pour voyage %s | RabbitMQ: annonce_published ✗",
-                annonce.get_type_display(), annonce.Id_voyage
-            )
-
+            logger.warning("Annonce publiée pour voyage %s | RabbitMQ ✗", annonce.Id_voyage)
 
 class AnnonceDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -1855,6 +2050,12 @@ class AvisListCreateView(generics.ListCreateAPIView):
     """
     GET:  Liste des avis (Public)
     POST: Laisser un avis (Voyageur uniquement)
+
+    Filtrage RBAC (pour les managers connectés) :
+      MANAGER_GLOBAL → avis des voyages de son agence  (agenceId JWT)
+      MANAGER_LOCAL  → avis des voyages de sa filiale  (filialeId JWT)
+    Note : l'endpoint est public en GET, mais si un manager est connecté,
+           on restreint quand même les résultats à son périmètre.
     """
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['note', 'Id_voyage']
@@ -1867,13 +2068,40 @@ class AvisListCreateView(generics.ListCreateAPIView):
         return [AllowAny()]
 
     def get_queryset(self):
-        queryset  = Avis.objects.filter(est_approuve=True)
+        queryset = Avis.objects.filter(est_approuve=True)
+
+        # ── Filtres query_params ──────────────────────────────────────────────
         voyage_id = self.request.query_params.get('voyage_id')
         if voyage_id:
             queryset = queryset.filter(Id_voyage_id=voyage_id)
+
         note_min = self.request.query_params.get('note_min')
         if note_min:
             queryset = queryset.filter(note__gte=note_min)
+
+        # ── Filtrage RBAC (si manager connecté) ──────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role == 'MANAGER_GLOBAL':
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(Id_voyage__IdBus__Id_agence_id=user_agence_id)
+                logger.debug(
+                    "[AvisList] MANAGER_GLOBAL %s → filtre agence_id=%s",
+                    self.request.user_info.get('userId'), user_agence_id
+                )
+
+        elif role == 'MANAGER_LOCAL':
+            user_filiale_id = _get_user_filiale_id(self.request)
+            if user_filiale_id:
+                queryset = queryset.filter(
+                    Id_voyage__Id_trajet__filiale_depart_id=user_filiale_id
+                )
+                logger.debug(
+                    "[AvisList] MANAGER_LOCAL %s → filtre filiale_id=%s",
+                    self.request.user_info.get('userId'), user_filiale_id
+                )
+
         return queryset.select_related('Id_voyage').order_by('-date_avis')
 
     def get_serializer_class(self):
@@ -1917,8 +2145,7 @@ class AvisListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         avis = serializer.save()
-        logger.info(f"Avis créé: note {avis.note}/5 pour voyage {avis.Id_voyage}")
-
+        logger.info("Avis créé: note %s/5 pour voyage %s", avis.note, avis.Id_voyage)
 
 class AvisDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -2226,3 +2453,296 @@ def rabbitmq_health_check(request):
         'vhost': rabbitmq_client.vhost,
         'status': 'ok' if connected else 'unreachable',
     }, status=status.HTTP_200_OK if connected else status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+# ==============================================================================
+# PROFIL PUBLIC COMPLET D'UNE AGENCE
+# ==============================================================================
+
+class AgenceProfilPublicView(APIView):
+    """
+    GET: Profil public complet d'une agence.
+    Retourne toutes les informations publiques de l'agence :
+    filiales, bus, trajets, voyages, annonces, avis.
+    Aucune information sur le personnel (guichetiers, chauffeurs).
+    Accès public, aucune authentification requise.
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Agences'],
+        summary="Profil public complet d'une agence",
+        description=(
+            "Retourne toutes les informations publiques d'une agence : "
+            "filiales actives, bus, trajets, voyages (tous statuts), "
+            "annonces actives et avis approuvés. "
+            "Aucune information sur le personnel n'est incluse."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name='id_agence',
+                description="UUID de l'agence",
+                required=True,
+                type=str,
+                location=OpenApiParameter.PATH
+            ),
+            OpenApiParameter(
+                name='statut_voyage',
+                description=(
+                    "Filtrer les voyages par statut : "
+                    "programme, confirme, en_cours, termine, annule, retarde. "
+                    "Si absent, tous les voyages sont retournés."
+                ),
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='ville_depart',
+                description="Filtrer les voyages par ville de départ",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name='ville_arrivee',
+                description="Filtrer les voyages par ville d'arrivée",
+                required=False,
+                type=str,
+                location=OpenApiParameter.QUERY
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description="Profil public de l'agence retourné avec succès"),
+            404: OpenApiResponse(description="Agence non trouvée"),
+        }
+    )
+    def get(self, request, id_agence):
+
+        # ── 1. Récupérer l'agence ─────────────────────────────────────────────
+        agence = get_object_or_404(Agence, id_agence=id_agence)
+
+        # ── 2. Filiales actives ───────────────────────────────────────────────
+        filiales = Filiale.objects.filter(
+            agence=agence,
+            est_active=True
+        ).order_by('ville', 'nom')
+
+        filiales_data = [
+            {
+                'id_filiale':  str(f.id_filiale),
+                'nom':         f.nom,
+                'code':        f.code,
+                'ville':       f.ville,
+                'adresse':     f.adresse,
+                'telephone':   f.telephone,
+                'email':       f.email,
+            }
+            for f in filiales
+        ]
+
+        # ── 3. Bus (sans info interne : pas d'agence_id exposé) ───────────────
+        bus_qs = Bus.objects.filter(
+            Id_agence=agence
+        ).order_by('etat', 'modele')
+
+        bus_data = [
+            {
+                'id':              b.IdBus,
+                'immatriculation': b.immatriculation,
+                'modele':          b.modele,
+                'capacite':        b.capacite,
+                'etat':            b.etat,
+                'etat_label':      dict(StatusBus.choices).get(b.etat, b.etat),
+            }
+            for b in bus_qs
+        ]
+
+        # Résumé des bus par état
+        bus_resume = {}
+        for b in bus_qs:
+            bus_resume[b.etat] = bus_resume.get(b.etat, 0) + 1
+
+        # ── 4. Trajets (impliquant les filiales de l'agence) ──────────────────
+        filiale_ids = filiales.values_list('id_filiale', flat=True)
+
+        trajets_qs = Trajet.objects.filter(
+            est_actif=True
+        ).filter(
+            Q(filiale_depart_id__in=filiale_ids) |
+            Q(filiale_arrive_id__in=filiale_ids)
+        ).select_related(
+            'filiale_depart',
+            'filiale_arrive'
+        ).order_by('filiale_depart__ville', 'filiale_arrive__ville')
+
+        trajets_data = [
+            {
+                'id_trajet':          str(t.Id_trajet),
+                'filiale_depart':     t.filiale_depart.nom,
+                'ville_depart':       t.filiale_depart.ville,
+                'filiale_arrivee':    t.filiale_arrive.nom,
+                'ville_arrivee':      t.filiale_arrive.ville,
+                'distance_km':        t.distance,
+            }
+            for t in trajets_qs
+        ]
+
+        # ── 5. Voyages ────────────────────────────────────────────────────────
+        voyages_qs = Voyage.objects.filter(
+            IdBus__Id_agence=agence
+        ).select_related(
+            'Id_trajet__filiale_depart',
+            'Id_trajet__filiale_arrive',
+            'IdBus',
+        ).order_by('-date_heure_depart')
+
+        # Filtres optionnels query_params
+        statut_voyage = request.query_params.get('statut_voyage')
+        if statut_voyage and statut_voyage in dict(StatusVoyage.choices):
+            voyages_qs = voyages_qs.filter(status=statut_voyage)
+
+        ville_depart = request.query_params.get('ville_depart')
+        if ville_depart:
+            voyages_qs = voyages_qs.filter(
+                Id_trajet__filiale_depart__ville=ville_depart
+            )
+
+        ville_arrivee = request.query_params.get('ville_arrivee')
+        if ville_arrivee:
+            voyages_qs = voyages_qs.filter(
+                Id_trajet__filiale_arrive__ville=ville_arrivee
+            )
+
+        voyages_data = [
+            {
+                'id_voyage':               str(v.Id_voyage),
+                'origine':                 v.Id_trajet.filiale_depart.ville,
+                'destination':             v.Id_trajet.filiale_arrive.ville,
+                'filiale_depart':          v.Id_trajet.filiale_depart.nom,
+                'filiale_arrivee':         v.Id_trajet.filiale_arrive.nom,
+                'date_heure_depart':       v.date_heure_depart,
+                'date_heure_arrivee':      v.date_heure_arrive_prevue,
+                'prix':                    str(v.prix),
+                'type_voyage':             v.type_voyage,
+                'status':                  v.status,
+                'status_label':            dict(StatusVoyage.choices).get(v.status, v.status),
+                'places_disponibles':      v.places_disponibles,
+                'places_total_reservees':  v.places_total_reservees,
+                'bus_immatriculation':     v.IdBus.immatriculation,
+                'bus_modele':              v.IdBus.modele,
+                'bus_capacite':            v.IdBus.capacite,
+            }
+            for v in voyages_qs
+        ]
+
+        # Résumé des voyages par statut
+        voyages_resume = {}
+        for v in voyages_qs:
+            voyages_resume[v.status] = voyages_resume.get(v.status, 0) + 1
+
+        # ── 6. Annonces actives ───────────────────────────────────────────────
+        annonces_qs = Annonce.objects.filter(
+            Id_voyage__IdBus__Id_agence=agence,
+            est_active=True
+        ).select_related(
+            'Id_voyage__Id_trajet__filiale_depart',
+            'Id_voyage__Id_trajet__filiale_arrive',
+        ).order_by('-datePublication')
+
+        annonces_data = [
+            {
+                'id_annonce':      str(a.id_annonce),
+                'type':            a.type,
+                'type_label':      dict(TypeAnnonce.choices).get(a.type, a.type),
+                'message':         a.message,
+                'date_publication': a.datePublication,
+                'voyage': {
+                    'id_voyage':   str(a.Id_voyage.Id_voyage),
+                    'origine':     a.Id_voyage.Id_trajet.filiale_depart.ville,
+                    'destination': a.Id_voyage.Id_trajet.filiale_arrive.ville,
+                    'depart':      a.Id_voyage.date_heure_depart,
+                },
+            }
+            for a in annonces_qs
+        ]
+
+        # ── 7. Avis approuvés ─────────────────────────────────────────────────
+        avis_qs = Avis.objects.filter(
+            Id_voyage__IdBus__Id_agence=agence,
+            est_approuve=True
+        ).select_related(
+            'Id_voyage__Id_trajet__filiale_depart',
+            'Id_voyage__Id_trajet__filiale_arrive',
+        ).order_by('-date_avis')
+
+        avis_data = [
+            {
+                'id_avis':    str(a.id_avis),
+                'note':       a.note,
+                'commentaire': a.commentaires,
+                'date_avis':  a.date_avis,
+                'voyage': {
+                    'id_voyage':   str(a.Id_voyage.Id_voyage),
+                    'origine':     a.Id_voyage.Id_trajet.filiale_depart.ville,
+                    'destination': a.Id_voyage.Id_trajet.filiale_arrive.ville,
+                    'depart':      a.Id_voyage.date_heure_depart,
+                },
+            }
+            for a in avis_qs
+        ]
+
+        # Statistiques avis
+        avis_stats = avis_qs.aggregate(note_moyenne=Avg('note'))
+        note_moyenne = round(avis_stats['note_moyenne'], 2) if avis_stats['note_moyenne'] else 0
+
+        repartition_notes = {
+            '5_etoiles': avis_qs.filter(note=5).count(),
+            '4_etoiles': avis_qs.filter(note=4).count(),
+            '3_etoiles': avis_qs.filter(note=3).count(),
+            '2_etoiles': avis_qs.filter(note=2).count(),
+            '1_etoile':  avis_qs.filter(note=1).count(),
+        }
+
+        # ── 8. Réponse finale ─────────────────────────────────────────────────
+        return Response({
+
+            # Informations générales de l'agence
+            'agence': {
+                'id_agence':       str(agence.id_agence),
+                'nom':             agence.name,
+                'adresse':         agence.adresse,
+                'telephone':       agence.telephone,
+                'email':           agence.email_officiel,
+                'statut':          agence.statut_global,
+                'logo':            agence.get_logo(),
+                'date_inscription': agence.date_inscription,
+            },
+
+            # Résumés chiffrés (affichage rapide)
+            'resume': {
+                'nb_filiales':        filiales.count(),
+                'nb_bus':             bus_qs.count(),
+                'nb_trajets':         trajets_qs.count(),
+                'nb_voyages_total':   voyages_qs.count(),
+                'voyages_par_statut': voyages_resume,
+                'bus_par_etat':       bus_resume,
+                'nb_avis':            avis_qs.count(),
+                'note_moyenne':       note_moyenne,
+            },
+
+            # Données détaillées
+            'filiales':  filiales_data,
+            'bus':       bus_data,
+            'trajets':   trajets_data,
+            'voyages':   voyages_data,
+            'annonces':  annonces_data,
+
+            # Avis avec stats intégrées
+            'avis': {
+                'note_moyenne':      note_moyenne,
+                'repartition_notes': repartition_notes,
+                'liste':             avis_data,
+            },
+
+        }, status=status.HTTP_200_OK)

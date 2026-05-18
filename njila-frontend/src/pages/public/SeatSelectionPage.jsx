@@ -165,7 +165,7 @@ export default function SeatSelectionPage() {
   const { user } = useAuthStore();
   const {
     voyageSelectionne,
-    setPlacesSelectionnees,  // ← FIX: import setPlacesSelectionnees pour synchroniser le store
+    setPlacesSelectionnees,
     setPassagers,
   } = useBookingStore();
 
@@ -211,7 +211,6 @@ export default function SeatSelectionPage() {
   const availableSeats = Math.max(0, totalSeats - occupiedSeats.length);
 
   // ─── Garde : on attend la fin du chargement avant de décider de rediriger ──
-  // FIX: correction de la condition booléenne incorrecte (!voyage && !isLoadingVoyage === false)
   useEffect(() => {
     if (isLoadingVoyage) return;
 
@@ -221,6 +220,20 @@ export default function SeatSelectionPage() {
       navigate("/search");
     }
   }, [isLoadingVoyage, voyageSelectionne, voyageDetails, navigate]);
+
+  // ─── Avertissement développeur : idAgence / idFiliale manquants ────────────
+  // FIX : on vérifie idAgence et idFiliale (IDs numériques) au lieu des codes
+  useEffect(() => {
+    const voyage = voyageSelectionne || voyageDetails;
+    if (!voyage) return;
+    if (!voyage.idAgence || !voyage.idFiliale) {
+      console.warn(
+        "[SeatSelectionPage] idAgence ou idFiliale absent du voyage sélectionné. " +
+        "Le paiement échouera si ces champs ne sont pas exposés par le backend.",
+        { idAgence: voyage.idAgence, idFiliale: voyage.idFiliale }
+      );
+    }
+  }, [voyageSelectionne, voyageDetails]);
 
   // ─── Désélectionner les sièges qui deviendraient occupés (gestion concurrence) ─
   useEffect(() => {
@@ -313,9 +326,7 @@ export default function SeatSelectionPage() {
       telephone: passagersForm[idx].telephone?.trim() || user?.telephone || "",
     }));
 
-    // ── FIX : synchroniser le state local vers le store Zustand ──────────────
-    // Sans cet appel, PaymentPage lit placesSelectionnees = [] depuis le store
-    // et déclenche l'erreur "Données de réservation incomplètes".
+    // ── Synchroniser le state local vers le store Zustand ────────────────────
     setPlacesSelectionnees(
       selectedSeats.map((s) => ({
         id: s.id,
@@ -323,7 +334,6 @@ export default function SeatSelectionPage() {
         occupe: s.occupe ?? false,
       }))
     );
-    // ─────────────────────────────────────────────────────────────────────────
 
     setPassagers(passagersData);
     navigate("/paiement");
@@ -335,7 +345,6 @@ export default function SeatSelectionPage() {
   const total = selectedSeats.length * prixUnitaire;
 
   // ─── Rendu : Chargement ────────────────────────────────────────────────────
-  // FIX: condition simplifiée — on affiche le loader uniquement pendant isLoadingVoyage
   if (isLoadingVoyage) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center p-4">

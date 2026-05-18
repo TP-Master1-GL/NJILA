@@ -2,32 +2,55 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bell, ChevronDown, LogOut, User, Menu, X,
-  Search, Ticket, Home, Edit3,
+  Search, Ticket, Home, Edit3, Lock, LayoutDashboard,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { useAuth } from "../../hooks/useAuth";
 import { useProfile } from "../../hooks/useProfile";
 import EditProfilModal from "../shared/EditProfilModal";
-import NjilaLogo from "../../components/ui/NjilaLogo"; 
+import ChangePasswordModal from "../shared/ChangePasswordModal";
+import NjilaLogo from "../../components/ui/NjilaLogo";
 import toast from "react-hot-toast";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Configuration des tableaux de bord par rôle
+// ─────────────────────────────────────────────────────────────────────────────
+const DASHBOARD_BY_ROLE = {
+  VOYAGEUR:        { path: "/voyageur",  label: "Mon espace voyageur" },
+  GUICHETIER:      { path: "/guichet",   label: "Espace guichetier"   },
+  MANAGER_LOCAL:   { path: "/manager",   label: "Tableau de bord"     },
+  MANAGER_GLOBAL:  { path: "/manager",   label: "Tableau de bord"     },
+  ADMINISTRATEUR:  { path: "/admin",     label: "Administration"      },
+  ADMIN:           { path: "/admin",     label: "Administration"      },
+};
+
+// Rôles qui ont des réservations
+const ROLES_WITH_RESERVATIONS = ["VOYAGEUR"];
 
 export default function Navbar() {
   const { user: authUser, isAuthenticated } = useAuthStore();
   const { logout } = useAuth();
   const { profil, updateProfil, isUpdating, updatePhoto } = useProfile();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
+  const [menuOpen,          setMenuOpen]          = useState(false);
+  const [mobileOpen,        setMobileOpen]        = useState(false);
+  const [editOpen,          setEditOpen]          = useState(false);
+  const [changePassOpen,    setChangePassOpen]    = useState(false);
   const navigate = useNavigate();
 
-  // Données affichées : profil user-service > store auth
-  const displayName    = profil?.name        || authUser?.name    || "";
-  const displaySurname = profil?.surname      || authUser?.surname || "";
-  const displayEmail   = profil?.email        || authUser?.email   || "";
-  const displayPhoto   = profil?.photoProfil  || profil?.photo_url || null;
-  const initiales =
+  // ── Données affichées ─────────────────────────────────────────────────────
+  const displayName    = profil?.name       || authUser?.name    || "";
+  const displaySurname = profil?.surname    || authUser?.surname || "";
+  const displayEmail   = profil?.email      || authUser?.email   || "";
+  const displayPhoto   = profil?.photoProfil || profil?.photo_url || null;
+  const role           = profil?.role       || authUser?.role    || "";
+  const initiales      =
     `${displayName?.[0] || ""}${displaySurname?.[0] || ""}`.toUpperCase() || "?";
 
+  // ── Dashboard selon le rôle ───────────────────────────────────────────────
+  const dashboard = DASHBOARD_BY_ROLE[role] || { path: "/", label: "Accueil" };
+  const hasReservations = ROLES_WITH_RESERVATIONS.includes(role);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleSaveProfil = (form) => {
     updateProfil(form, {
       onSuccess: () => { setEditOpen(false); toast.success("Profil mis à jour !"); },
@@ -41,8 +64,14 @@ export default function Navbar() {
     });
   };
 
+  const closeAll = () => {
+    setMenuOpen(false);
+    setMobileOpen(false);
+  };
+
   return (
     <>
+      {/* ── Modals ─────────────────────────────────────────────────────── */}
       <EditProfilModal
         isOpen={editOpen}
         onClose={() => setEditOpen(false)}
@@ -51,12 +80,17 @@ export default function Navbar() {
         isSaving={isUpdating}
         onPhotoUploaded={handlePhotoUploaded}
       />
+      <ChangePasswordModal
+        isOpen={changePassOpen}
+        onClose={() => setChangePassOpen(false)}
+      />
 
+      {/* ── Navbar ─────────────────────────────────────────────────────── */}
       <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
 
-            {/* ✅ Logo NJILA avec image */}
+            {/* Logo */}
             <NjilaLogo size="md" />
 
             {/* Desktop nav links */}
@@ -82,11 +116,13 @@ export default function Navbar() {
             <div className="hidden md:flex items-center gap-3">
               {isAuthenticated ? (
                 <>
+                  {/* Cloche notifications */}
                   <button className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
                     <Bell className="w-5 h-5" />
                     <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
                   </button>
 
+                  {/* Menu profil */}
                   <div className="relative">
                     <button
                       onClick={() => setMenuOpen(!menuOpen)}
@@ -108,9 +144,9 @@ export default function Navbar() {
                     {menuOpen && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50">
+                        <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50">
 
-                          {/* En-tête dropdown */}
+                          {/* En-tête dropdown : avatar + nom + email + rôle */}
                           <div className="px-4 py-3 border-b border-slate-50 mb-1 flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#135bec] flex items-center justify-center flex-shrink-0">
                               {displayPhoto
@@ -122,30 +158,45 @@ export default function Navbar() {
                                 {displaySurname} {displayName}
                               </p>
                               <p className="text-xs text-slate-400 truncate">{displayEmail}</p>
+                              {role && (
+                                <span className="inline-block mt-0.5 text-[9px] font-black uppercase tracking-widest bg-[#135bec]/10 text-[#135bec] px-1.5 py-0.5 rounded">
+                                  {role.replace("_", " ")}
+                                </span>
+                              )}
                             </div>
                           </div>
 
+                          {/* ── Tableau de bord (adapté au rôle) ── */}
                           <Link
-                            to="/voyageur"
+                            to={dashboard.path}
                             onClick={() => setMenuOpen(false)}
                             className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                           >
-                            <Home className="w-4 h-4 text-slate-400" /> Tableau de bord
+                            <LayoutDashboard className="w-4 h-4 text-slate-400" />
+                            {dashboard.label}
                           </Link>
+
+                          {/* ── Mes réservations (voyageur uniquement) ── */}
+                          {hasReservations && (
+                            <Link
+                              to="/voyageur/reservations"
+                              onClick={() => setMenuOpen(false)}
+                              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <Ticket className="w-4 h-4 text-slate-400" /> Mes réservations
+                            </Link>
+                          )}
+
+                          {/* ── Mon profil ── */}
                           <Link
-                            to="/voyageur/reservations"
-                            onClick={() => setMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                          >
-                            <Ticket className="w-4 h-4 text-slate-400" /> Mes réservations
-                          </Link>
-                          <Link
-                            to="/voyageur/profil"
+                            to={role === "VOYAGEUR" ? "/voyageur/profil" : `${dashboard.path}/profil`}
                             onClick={() => setMenuOpen(false)}
                             className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                           >
                             <User className="w-4 h-4 text-slate-400" /> Mon profil
                           </Link>
+
+                          {/* ── Modifier mon profil ── */}
                           <button
                             onClick={() => { setMenuOpen(false); setEditOpen(true); }}
                             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -153,6 +204,15 @@ export default function Navbar() {
                             <Edit3 className="w-4 h-4 text-slate-400" /> Modifier mon profil
                           </button>
 
+                          {/* ── Modifier mot de passe ── */}
+                          <button
+                            onClick={() => { setMenuOpen(false); setChangePassOpen(true); }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Lock className="w-4 h-4 text-slate-400" /> Modifier le mot de passe
+                          </button>
+
+                          {/* ── Déconnexion ── */}
                           <div className="border-t border-slate-100 mt-1 pt-1">
                             <button
                               onClick={logout}
@@ -206,14 +266,14 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Mobile menu */}
+        {/* ── Mobile menu ──────────────────────────────────────────────── */}
         {mobileOpen && (
           <div className="md:hidden bg-white border-t border-slate-100 px-4 py-4 shadow-lg">
             <div className="space-y-1 mb-4">
               {[
-                { label: "Trajets",              href: "/recherche" },
-                { label: "Comment ça marche",    href: "/#comment" },
-                { label: "Aide",                 href: "/#aide" },
+                { label: "Trajets",           href: "/recherche" },
+                { label: "Comment ça marche", href: "/#comment"  },
+                { label: "Aide",              href: "/#aide"     },
               ].map(({ label, href }) => (
                 <Link
                   key={label}
@@ -228,6 +288,8 @@ export default function Navbar() {
 
             {isAuthenticated ? (
               <div className="pt-4 border-t border-slate-100">
+
+                {/* Profil résumé */}
                 <div className="flex items-center gap-3 mb-3 px-3">
                   <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#135bec] flex items-center justify-center flex-shrink-0">
                     {displayPhoto
@@ -239,33 +301,66 @@ export default function Navbar() {
                       {displaySurname} {displayName}
                     </p>
                     <p className="text-xs text-slate-400">{displayEmail}</p>
+                    {role && (
+                      <span className="inline-block mt-0.5 text-[9px] font-black uppercase tracking-widest bg-[#135bec]/10 text-[#135bec] px-1.5 py-0.5 rounded">
+                        {role.replace("_", " ")}
+                      </span>
+                    )}
                   </div>
                 </div>
+
+                {/* ── Tableau de bord (adapté au rôle) ── */}
                 <Link
-                  to="/voyageur"
+                  to={dashboard.path}
                   onClick={() => setMobileOpen(false)}
-                  className="block py-2.5 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
+                  className="flex items-center gap-2.5 py-2.5 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
                 >
-                  Mon espace voyageur
+                  <LayoutDashboard className="w-4 h-4 text-slate-400" />
+                  {dashboard.label}
                 </Link>
+
+                {/* ── Mes réservations (voyageur uniquement) ── */}
+                {hasReservations && (
+                  <Link
+                    to="/voyageur/reservations"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2.5 py-2.5 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
+                  >
+                    <Ticket className="w-4 h-4 text-slate-400" /> Mes réservations
+                  </Link>
+                )}
+
+                {/* ── Mon profil ── */}
                 <Link
-                  to="/voyageur/reservations"
+                  to={role === "VOYAGEUR" ? "/voyageur/profil" : `${dashboard.path}/profil`}
                   onClick={() => setMobileOpen(false)}
-                  className="block py-2.5 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
+                  className="flex items-center gap-2.5 py-2.5 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
                 >
-                  Mes réservations
+                  <User className="w-4 h-4 text-slate-400" /> Mon profil
                 </Link>
+
+                {/* ── Modifier mon profil ── */}
                 <button
                   onClick={() => { setMobileOpen(false); setEditOpen(true); }}
-                  className="w-full text-left py-2.5 px-3 text-sm font-semibold text-[#135bec] hover:bg-blue-50 rounded-xl"
+                  className="w-full flex items-center gap-2.5 py-2.5 px-3 text-sm font-semibold text-[#135bec] hover:bg-blue-50 rounded-xl"
                 >
-                  Modifier mon profil
+                  <Edit3 className="w-4 h-4" /> Modifier mon profil
                 </button>
+
+                {/* ── Modifier mot de passe ── */}
+                <button
+                  onClick={() => { setMobileOpen(false); setChangePassOpen(true); }}
+                  className="w-full flex items-center gap-2.5 py-2.5 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
+                >
+                  <Lock className="w-4 h-4 text-slate-400" /> Modifier le mot de passe
+                </button>
+
+                {/* ── Déconnexion ── */}
                 <button
                   onClick={() => { logout(); setMobileOpen(false); }}
-                  className="w-full text-left py-2.5 px-3 text-sm font-semibold text-red-500 hover:bg-red-50 rounded-xl mt-1"
+                  className="w-full flex items-center gap-2.5 py-2.5 px-3 text-sm font-semibold text-red-500 hover:bg-red-50 rounded-xl mt-1"
                 >
-                  Se déconnecter
+                  <LogOut className="w-4 h-4" /> Se déconnecter
                 </button>
               </div>
             ) : (

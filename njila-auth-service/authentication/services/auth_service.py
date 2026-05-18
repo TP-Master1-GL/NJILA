@@ -19,16 +19,19 @@ from authentication.services.redis_cache import RedisSessionCache
 
 logger = logging.getLogger(__name__)
 
+# ─── Préfixe cache profil utilisateur ────────────────────────────────────────
+USER_PROFILE_PREFIX = "njila:auth:profile:"   # njila:auth:profile:{userId}
+USER_PROFILE_TTL    = 300                      # 5 minutes
+
 
 @dataclass
 class RegisterCommand:
     email:      str
     password:   str
-    
-    name:       str                   
-    surname:    str                   
-    phone:      Optional[str] = None  
-    adresse:    Optional[str] = None  
+    name:       str
+    surname:    str
+    phone:      Optional[str] = None
+    adresse:    Optional[str] = None
     role:       str = Role.VOYAGEUR
     photo_url:  Optional[str] = None
     filiale_id: Optional[str] = None
@@ -101,7 +104,6 @@ class AuthService:
     # REGISTER
     # ─────────────────────────────────────────────────────────────────────────
     def register(self, cmd: RegisterCommand) -> RegisterResult:
-        
         email = cmd.email.lower().strip()
 
         if self._repo.exists_by_email(email):
@@ -144,6 +146,7 @@ class AuthService:
         payload    = self._build_payload(user, session_id)
         token_pair = self._jwt.generate_pair(payload)
         self._save_session(user, session_id, token_pair)
+        self._cache_user_profile(user)
 
         logger.info("[AUTH] Inscription réussie : %s [%s]", email, cmd.role)
         return RegisterResult(
@@ -183,6 +186,7 @@ class AuthService:
         payload    = self._build_payload(user, session_id)
         token_pair = self._jwt.generate_pair(payload)
         self._save_session(user, session_id, token_pair)
+        self._cache_user_profile(user)
 
         logger.info("[AUTH] Connexion réussie : %s [%s]", email, user.role)
         return LoginResult(
@@ -221,11 +225,12 @@ class AuthService:
             self._repo.invalidate_all(user_id)
             self._cache.delete_all_user_sessions(user_id)
             self._cache.delete_refresh_token(user_id)
+            self._invalidate_user_profile_cache(user_id)
 
         logger.info("[AUTH] Déconnexion | user=%s all=%s", user_id, logout_all)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # REFRESH (mis à jour pour utiliser les données fraîches de la base)
+    # REFRESH
     # ─────────────────────────────────────────────────────────────────────────
     def refresh(self, refresh_token: str) -> TokenPair:
         payload = self._jwt.decode(refresh_token)
@@ -235,65 +240,69 @@ class AuthService:
         if not self._cache.session_exists(payload.session_id):
             raise SessionExpiredError("Session expirée. Veuillez vous reconnecter.")
 
-        # Récupérer l'utilisateur à jour depuis la base de données
         user = self._repo.find_user_by_id(payload.user_id)
         if user is None:
             raise TokenInvalidError("Utilisateur non trouvé")
 
         from django.conf import settings
-        
-        # Créer un nouveau payload avec les données à jour de l'utilisateur
+
         new_payload = TokenPayload(
             user_id    = str(user.id),
             role       = user.role,
             session_id = payload.session_id,
             filiale_id = str(user.filiale_id) if user.filiale_id else None,
-            agence_id  = str(user.agence_id) if user.agence_id else None,
+            agence_id  = str(user.agence_id)  if user.agence_id  else None,
         )
-        
-        access_ttl = settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"]
+
+        access_ttl       = settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"]
         new_access_token = self._jwt.generate(new_payload, ttl=access_ttl)
-        
-        # Mettre à jour le cache Redis avec les données à jour
+
         self._update_session_cache(user, payload.session_id)
-        
-        logger.info("[AUTH] Refresh effectué avec données à jour pour user=%s", payload.user_id)
-        
+        self._cache_user_profile(user)
+
+        logger.info("[AUTH] Refresh effectué pour user=%s", payload.user_id)
+
         return TokenPair(
             access_token  = new_access_token,
             refresh_token = refresh_token,
             expires_in    = int(access_ttl.total_seconds()),
         )
 
-    def _update_session_cache(self, user: NjilaUser, session_id: str):
-        """Met à jour le cache Redis avec les dernières données utilisateur."""
+    # ─────────────────────────────────────────────────────────────────────────
+    # GET ME — lecture depuis Redis, fallback DB
+    # ─────────────────────────────────────────────────────────────────────────
+    def get_me(self, user_id: str) -> Optional[NjilaUser]:
+        """
+        Retourne le profil utilisateur.
+        1. Cherche dans le cache Redis (njila:auth:profile:{userId})
+        2. Si absent ou si l'hydratation échoue → va en DB et met en cache
+        """
+        from django.core.cache import cache
+
+        cache_key = f"{USER_PROFILE_PREFIX}{user_id}"
+
+        # ── Tentative cache ───────────────────────────────────────────────────
         try:
-            cache_data = {
-                "userId": str(user.id),
-                "role": user.role,
-                "filialeId": str(user.filiale_id) if user.filiale_id else None,
-                "agenceId": str(user.agence_id) if user.agence_id else None,
-                "photoUrl": user.photo_url,
-                "name": user.name,
-                "surname": user.surname,
-                "email": user.email,
-                "phone": user.phone,
-                "adresse": user.adresse,
-            }
-            cache_data = {k: v for k, v in cache_data.items() if v is not None}
-            
-            self._cache.save_session(
-                session_id=session_id,
-                user_id=str(user.id),
-                data=cache_data,
-                ttl_seconds=86400
-            )
-            logger.debug("[AUTH] Cache mis à jour pour session=%s", session_id)
+            cached = cache.get(cache_key)
+            if cached is not None:
+                logger.debug("[AUTH] get_me CACHE HIT user=%s", user_id)
+                hydrated = self._hydrate_user_from_cache(cached)
+                if hydrated is not None:
+                    return hydrated
+                # Hydratation échouée → fallback DB
+                logger.warning("[AUTH] get_me hydratation échouée → fallback DB user=%s", user_id)
         except Exception as e:
-            logger.error("[AUTH] Erreur mise à jour cache: %s", e)
+            logger.warning("[AUTH] get_me cache read error: %s", e)
+
+        # ── Fallback DB ───────────────────────────────────────────────────────
+        logger.debug("[AUTH] get_me CACHE MISS user=%s → DB", user_id)
+        user = self._repo.find_user_by_id(user_id)
+        if user is not None:
+            self._cache_user_profile(user)
+        return user
 
     # ─────────────────────────────────────────────────────────────────────────
-    # VALIDATE TOKEN (interne)
+    # VALIDATE TOKEN
     # ─────────────────────────────────────────────────────────────────────────
     def validate_token(self, token: str) -> Optional[TokenPayload]:
         jti = self._jwt.get_jti(token)
@@ -336,6 +345,7 @@ class AuthService:
         self._repo.invalidate_all(str(user.id))
         self._cache.delete_all_user_sessions(str(user.id))
         self._cache.delete_refresh_token(str(user.id))
+        self._invalidate_user_profile_cache(str(user.id))
         logger.info("[AUTH] Mot de passe réinitialisé pour %s", user.email)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -353,6 +363,7 @@ class AuthService:
         if not is_active:
             self._repo.invalidate_all(user_id)
             self._cache.delete_all_user_sessions(user_id)
+            self._invalidate_user_profile_cache(user_id)
             logger.info("[AUTH] Compte %s suspendu (admin)", user_id)
         else:
             logger.info("[AUTH] Compte %s réactivé (admin)", user_id)
@@ -367,6 +378,7 @@ class AuthService:
 
         user.photo_url = photo_url
         self._repo.save_user(user)
+        self._cache_user_profile(user)
 
         try:
             self._publisher.publish_user_updated(
@@ -381,51 +393,52 @@ class AuthService:
         return user
 
     # ─────────────────────────────────────────────────────────────────────────
-    # GET ME
+    # UPDATE PROFILE hooks
     # ─────────────────────────────────────────────────────────────────────────
-    def get_me(self, user_id: str) -> Optional[NjilaUser]:
-        return self._repo.find_user_by_id(user_id)
+    def invalidate_profile_cache(self, user_id: str):
+        """À appeler depuis views.py après update_profile."""
+        self._invalidate_user_profile_cache(user_id)
+
+    def refresh_profile_cache(self, user: NjilaUser):
+        """À appeler depuis views.py après update_profile."""
+        self._cache_user_profile(user)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # FORCER LE REFRESH (nouvelle méthode)
+    # FORCE REFRESH
     # ─────────────────────────────────────────────────────────────────────────
     def force_refresh(self, user_id: str) -> Optional[TokenPair]:
-        """Force le rafraîchissement du token pour un utilisateur."""
         user = self._repo.find_user_by_id(user_id)
         if user is None:
             logger.warning("[AUTH] force_refresh: utilisateur %s non trouvé", user_id)
             return None
-        
-        # Trouver une session active
-        from authentication.models import AuthSession
+
         session = AuthSession.objects.filter(user_id=user_id, is_active=True).first()
         if not session:
             logger.warning("[AUTH] force_refresh: aucune session active pour user=%s", user_id)
             return None
-        
+
         from django.conf import settings
-        
-        # Créer un nouveau payload avec les données à jour
+
         new_payload = TokenPayload(
             user_id    = str(user.id),
             role       = user.role,
             session_id = session.session_id,
             filiale_id = str(user.filiale_id) if user.filiale_id else None,
-            agence_id  = str(user.agence_id) if user.agence_id else None,
+            agence_id  = str(user.agence_id)  if user.agence_id  else None,
         )
-        
-        access_ttl = settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"]
+
+        access_ttl       = settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"]
         new_access_token = self._jwt.generate(new_payload, ttl=access_ttl)
-        
-        # Mettre à jour le cache
+
         self._update_session_cache(user, session.session_id)
-        
+        self._cache_user_profile(user)
+
         logger.info("[AUTH] Force refresh effectué pour user=%s", user_id)
-        
+
         return TokenPair(
-            access_token=new_access_token,
-            refresh_token=session.refresh_token,
-            expires_in=int(access_ttl.total_seconds()),
+            access_token  = new_access_token,
+            refresh_token = session.refresh_token,
+            expires_in    = int(access_ttl.total_seconds()),
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -437,7 +450,7 @@ class AuthService:
             role       = user.role,
             session_id = session_id,
             filiale_id = str(user.filiale_id) if user.filiale_id else None,
-            agence_id  = str(user.agence_id) if user.agence_id else None,
+            agence_id  = str(user.agence_id)  if user.agence_id  else None,
         )
 
     def _save_session(self, user: NjilaUser, session_id: str, token_pair: TokenPair):
@@ -477,3 +490,144 @@ class AuthService:
                 refresh_jti = refresh_jti,
                 ttl_seconds = ttl_seconds,
             )
+
+    def _update_session_cache(self, user: NjilaUser, session_id: str):
+        try:
+            cache_data = {
+                "userId":    str(user.id),
+                "role":      user.role,
+                "filialeId": str(user.filiale_id) if user.filiale_id else None,
+                "agenceId":  str(user.agence_id)  if user.agence_id  else None,
+                "photoUrl":  user.photo_url,
+                "name":      user.name,
+                "surname":   user.surname,
+                "email":     user.email,
+                "phone":     user.phone,
+                "adresse":   user.adresse,
+            }
+            cache_data = {k: v for k, v in cache_data.items() if v is not None}
+            self._cache.save_session(
+                session_id  = session_id,
+                user_id     = str(user.id),
+                data        = cache_data,
+                ttl_seconds = 86400,
+            )
+        except Exception as e:
+            logger.error("[AUTH] Erreur mise à jour cache session: %s", e)
+
+    # ── Cache profil utilisateur ──────────────────────────────────────────────
+
+    def _cache_user_profile(self, user: NjilaUser):
+        """
+        Stocke le profil complet en Redis.
+        Clé : njila:auth:profile:{userId}   TTL : 5 min
+
+        ✅ CORRECTION : ajout de is_verified, created_at, last_login_at
+        pour que _hydrate_user_from_cache reconstitue un objet complet
+        utilisable directement par UserMeSerializer sans accès DB.
+        """
+        from django.core.cache import cache
+        import json
+
+        profile = {
+            "id":          str(user.id),
+            "email":       user.email,
+            "name":        user.name,
+            "surname":     user.surname,
+            "phone":       user.phone,
+            "adresse":     user.adresse,
+            "role":        user.role,
+            "photo_url":   user.photo_url,
+            "filiale_id":  str(user.filiale_id) if user.filiale_id else None,
+            "agence_id":   str(user.agence_id)  if user.agence_id  else None,
+            "is_active":   user.is_active,
+            # ✅ AJOUT : champs manquants dans l'ancienne version
+            "is_verified": getattr(user, "is_verified", False),
+            "created_at":  (
+                user.created_at.isoformat()
+                if getattr(user, "created_at", None) else None
+            ),
+            "last_login_at": (
+                user.last_login_at.isoformat()
+                if getattr(user, "last_login_at", None) else None
+            ),
+        }
+        try:
+            cache.set(
+                f"{USER_PROFILE_PREFIX}{user.id}",
+                json.dumps(profile),
+                timeout=USER_PROFILE_TTL,
+            )
+            logger.debug("[AUTH] Profil mis en cache user=%s TTL=%ds", user.id, USER_PROFILE_TTL)
+        except Exception as e:
+            logger.warning("[AUTH] Impossible de cacher le profil user=%s : %s", user.id, e)
+
+    def _invalidate_user_profile_cache(self, user_id: str):
+        """Supprime le cache profil (logout, suspension, reset password)."""
+        from django.core.cache import cache
+        try:
+            cache.delete(f"{USER_PROFILE_PREFIX}{user_id}")
+            logger.debug("[AUTH] Cache profil invalidé user=%s", user_id)
+        except Exception as e:
+            logger.warning("[AUTH] Erreur invalidation cache profil user=%s : %s", user_id, e)
+
+    def _hydrate_user_from_cache(self, cached_json: str) -> Optional[NjilaUser]:
+        """
+        Reconstruit un objet NjilaUser léger depuis le JSON Redis.
+        Évite complètement l'accès à la DB pour /me.
+
+        ✅ CORRECTIONS :
+        1. Initialise user._state (ModelState) pour éviter l'AttributeError
+           quand Django tente un accès DB via un DeferredAttribute.
+        2. Ajoute is_verified, created_at, last_login_at manquants.
+        """
+        import json
+        from django.db.models.base import ModelState
+
+        try:
+            data = json.loads(cached_json)
+            user = NjilaUser.__new__(NjilaUser)
+
+            # ── CORRECTION CRITIQUE : initialiser _state ──────────────────────
+            # Sans cet attribut, Django crash dès qu'un champ DeferredAttribute
+            # (comme is_verified) tente de charger sa valeur depuis la DB.
+            user._state       = ModelState()
+            user._state.db    = "default"
+            user._state.adding = False
+
+            # ── Champs de base ────────────────────────────────────────────────
+            user.id          = data.get("id")
+            user.email       = data.get("email", "")
+            user.name        = data.get("name", "")
+            user.surname     = data.get("surname", "")
+            user.phone       = data.get("phone")
+            user.adresse     = data.get("adresse")
+            user.role        = data.get("role", "")
+            user.photo_url   = data.get("photo_url")
+            user.filiale_id  = data.get("filiale_id")
+            user.agence_id   = data.get("agence_id")
+            user.is_active   = data.get("is_active", True)
+
+            # ── AJOUT : champs manquants ──────────────────────────────────────
+            user.is_verified   = data.get("is_verified", False)
+            user.created_at    = self._parse_datetime(data.get("created_at"))
+            user.last_login_at = self._parse_datetime(data.get("last_login_at"))
+
+            return user
+
+        except Exception as e:
+            logger.warning("[AUTH] Erreur hydratation depuis cache : %s", e)
+            return None
+
+    def _parse_datetime(self, value: Optional[str]):
+        """
+        Parse une chaîne ISO 8601 en datetime aware, ou retourne None.
+        Utilisé pour reconstituer created_at et last_login_at depuis le cache.
+        """
+        if not value:
+            return None
+        try:
+            from django.utils.dateparse import parse_datetime
+            return parse_datetime(value)
+        except Exception:
+            return None

@@ -26,7 +26,7 @@ function extraireMessageErreur(err) {
     return "Plus assez de places disponibles pour ce voyage.";
   if (raw.includes("Voyage introuvable"))
     return "Ce voyage n'existe plus. Veuillez effectuer une nouvelle recherche.";
-  if (raw.includes("codeAgence") || raw.includes("codeFiliale"))
+  if (raw.includes("idAgence") || raw.includes("idFiliale"))
     return "Informations d'agence manquantes sur ce voyage. Contactez le support.";
   return raw;
 }
@@ -52,10 +52,11 @@ export default function PaymentPage() {
       navigate(-1);
       return;
     }
-    if (!voyageSelectionne.codeAgence || !voyageSelectionne.codeFiliale) {
-      console.warn("[PaymentPage] codeAgence ou codeFiliale absent du voyage.", {
-        codeAgence:  voyageSelectionne.codeAgence,
-        codeFiliale: voyageSelectionne.codeFiliale,
+    // FIX : on vérifie maintenant idAgence et idFiliale (IDs numériques) au lieu des codes
+    if (!voyageSelectionne.idAgence || !voyageSelectionne.idFiliale) {
+      console.warn("[PaymentPage] idAgence ou idFiliale absent du voyage.", {
+        idAgence:  voyageSelectionne.idAgence,
+        idFiliale: voyageSelectionne.idFiliale,
       });
     }
   }, []);
@@ -67,13 +68,16 @@ export default function PaymentPage() {
     mutationFn: async () => {
       if (!telephone.trim()) throw new Error("Numéro de téléphone requis");
 
-      // FIX : codeAgence et codeFiliale viennent du voyage (VoyageListSerializer)
-      // codeAgence  = voyage.IdBus.Id_agence.name
-      // codeFiliale = voyage.Id_trajet.filiale_depart.code
-      const codeAgence  = voyageSelectionne?.codeAgence  || null;
-      const codeFiliale = voyageSelectionne?.codeFiliale || null;
+      // FIX : on lit idAgence et idFiliale (identifiants numériques/UUID) depuis le voyage.
+      // Ces champs doivent être exposés par le sérialiseur backend (VoyageListSerializer)
+      // sous les clés "idAgence" et "idFiliale".
+      // Exemple attendu côté backend :
+      //   idAgence  = voyage.IdBus.Id_agence.id   (PK de l'agence)
+      //   idFiliale = voyage.Id_trajet.filiale_depart.id  (PK de la filiale)
+      const idAgence  = voyageSelectionne?.idAgence  ?? null;
+      const idFiliale = voyageSelectionne?.idFiliale ?? null;
 
-      if (!codeAgence || !codeFiliale) {
+      if (!idAgence || !idFiliale) {
         throw new Error(
           "Informations d'agence manquantes. Actualisez la page et resélectionnez votre voyage."
         );
@@ -88,8 +92,9 @@ export default function PaymentPage() {
         emailVoyageur:     (passagerPrincipal.email     || user?.email     || "").trim(),
         nombrePlaces:      placesSelectionnees.length,
         canal:             "WEB",
-        codeAgence,   // depuis le voyage
-        codeFiliale,  // depuis le voyage
+        // FIX : on envoie les IDs (int/UUID) et non plus les codes (str)
+        idAgence,    // ← ID numérique de l'agence   (ex: 3)
+        idFiliale,   // ← ID numérique de la filiale (ex: 7)
         typeTarif:         "STANDARD",
         devise:            "XAF",
         siegesDemandes:    placesSelectionnees.map((p) => p.numero),

@@ -365,11 +365,11 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
     queryFn: async () => {
       try {
         const staff = await userService.listStaffByAgence
-          ? userService.listEmployesByFiliale?.(filialeId) || []
+          ? userService.listStaffByAgence?.(filialeId) || []
           : [];
         // Filtrer les MANAGER_LOCAL parmi les employés
-        //return (staff || []).filter(e => e.role === "MANAGER_LOCAL");
-        return (staff || []);
+        return (staff || []).filter(e => e.role === "MANAGER_LOCAL");
+
       } catch {
         return [];
       }
