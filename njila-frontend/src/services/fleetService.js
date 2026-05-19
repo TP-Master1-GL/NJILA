@@ -99,23 +99,41 @@ export const fleetService = {
   // ═══════════════════════════════════════════════════════════
   //  NORMALISATION (snake_case → camelCase)
   // ═══════════════════════════════════════════════════════════
+  /**
+   * Normalise un objet voyage brut (réponse Django) vers la forme
+   * attendue par le frontend.
+   *
+   * ⚠️  IMPORTANT : idAgence et idFiliale sont les PK UUID nécessaires
+   * pour l'enregistrement des réservations côté booking-service.
+   * Ils sont sérialisés par VoyageListSerializer (et VoyageSerializer via
+   * SerializerMethodField) et doivent IMPÉRATIVEMENT être préservés ici.
+   */
   _normaliserVoyage: (v) => ({
-    id:                 v.Id_voyage           || v.id,
-    dateHeureDepart:    v.date_heure_depart,
-    dateHeureArrivee:   v.date_heure_arrive_prevue,
+    id:                 v.Id_voyage              || v.id,
+    dateHeureDepart:    v.date_heure_depart       || v.dateHeureDepart,
+    dateHeureArrivee:   v.date_heure_arrive_prevue || v.dateHeureArrivee,
     prix:               parseFloat(v.prix),
-    typeVoyage:         (v.type_voyage        || "standard").toUpperCase(),
+    typeVoyage:         (v.type_voyage            || v.typeVoyage || "standard").toUpperCase(),
     status:             v.status,
-    placesDisponibles:  v.places_disponibles,
-    placesRestantes:    v.places_restantes    ?? v.places_disponibles,
-    capacite:           v.capacite            ?? null,
-    trajetInfo:         v.trajet_info         || "",
-    origine:            v.origine             || null,
-    destination:        v.destination         || null,
-    busImmatriculation: v.bus_immatriculation,
-    chauffeurNom:       v.chauffeur_nom,
-    codeAgence:         v.codeAgence          || null,
-    codeFiliale:        v.codeFiliale         || null,
+    placesDisponibles:  v.places_disponibles      ?? v.placesDisponibles,
+    placesRestantes:    v.places_restantes        ?? v.places_disponibles ?? v.placesRestantes,
+    capacite:           v.capacite               ?? null,
+    trajetInfo:         v.trajet_info             || v.trajetInfo || "",
+    origine:            v.origine                || null,
+    destination:        v.destination            || null,
+    busImmatriculation: v.bus_immatriculation     || v.busImmatriculation,
+    chauffeurNom:       v.chauffeur_nom           || v.chauffeurNom,
+    codeAgence:         v.codeAgence             || null,
+    codeFiliale:        v.codeFiliale            || null,
+
+    // ── IDs UUID (nécessaires pour le booking-service) ────────────────────
+    // Le backend les expose directement dans VoyageListSerializer.
+    // On les préserve ici pour que SeatSelectionPage puisse les lire
+    // sans avoir à fouiller dans _raw ou dans des chemins imbriqués.
+    idAgence:           v.idAgence               || null,
+    idFiliale:          v.idFiliale              || null,
+
+    // Données brutes conservées en cas de besoin d'accès direct
     _raw:               v,
   }),
 

@@ -97,17 +97,31 @@ def _ensure_authenticated(request):
 def _obj_agence_id(obj):
     """
     Extrait l'identifiant d'agence d'un objet modèle.
-    Gère plusieurs conventions de nommage possibles dans le projet.
+    Gère plusieurs conventions de nommage, y compris les Trajet
+    (qui passent par filiale_depart ou filiale_arrive).
     """
-    # Relation FK directe (champ agence_id généré par Django)
+    # FK directe agence (Agence, Filiale, Bus, Chauffeur, Guichetier…)
     for attr in ('agence_id', 'Id_agence_id'):
         val = getattr(obj, attr, None)
         if val is not None:
             return str(val)
-    # Relation FK objet (obj.agence.id ou obj.agence.id_agence)
+
+    # Relation FK objet (obj.agence.id_agence)
     agence = getattr(obj, 'agence', None)
     if agence is not None:
-        return str(getattr(agence, 'id', None) or getattr(agence, 'id_agence', None) or '')
+        return str(getattr(agence, 'id_agence', None) or getattr(agence, 'id', None) or '')
+
+    # ── Cas Trajet : pas de FK agence directe, passe par filiale_depart ──────
+    filiale_depart = getattr(obj, 'filiale_depart', None)
+    if filiale_depart is not None:
+        # filiale_depart.agence_id (clé FK Django) ou filiale_depart.agence.id_agence
+        val = getattr(filiale_depart, 'agence_id', None)
+        if val is not None:
+            return str(val)
+        agence = getattr(filiale_depart, 'agence', None)
+        if agence is not None:
+            return str(getattr(agence, 'id_agence', None) or getattr(agence, 'id', None) or '')
+
     return ''
 
 

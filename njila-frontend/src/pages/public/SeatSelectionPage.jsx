@@ -11,6 +11,79 @@ import Input from "../../components/ui/Input";
 import { formatMontant } from "../../utils/formatters";
 import toast from "react-hot-toast";
 
+// ─── Utilitaire : préfixe +237 automatique ───────────────────────────────────
+function formatPhoneForBackend(localNumber) {
+  const digits = (localNumber || "").trim().replace(/\s+/g, "");
+  if (!digits) return "";
+  const cleaned = digits.replace(/^\+?237/, "");
+  return `+237${cleaned}`;
+}
+
+// ─── Extraction de idAgence / idFiliale depuis n'importe quelle forme de réponse ──
+/**
+ * Tente de retrouver idAgence et idFiliale depuis un objet voyage,
+ * quelle que soit la forme retournée par l'API (camelCase, snake_case,
+ * objet imbriqué Django, etc.).
+ */
+function extraireIdsAgenceFiliale(voyage) {
+  if (!voyage) return { idAgence: null, idFiliale: null };
+
+  const idAgence =
+    voyage.idAgence ??
+    voyage.id_agence ??
+    voyage.agence_id ??
+    voyage.IdBus?.Id_agence?.id_agence ??
+    voyage.bus?.agence?.id_agence ??
+    null;
+
+  const idFiliale =
+    voyage.idFiliale ??
+    voyage.id_filiale ??
+    voyage.filiale_id ??
+    voyage.Id_trajet?.filiale_depart?.id_filiale ??
+    voyage.trajet?.filiale_depart?.id_filiale ??
+    null;
+
+  return {
+    idAgence:  idAgence  ? String(idAgence)  : null,
+    idFiliale: idFiliale ? String(idFiliale) : null,
+  };
+}
+
+// ─── Composant champ téléphone avec préfixe +237 figé ────────────────────────
+function PhoneInput({ value, onChange, disabled, label, placeholder = "6XX XXX XXX", error, className = "" }) {
+  return (
+    <div className={className}>
+      {label && (
+        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+          {label}
+        </label>
+      )}
+      <div className={`flex items-center border-2 rounded-xl overflow-hidden focus-within:border-blue-500 dark:focus-within:border-blue-400 transition-colors ${
+        error
+          ? "border-red-500"
+          : "border-gray-200 dark:border-slate-600"
+      }`}>
+        <span className="flex items-center px-3 py-2.5 bg-gray-100 dark:bg-slate-700 border-r-2 border-gray-200 dark:border-slate-600 text-sm font-bold text-gray-600 dark:text-gray-300 select-none whitespace-nowrap">
+          +237
+        </span>
+        <input
+          type="tel"
+          value={value}
+          onChange={(e) => {
+            const sanitized = e.target.value.replace(/[^\d\s\-]/g, "");
+            onChange(sanitized);
+          }}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="flex-1 px-3 py-2.5 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-400 focus:outline-none disabled:opacity-50"
+        />
+      </div>
+      {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+}
+
 // ─── Helpers pour normaliser la réponse de getSiegesVoyage ───────────────────
 function parseSiegesData(data) {
   if (!data) return { occupiedSeats: [], totalSeats: null };
@@ -165,6 +238,7 @@ export default function SeatSelectionPage() {
   const { user } = useAuthStore();
   const {
     voyageSelectionne,
+    setVoyageSelectionne,
     setPlacesSelectionnees,
     setPassagers,
   } = useBookingStore();
@@ -184,7 +258,7 @@ export default function SeatSelectionPage() {
     staleTime: 1000 * 60 * 5,
   });
 
-  // ─── Récupérer le plan des sièges via bookingService.getSiegesVoyage ───────
+  // ─── Récupérer le plan des sièges ──────────────────────────────────────────
   const {
     data: siegesData,
     isLoading: loadingSeats,
@@ -197,7 +271,6 @@ export default function SeatSelectionPage() {
     staleTime: 0,
   });
 
-  // ─── Calcul des sièges occupés et de la capacité ───────────────────────────
   const { occupiedSeats, totalSeats: totalFromSieges } = parseSiegesData(siegesData);
 
   const getRealBusCapacity = () => {
@@ -210,10 +283,80 @@ export default function SeatSelectionPage() {
   const totalSeats = getRealBusCapacity();
   const availableSeats = Math.max(0, totalSeats - occupiedSeats.length);
 
-  // ─── Garde : on attend la fin du chargement avant de décider de rediriger ──
+  // ─── Fusion voyage store + voyageDetails pour garantir idAgence/idFiliale ──
+  /**
+   * On construit un objet voyage "enrichi" :
+   * 1. Base = voyageSelectionne (vient du store, rempli lors du clic "Réserver")
+   * 2. On complète avec voyageDetails (fetch direct) si certains champs manquent
+   * 3. On extrait idAgence/idFiliale depuis les deux sources et on garde la première non-nulle
+   */
+  const voyageEnrichi = (() => {
+    const base   = voyageSelectionne || {};
+    const detail = voyageDetails     || {};
+
+    // Extraire les IDs depuis chaque source
+    const idsBase   = extraireIdsAgenceFiliale(base);
+    const idsDetail = extraireIdsAgenceFiliale(detail);
+
+    const idAgence  = idsBase.idAgence  ?? idsDetail.idAgence  ?? null;
+    const idFiliale = idsBase.idFiliale ?? idsDetail.idFiliale ?? null;
+
+    // Fusionner : detail en premier (données fraîches), base par-dessus pour les champs
+    // qu'on a explicitement mappés côté SearchResultsPage (origine, destination, prix…)
+    const merged = {
+      ...detail,
+      ...base,
+      // On force idAgence / idFiliale avec la valeur trouvée (peu importe la source)
+      idAgence,
+      idFiliale,
+      // Normaliser les dates au cas où
+      dateHeureDepart:  base.dateHeureDepart  ?? detail.dateHeureDepart  ?? detail.date_heure_depart,
+      dateHeureArrivee: base.dateHeureArrivee ?? detail.dateHeureArrivee ?? detail.date_heure_arrive_prevue,
+      // Normaliser l'id
+      id: base.id ?? detail.id ?? detail.Id_voyage ?? voyageId,
+    };
+
+    return merged;
+  })();
+
+  // ─── Mettre à jour le store si idAgence/idFiliale étaient absents ───────────
+  useEffect(() => {
+    if (!voyageDetails) return;
+
+    const storeOk =
+      voyageSelectionne?.idAgence && voyageSelectionne?.idFiliale;
+
+    if (!storeOk) {
+      const { idAgence, idFiliale } = extraireIdsAgenceFiliale(voyageDetails);
+
+      if (idAgence || idFiliale) {
+        console.info(
+          "[SeatSelectionPage] Mise à jour du store avec idAgence/idFiliale depuis voyageDetails.",
+          { idAgence, idFiliale }
+        );
+        setVoyageSelectionne({
+          ...(voyageSelectionne || {}),
+          ...voyageDetails,
+          idAgence:  idAgence  ?? voyageSelectionne?.idAgence,
+          idFiliale: idFiliale ?? voyageSelectionne?.idFiliale,
+          // Conserver les champs normalisés déjà présents dans le store
+          id: voyageSelectionne?.id ?? voyageDetails?.Id_voyage ?? voyageId,
+          dateHeureDepart:
+            voyageSelectionne?.dateHeureDepart ?? voyageDetails?.date_heure_depart,
+          dateHeureArrivee:
+            voyageSelectionne?.dateHeureArrivee ?? voyageDetails?.date_heure_arrive_prevue,
+        });
+      } else {
+        console.warn(
+          "[SeatSelectionPage] idAgence / idFiliale introuvables même dans voyageDetails.",
+          { voyageDetails }
+        );
+      }
+    }
+  }, [voyageDetails]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (isLoadingVoyage) return;
-
     const hasData = voyageSelectionne || voyageDetails;
     if (!hasData) {
       toast.error("Données de réservation incomplètes");
@@ -221,24 +364,9 @@ export default function SeatSelectionPage() {
     }
   }, [isLoadingVoyage, voyageSelectionne, voyageDetails, navigate]);
 
-  // ─── Avertissement développeur : idAgence / idFiliale manquants ────────────
-  // FIX : on vérifie idAgence et idFiliale (IDs numériques) au lieu des codes
-  useEffect(() => {
-    const voyage = voyageSelectionne || voyageDetails;
-    if (!voyage) return;
-    if (!voyage.idAgence || !voyage.idFiliale) {
-      console.warn(
-        "[SeatSelectionPage] idAgence ou idFiliale absent du voyage sélectionné. " +
-        "Le paiement échouera si ces champs ne sont pas exposés par le backend.",
-        { idAgence: voyage.idAgence, idFiliale: voyage.idFiliale }
-      );
-    }
-  }, [voyageSelectionne, voyageDetails]);
-
-  // ─── Désélectionner les sièges qui deviendraient occupés (gestion concurrence) ─
+  // Désélectionner les sièges devenus occupés (concurrence)
   useEffect(() => {
     if (occupiedSeats.length === 0) return;
-
     const nowOccupied = selectedSeats.filter((s) => occupiedSeats.includes(s.id));
     if (nowOccupied.length > 0) {
       toast.error(`Le(s) siège(s) ${nowOccupied.map((s) => s.numero).join(", ")} vien(nen)t d'être réservé(s).`);
@@ -254,7 +382,6 @@ export default function SeatSelectionPage() {
       const seatIndex = selectedSeats.findIndex((s) => s.id === seat.id);
       const newSelected = selectedSeats.filter((s) => s.id !== seat.id);
       setSelectedSeats(newSelected);
-
       if (seatIndex !== -1) {
         setPassagersForm((prev) => prev.filter((_, i) => i !== seatIndex));
       }
@@ -297,8 +424,11 @@ export default function SeatSelectionPage() {
       if (passager.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(passager.email)) {
         newErrors[`${idx}_email`] = "Email invalide";
       }
-      if (passager.telephone && !/^\+?237[0-9]{8,}$/.test(passager.telephone)) {
-        newErrors[`${idx}_telephone`] = "Numéro invalide (ex: +237600000000)";
+      if (passager.telephone) {
+        const digits = passager.telephone.replace(/\D/g, "");
+        if (digits.length < 8) {
+          newErrors[`${idx}_telephone`] = "Numéro invalide (ex: 690 000 000)";
+        }
       }
     });
     setErrorsForm(newErrors);
@@ -323,10 +453,11 @@ export default function SeatSelectionPage() {
       prenom: passagersForm[idx].prenom.trim(),
       cni: passagersForm[idx].cni.trim(),
       email: passagersForm[idx].email?.trim() || user?.email || "",
-      telephone: passagersForm[idx].telephone?.trim() || user?.telephone || "",
+      telephone: passagersForm[idx].telephone
+        ? formatPhoneForBackend(passagersForm[idx].telephone)
+        : user?.telephone || "",
     }));
 
-    // ── Synchroniser le state local vers le store Zustand ────────────────────
     setPlacesSelectionnees(
       selectedSeats.map((s) => ({
         id: s.id,
@@ -339,43 +470,36 @@ export default function SeatSelectionPage() {
     navigate("/paiement");
   };
 
-  // ─── Variables dérivées ────────────────────────────────────────────────────
-  const voyage = voyageSelectionne || voyageDetails;
+  // On utilise voyageEnrichi partout dans le rendu
+  const voyage = voyageEnrichi;
   const prixUnitaire = voyage?.prix || 5000;
   const total = selectedSeats.length * prixUnitaire;
 
-  // ─── Rendu : Chargement ────────────────────────────────────────────────────
   if (isLoadingVoyage) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center p-4">
         <div className="text-center">
           <Loader className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-            Chargement en cours...
-          </h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Chargement en cours...</h2>
           <p className="text-gray-600 dark:text-gray-400">Récupération des places disponibles</p>
         </div>
       </div>
     );
   }
 
-  // ─── Rendu : Erreur (chargement terminé mais aucune donnée) ───────────────
-  if (!voyage) {
+  if (!voyage?.id && !voyageId) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center p-4">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Erreur</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Impossible de charger les données du voyage
-          </p>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">Impossible de charger les données du voyage</p>
           <Button onClick={() => navigate("/search")}>Retour à la recherche</Button>
         </div>
       </div>
     );
   }
 
-  // ─── Rendu : Page complète ─────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 transition-colors duration-300">
       <style>{`
@@ -422,18 +546,10 @@ export default function SeatSelectionPage() {
             ["3", "Paiement", false],
           ].map(([n, l, active], i) => (
             <div key={n} className="flex items-center gap-2 flex-shrink-0">
-              <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                  active ? "bg-blue-600 text-white" : "bg-gray-200 dark:bg-slate-800 text-gray-500 dark:text-slate-500"
-                }`}
-              >
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${active ? "bg-blue-600 text-white" : "bg-gray-200 dark:bg-slate-800 text-gray-500 dark:text-slate-500"}`}>
                 {n}
               </div>
-              <span
-                className={`text-sm font-medium whitespace-nowrap ${
-                  active ? "text-gray-900 dark:text-slate-100" : "text-gray-400 dark:text-slate-600"
-                }`}
-              >
+              <span className={`text-sm font-medium whitespace-nowrap ${active ? "text-gray-900 dark:text-slate-100" : "text-gray-400 dark:text-slate-600"}`}>
                 {l}
               </span>
               {i < 2 && <div className="w-12 h-px bg-gray-200 dark:bg-slate-800 hidden sm:block" />}
@@ -444,15 +560,13 @@ export default function SeatSelectionPage() {
 
       {/* Contenu principal */}
       <div className="max-w-7xl mx-auto px-4 py-8 flex gap-8 flex-col lg:flex-row">
-        {/* Colonne gauche : Plan du bus et formulaire passagers */}
+        {/* Colonne gauche */}
         <div className="flex-1 fade-in">
           {/* Plan du bus */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-6 mb-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-slate-100">
-                  Sélectionnez vos places
-                </h2>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Sélectionnez vos places</h2>
                 <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
                   {voyage?.typeVoyage || "Standard"} · {totalSeats} places ·{" "}
                   {loadingSeats ? (
@@ -472,18 +586,12 @@ export default function SeatSelectionPage() {
                   className="p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                 </button>
               )}
             </div>
 
-            {/* Plan du bus */}
             {loadingSeats && !siegesData ? (
               <div className="flex items-center justify-center h-80">
                 <div className="text-center text-gray-400">
@@ -539,7 +647,6 @@ export default function SeatSelectionPage() {
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Nom */}
                       <div>
                         <Input
                           label="Nom *"
@@ -553,7 +660,6 @@ export default function SeatSelectionPage() {
                         )}
                       </div>
 
-                      {/* Prénom */}
                       <div>
                         <Input
                           label="Prénom *"
@@ -567,7 +673,6 @@ export default function SeatSelectionPage() {
                         )}
                       </div>
 
-                      {/* CNI / Passeport */}
                       <div>
                         <Input
                           label="N° CNI / Passeport *"
@@ -581,21 +686,14 @@ export default function SeatSelectionPage() {
                         )}
                       </div>
 
-                      {/* Téléphone */}
-                      <div>
-                        <Input
-                          label="Téléphone"
-                          placeholder="+237600000000"
-                          value={passagersForm[idx]?.telephone || ""}
-                          onChange={(e) => handlePassagerChange(idx, "telephone", e.target.value)}
-                          className={errorsForm[`${idx}_telephone`] ? "input-error" : ""}
-                        />
-                        {errorsForm[`${idx}_telephone`] && (
-                          <p className="error-text">{errorsForm[`${idx}_telephone`]}</p>
-                        )}
-                      </div>
+                      <PhoneInput
+                        label="Téléphone"
+                        placeholder="6XX XXX XXX"
+                        value={passagersForm[idx]?.telephone || ""}
+                        onChange={(val) => handlePassagerChange(idx, "telephone", val)}
+                        error={errorsForm[`${idx}_telephone`]}
+                      />
 
-                      {/* Email — pleine largeur */}
                       <div className="sm:col-span-2">
                         <Input
                           label="Email"
@@ -634,7 +732,6 @@ export default function SeatSelectionPage() {
                 <span className="text-blue-100">Trajet</span>
                 <span className="font-semibold">{voyage?.origine || "—"} → {voyage?.destination || "—"}</span>
               </div>
-
               <div className="flex justify-between pb-3 border-b border-white/20">
                 <span className="text-blue-100">Date & Heure</span>
                 <span className="font-semibold">
@@ -643,7 +740,6 @@ export default function SeatSelectionPage() {
                     : "—"}
                 </span>
               </div>
-
               <div className="pb-3 border-b border-white/20">
                 <span className="text-blue-100 block mb-2">Places sélectionnées</span>
                 {selectedSeats.length > 0 ? (
@@ -658,24 +754,20 @@ export default function SeatSelectionPage() {
                   <span className="text-blue-200 text-xs italic">Sélectionnez au moins une place</span>
                 )}
               </div>
-
               <div className="flex justify-between pb-3 border-b border-white/20">
                 <span className="text-blue-100">Disponibles</span>
                 <span className={`font-semibold ${availableSeats <= 5 ? "text-red-200" : "text-emerald-200"}`}>
                   {loadingSeats ? "..." : `${availableSeats} / ${totalSeats}`}
                 </span>
               </div>
-
               <div className="flex justify-between pb-3 border-b border-white/20">
                 <span className="text-blue-100">Tarif/place</span>
                 <span className="font-semibold">{formatMontant(prixUnitaire)}</span>
               </div>
-
               <div className="flex justify-between pb-3 border-b border-white/20">
                 <span className="text-blue-100">Passagers</span>
                 <span className="font-semibold">{selectedSeats.length} passager(s)</span>
               </div>
-
               <div className="flex justify-between pt-2">
                 <span className="font-semibold text-lg">Total</span>
                 <span className="text-3xl font-bold">{formatMontant(total)}</span>
@@ -697,9 +789,7 @@ export default function SeatSelectionPage() {
               </p>
             ) : (
               <>
-                <p className="text-center text-xs text-blue-100 mt-3">
-                  ✓ Toutes les informations seront vérifiées
-                </p>
+                <p className="text-center text-xs text-blue-100 mt-3">✓ Toutes les informations seront vérifiées</p>
                 <p className="text-center text-xs text-blue-100/70 mt-1">🔒 PAIEMENT SÉCURISÉ</p>
               </>
             )}

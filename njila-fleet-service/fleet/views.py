@@ -88,7 +88,11 @@ def _get_user_filiale_id(request):
 
 class AgenceListCreateView(generics.ListCreateAPIView):
     """
-    GET:  Liste des agences (Public)
+    GET:  Liste des agences
+          - Public / VOYAGEUR     → toutes les agences
+          - MANAGER_GLOBAL        → son agence uniquement (agenceId JWT)
+          - MANAGER_LOCAL         → l'agence mère de sa filiale (agenceId JWT)
+          - GUICHETIER            → l'agence mère de sa filiale (agenceId JWT)
     POST: Créer une agence (Admin uniquement)
     """
     permission_classes = [AllowAny]
@@ -105,9 +109,38 @@ class AgenceListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Agence.objects.all()
+
         statut = self.request.query_params.get('statut_global')
         if statut:
             queryset = queryset.filter(statut_global=statut)
+
+        # ── Filtrage RBAC ─────────────────────────────────────────────────────
+        role = _get_user_role(self.request)
+
+        if role in ('MANAGER_GLOBAL', 'MANAGER_LOCAL', 'GUICHETIER'):
+            # Ces rôles ne voient que leur propre agence
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(id_agence=user_agence_id)
+                logger.debug(
+                    "[AgenceList] %s %s → filtre id_agence=%s",
+                    role, getattr(self.request, 'user_info', {}).get('userId'), user_agence_id
+                )
+            else:
+                # Repli pour GUICHETIER/MANAGER_LOCAL : résolution via filialeId
+                user_filiale_id = _get_user_filiale_id(self.request)
+                if user_filiale_id:
+                    queryset = queryset.filter(filiales__id_filiale=user_filiale_id)
+                    logger.debug(
+                        "[AgenceList] %s %s → filtre via filiale_id=%s",
+                        role, getattr(self.request, 'user_info', {}).get('userId'), user_filiale_id
+                    )
+                else:
+                    logger.warning("[AgenceList] %s sans agenceId ni filialeId → queryset vide", role)
+                    queryset = queryset.none()
+
+        # VOYAGEUR et public (AllowAny) : pas de restriction → toutes les agences
+
         return queryset.order_by('-date_inscription')
 
     def get_serializer_class(self):
@@ -118,7 +151,13 @@ class AgenceListCreateView(generics.ListCreateAPIView):
     @extend_schema(
         tags=['Agences'],
         summary="Liste des agences",
-        description="Récupère la liste de toutes les agences (accès public). Possibilité de filtrer par statut.",
+        description=(
+            "Récupère la liste des agences.\n\n"
+            "- **Public / Voyageur** : toutes les agences\n"
+            "- **Manager Global** : uniquement son agence\n"
+            "- **Manager Local** : uniquement l'agence mère de sa filiale\n"
+            "- **Guichetier** : uniquement l'agence mère de sa filiale"
+        ),
         parameters=[
             OpenApiParameter(
                 name='statut_global',
@@ -148,25 +187,6 @@ class AgenceListCreateView(generics.ListCreateAPIView):
                 },
                 request_only=True,
             ),
-            OpenApiExample(
-                'Exemple de réponse',
-                value={
-                    'id_agence': '123e4567-e89b-12d3-a456-426614174000',
-                    'name': 'Express Voyages',
-                    'adresse': '123 Boulevard de la Liberté, Douala',
-                    'telephone': '699888888',
-                    'email_officiel': 'contact@express.cm',
-                    'statut_global': 'active',
-                    'date_inscription': '2026-04-08T10:00:00Z',
-                    '_events': {
-                        'agence_created': True,
-                        'subscription_request': True,
-                        'booking_sync': True,
-                        'all_sent': True,
-                    }
-                },
-                response_only=True,
-            )
         ],
         responses={
             201: AgenceSerializer,
@@ -189,7 +209,6 @@ class AgenceListCreateView(generics.ListCreateAPIView):
             'booking_sync':         publish_agency_updated_for_booking(agence),
         }
 
-        # Stocker le statut des événements pour y accéder dans create()
         self._rabbitmq_events = events_status
 
         all_sent = all(events_status.values())
@@ -211,7 +230,6 @@ class AgenceListCreateView(generics.ListCreateAPIView):
 
         headers = self.get_success_headers(serializer.data)
 
-        # Enrichir la réponse avec le statut des événements RabbitMQ
         response_data = dict(serializer.data)
         events = getattr(self, '_rabbitmq_events', {})
         response_data['_events'] = {
@@ -222,7 +240,6 @@ class AgenceListCreateView(generics.ListCreateAPIView):
         }
 
         return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
-
 
 class AgenceDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -595,12 +612,12 @@ class FilialeStatsView(APIView):
 
 class BusListCreateView(generics.ListCreateAPIView):
     """
-    GET:  Liste des bus (Public)
+    GET:  Liste des bus
+          - Public / VOYAGEUR     → tous les bus
+          - MANAGER_GLOBAL        → bus de son agence (agenceId JWT)
+          - MANAGER_LOCAL         → bus de son agence MÈRE (agenceId JWT)
+          - GUICHETIER            → bus de son agence mère (agenceId JWT via filiale)
     POST: Ajouter un bus (Manager Local ou supérieur)
-
-    Filtrage RBAC :
-      MANAGER_GLOBAL → bus de son agence  (agenceId JWT)
-      MANAGER_LOCAL  → bus de son agence  (agenceId JWT)
     """
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['etat', 'Id_agence']
@@ -632,6 +649,8 @@ class BusListCreateView(generics.ListCreateAPIView):
         role = _get_user_role(self.request)
 
         if role in ('MANAGER_GLOBAL', 'MANAGER_LOCAL'):
+            # Les deux voient les bus de leur agence
+            # MANAGER_LOCAL utilise son agenceId (agence mère de sa filiale)
             user_agence_id = _get_user_agence_id(self.request)
             if user_agence_id:
                 queryset = queryset.filter(Id_agence_id=user_agence_id)
@@ -643,6 +662,31 @@ class BusListCreateView(generics.ListCreateAPIView):
                 logger.warning("[BusList] %s sans agenceId → queryset vide", role)
                 queryset = queryset.none()
 
+        elif role == 'GUICHETIER':
+            # Le guichetier voit les bus de son agence mère
+            # Son agenceId est résolu via la filiale dans le JWT
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(Id_agence_id=user_agence_id)
+                logger.debug(
+                    "[BusList] GUICHETIER %s → filtre agence_id=%s",
+                    self.request.user_info.get('userId'), user_agence_id
+                )
+            else:
+                # Repli : résoudre via filialeId si agenceId absent du JWT
+                user_filiale_id = _get_user_filiale_id(self.request)
+                if user_filiale_id:
+                    queryset = queryset.filter(Id_agence__filiales__id_filiale=user_filiale_id).distinct()
+                    logger.debug(
+                        "[BusList] GUICHETIER %s → filtre via filiale_id=%s",
+                        self.request.user_info.get('userId'), user_filiale_id
+                    )
+                else:
+                    logger.warning("[BusList] GUICHETIER sans agenceId ni filialeId → queryset vide")
+                    queryset = queryset.none()
+
+        # VOYAGEUR et public (AllowAny) : pas de restriction → queryset complet
+
         return queryset.select_related('Id_agence').order_by('-created_at')
 
     def get_serializer_class(self):
@@ -652,11 +696,18 @@ class BusListCreateView(generics.ListCreateAPIView):
 
     @extend_schema(
         tags=['Bus'], summary="Liste des bus",
-        description="Récupère la liste des bus (accès public). Possibilité de filtrer par agence ou par état.",
+        description=(
+            "Récupère la liste des bus.\n\n"
+            "- **Public / Voyageur** : tous les bus\n"
+            "- **Manager Global** : uniquement les bus de son agence\n"
+            "- **Manager Local** : uniquement les bus de son agence mère\n"
+            "- **Guichetier** : uniquement les bus de son agence mère"
+        ),
         parameters=[
             OpenApiParameter(name='agence_id', description="ID de l'agence",
                              required=False, type=str, location=OpenApiParameter.QUERY),
-            OpenApiParameter(name='etat', description="Filtrer par état (disponible, en_panne, maintenance, en_voyage)",
+            OpenApiParameter(name='etat',
+                             description="Filtrer par état (disponible, en_panne, maintenance, en_voyage)",
                              required=False, type=str, location=OpenApiParameter.QUERY),
             OpenApiParameter(name='disponible', description="Filtrer les bus disponibles (true/false)",
                              required=False, type=bool, location=OpenApiParameter.QUERY)
@@ -677,12 +728,6 @@ class BusListCreateView(generics.ListCreateAPIView):
                        'capacite': 30, 'etat': 'disponible', 'Id_agence': 'uuid-de-l-agence'},
                 request_only=True,
             ),
-            OpenApiExample(
-                'Exemple de réponse',
-                value={'IdBus': 1, 'immatriculation': 'LT 001 AB', 'modele': 'Toyota Coaster',
-                       'capacite': 30, 'etat': 'disponible', 'Id_agence': 'uuid-de-l-agence'},
-                response_only=True,
-            )
         ],
         responses={
             201: BusDetailSerializer,
@@ -701,6 +746,7 @@ class BusListCreateView(generics.ListCreateAPIView):
             logger.info("Bus créé: %s | RabbitMQ: booking_sync ✓", bus.immatriculation)
         else:
             logger.warning("Bus créé: %s | RabbitMQ: booking_sync ✗", bus.immatriculation)
+
 
 class BusRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -1288,13 +1334,12 @@ class GuichetierDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class TrajetListCreateView(generics.ListCreateAPIView):
     """
-    GET:  Liste des trajets (Public)
+    GET:  Liste des trajets
+          - Public / VOYAGEUR     → tous les trajets
+          - MANAGER_GLOBAL        → trajets impliquant une filiale de son agence
+          - MANAGER_LOCAL         → trajets où sa filiale est départ ou arrivée
+          - GUICHETIER            → trajets où sa filiale est départ ou arrivée
     POST: Créer un trajet (Manager Global ou Admin)
-
-    Filtrage RBAC :
-      MANAGER_GLOBAL → trajets dont la filiale de départ ou d'arrivée
-                       appartient à son agence  (agenceId JWT)
-      MANAGER_LOCAL  → trajets impliquant sa filiale (filialeId JWT)
     """
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['est_actif', 'filiale_depart', 'filiale_arrive']
@@ -1322,6 +1367,7 @@ class TrajetListCreateView(generics.ListCreateAPIView):
         role = _get_user_role(self.request)
 
         if role == 'MANAGER_GLOBAL':
+            # Trajets dont la filiale de départ OU d'arrivée appartient à son agence
             user_agence_id = _get_user_agence_id(self.request)
             if user_agence_id:
                 queryset = queryset.filter(
@@ -1336,7 +1382,8 @@ class TrajetListCreateView(generics.ListCreateAPIView):
                 logger.warning("[TrajetList] MANAGER_GLOBAL sans agenceId → queryset vide")
                 queryset = queryset.none()
 
-        elif role == 'MANAGER_LOCAL':
+        elif role in ('MANAGER_LOCAL', 'GUICHETIER'):
+            # Trajets où la filiale de l'utilisateur est départ OU arrivée
             user_filiale_id = _get_user_filiale_id(self.request)
             if user_filiale_id:
                 queryset = queryset.filter(
@@ -1344,12 +1391,14 @@ class TrajetListCreateView(generics.ListCreateAPIView):
                     Q(filiale_arrive_id=user_filiale_id)
                 )
                 logger.debug(
-                    "[TrajetList] MANAGER_LOCAL %s → filtre filiale_id=%s",
-                    self.request.user_info.get('userId'), user_filiale_id
+                    "[TrajetList] %s %s → filtre filiale_id=%s",
+                    role, self.request.user_info.get('userId'), user_filiale_id
                 )
             else:
-                logger.warning("[TrajetList] MANAGER_LOCAL sans filialeId → queryset vide")
+                logger.warning("[TrajetList] %s sans filialeId → queryset vide", role)
                 queryset = queryset.none()
+
+        # VOYAGEUR et public (AllowAny) : pas de restriction → queryset complet
 
         return queryset.select_related('filiale_depart', 'filiale_arrive').order_by('-created_at')
 
@@ -1360,7 +1409,13 @@ class TrajetListCreateView(generics.ListCreateAPIView):
 
     @extend_schema(
         tags=['Trajets'], summary="Liste des trajets",
-        description="Récupère la liste des trajets (accès public)",
+        description=(
+            "Récupère la liste des trajets.\n\n"
+            "- **Public / Voyageur** : tous les trajets\n"
+            "- **Manager Global** : trajets impliquant une filiale de son agence\n"
+            "- **Manager Local** : trajets dont sa filiale est le départ ou l'arrivée\n"
+            "- **Guichetier** : trajets dont sa filiale est le départ ou l'arrivée"
+        ),
         parameters=[
             OpenApiParameter(name='depart',  description="Filtrer par ville de départ",
                              required=False, type=str, location=OpenApiParameter.QUERY),
@@ -1399,10 +1454,49 @@ class TrajetListCreateView(generics.ListCreateAPIView):
         logger.info("Trajet créé: %s", trajet)
 
 class TrajetDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """GET: Détail trajet | PUT: Modifier | DELETE: Supprimer (Manager Global ou Admin)"""
-    queryset         = Trajet.objects.all()
+    """
+    GET:        Détail trajet (Public)
+    PUT/PATCH:  Modifier trajet (Manager Global ou Admin)
+    DELETE:     Supprimer trajet (Manager Global — uniquement ses trajets — ou Admin)
+    """
     lookup_field     = 'Id_trajet'
     serializer_class = TrajetSerializer
+
+    def get_queryset(self):
+        """
+        Restreint le queryset selon le rôle pour que get_object()
+        retourne 404 si le trajet n'appartient pas au périmètre de l'utilisateur,
+        plutôt que 403 après coup — plus sécurisé et plus propre.
+        """
+        queryset = Trajet.objects.select_related(
+            'filiale_depart__agence',
+            'filiale_arrive__agence',
+        )
+
+        role = _get_user_role(self.request)
+
+        if role == 'MANAGER_GLOBAL':
+            user_agence_id = _get_user_agence_id(self.request)
+            if user_agence_id:
+                queryset = queryset.filter(
+                    Q(filiale_depart__agence_id=user_agence_id) |
+                    Q(filiale_arrive__agence_id=user_agence_id)
+                )
+            else:
+                queryset = queryset.none()
+
+        elif role in ('MANAGER_LOCAL', 'GUICHETIER'):
+            user_filiale_id = _get_user_filiale_id(self.request)
+            if user_filiale_id:
+                queryset = queryset.filter(
+                    Q(filiale_depart_id=user_filiale_id) |
+                    Q(filiale_arrive_id=user_filiale_id)
+                )
+            else:
+                queryset = queryset.none()
+
+        # ADMIN et public : queryset complet
+        return queryset
 
     def get_permissions(self):
         if self.request.method == 'GET':
@@ -1426,7 +1520,7 @@ class TrajetDetailView(generics.RetrieveUpdateDestroyAPIView):
             400: OpenApiResponse(description="Données invalides"),
             401: OpenApiResponse(description="Non authentifié"),
             403: OpenApiResponse(description="Droits insuffisants"),
-            404: OpenApiResponse(description="Trajet non trouvé"),
+            404: OpenApiResponse(description="Trajet non trouvé ou hors périmètre"),
         }
     )
     def put(self, request, *args, **kwargs):
@@ -1434,13 +1528,17 @@ class TrajetDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     @extend_schema(
         tags=['Trajets'], summary="Supprimer un trajet",
-        description="Supprime un trajet (nécessite droits Manager Global). Le trajet ne doit pas avoir de voyages associés.",
+        description=(
+            "Supprime un trajet. "
+            "Manager Global : uniquement les trajets de son agence. "
+            "Le trajet ne doit pas avoir de voyages associés."
+        ),
         responses={
             204: OpenApiResponse(description="Suppression réussie"),
             400: OpenApiResponse(description="Impossible de supprimer - des voyages sont associés"),
             401: OpenApiResponse(description="Non authentifié"),
             403: OpenApiResponse(description="Droits insuffisants"),
-            404: OpenApiResponse(description="Trajet non trouvé"),
+            404: OpenApiResponse(description="Trajet non trouvé ou hors périmètre"),
         }
     )
     def delete(self, request, *args, **kwargs):
@@ -1455,19 +1553,18 @@ class TrajetDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
         logger.info(f"Trajet supprimé: {instance}")
 
-
 # ==============================================================================
 # VOYAGES
 # ==============================================================================
 
 class VoyageListCreateView(generics.ListCreateAPIView):
     """
-    GET:  Liste des voyages (Public)
+    GET:  Liste des voyages
+          - Public / VOYAGEUR     → tous les voyages (sans restriction)
+          - MANAGER_GLOBAL        → voyages de son agence (bus appartenant à son agence)
+          - MANAGER_LOCAL         → voyages dont la filiale de départ est la sienne
+          - GUICHETIER            → voyages dont la filiale de départ est la sienne
     POST: Programmer un voyage (Manager Local ou supérieur)
-
-    Filtrage RBAC :
-      MANAGER_GLOBAL → voyages dont le bus appartient à son agence  (agenceId JWT)
-      MANAGER_LOCAL  → voyages dont le trajet part de sa filiale    (filialeId JWT)
     """
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'type_voyage', 'Id_trajet', 'IdBus']
@@ -1499,6 +1596,7 @@ class VoyageListCreateView(generics.ListCreateAPIView):
         role = _get_user_role(self.request)
 
         if role == 'MANAGER_GLOBAL':
+            # Voyages dont le bus appartient à son agence
             user_agence_id = _get_user_agence_id(self.request)
             if user_agence_id:
                 queryset = queryset.filter(IdBus__Id_agence_id=user_agence_id)
@@ -1510,17 +1608,21 @@ class VoyageListCreateView(generics.ListCreateAPIView):
                 logger.warning("[VoyageList] MANAGER_GLOBAL sans agenceId → queryset vide")
                 queryset = queryset.none()
 
-        elif role == 'MANAGER_LOCAL':
+        elif role in ('MANAGER_LOCAL', 'GUICHETIER'):
+            # Voyages dont la filiale de départ est la filiale de l'utilisateur
             user_filiale_id = _get_user_filiale_id(self.request)
             if user_filiale_id:
                 queryset = queryset.filter(Id_trajet__filiale_depart_id=user_filiale_id)
                 logger.debug(
-                    "[VoyageList] MANAGER_LOCAL %s → filtre filiale_depart_id=%s",
-                    self.request.user_info.get('userId'), user_filiale_id
+                    "[VoyageList] %s %s → filtre filiale_depart_id=%s",
+                    role, self.request.user_info.get('userId'), user_filiale_id
                 )
             else:
-                logger.warning("[VoyageList] MANAGER_LOCAL sans filialeId → queryset vide")
+                logger.warning("[VoyageList] %s sans filialeId → queryset vide", role)
                 queryset = queryset.none()
+
+        # VOYAGEUR et public (AllowAny) : pas de restriction → queryset complet
+        # Le voyageur doit pouvoir voir tous les voyages de toutes les agences
 
         return queryset.select_related(
             'Id_trajet__filiale_depart',
@@ -1536,7 +1638,13 @@ class VoyageListCreateView(generics.ListCreateAPIView):
 
     @extend_schema(
         tags=['Voyages'], summary="Liste des voyages",
-        description="Récupère la liste des voyages (accès public). Possibilité de filtrer par dates, statut, etc.",
+        description=(
+            "Récupère la liste des voyages.\n\n"
+            "- **Public / Voyageur** : tous les voyages de toutes les agences\n"
+            "- **Manager Global** : uniquement les voyages de son agence\n"
+            "- **Manager Local** : uniquement les voyages partant de sa filiale\n"
+            "- **Guichetier** : uniquement les voyages partant de sa filiale"
+        ),
         parameters=[
             OpenApiParameter(name='date_debut', description="Date de début (YYYY-MM-DD)",
                              required=False, type=str, location=OpenApiParameter.QUERY),
@@ -1607,7 +1715,7 @@ class VoyageListCreateView(generics.ListCreateAPIView):
             logger.info("Voyage programmé: %s | RabbitMQ ✓ | %s", voyage, events_status)
         else:
             logger.warning("Voyage programmé: %s | RabbitMQ ✗ | %s", voyage, events_status)
- 
+
 
 
 class VoyageDetailView(generics.RetrieveUpdateDestroyAPIView):

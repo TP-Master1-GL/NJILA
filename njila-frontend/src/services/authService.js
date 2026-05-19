@@ -54,13 +54,10 @@ export const authService = {
     return data;
   },
 
-  // ── Restauration silencieuse de session au démarrage ──────────────────────
-  // ✅ Décode le nouveau JWT pour récupérer agence_id / filiale_id
-  // et les fusionne avec les données de /me (qui peut ne pas les retourner).
+  // ── Restauration silencieuse de session au démarrage ─────────────────────
   initAuth: async () => {
     const refreshToken = getRefreshToken();
     if (!refreshToken) return null;
-
     try {
       const { data: tokenData } = await api.post("/api/auth/refresh", {
         refresh_token: refreshToken,
@@ -68,21 +65,19 @@ export const authService = {
       setAccessToken(tokenData.accessToken);
       if (tokenData.refreshToken) setRefreshToken(tokenData.refreshToken);
 
-      // Récupère le profil utilisateur
       const { data: meData } = await api.get("/api/auth/me");
-
-      // ✅ Extrait agence_id et filiale_id depuis le nouveau JWT
       const jwt = decodeJwt(tokenData.accessToken);
 
       return {
-        id:        meData.userId  || meData.id,
-        email:     meData.email,
-        name:      meData.name,
-        surname:   meData.surname,
-        role:      meData.role,
-        photoUrl:  meData.photoUrl || meData.photo_url || null,
-        agenceId:  jwt.agence_id  || meData.agenceId  || meData.agence_id  || null,
-        filialeId: jwt.filiale_id || meData.filialeId || meData.filiale_id || null,
+        id:          meData.userId  || meData.id,
+        email:       meData.email,
+        name:        meData.name,
+        surname:     meData.surname,
+        role:        meData.role,
+        photoUrl:    meData.photoUrl || meData.photo_url || null,
+        agenceId:    jwt.agence_id  || meData.agenceId  || meData.agence_id  || null,
+        filialeId:   jwt.filiale_id || meData.filialeId || meData.filiale_id || null,
+        _accessToken: tokenData.accessToken,
       };
     } catch (error) {
       console.error("InitAuth error:", error.response?.data || error.message);

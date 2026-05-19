@@ -12,6 +12,7 @@ import com.njila.njila_user_service.enums.Role;
 import com.njila.njila_user_service.exception.EmailAlreadyExistsException;
 import com.njila.njila_user_service.exception.FilialeNotFoundException;
 import com.njila.njila_user_service.exception.ForbiddenException;
+import com.njila.njila_user_service.exception.ManagerLocalAlreadyExistsException;
 import com.njila.njila_user_service.middleware.JwtClaims;
 import com.njila.njila_user_service.repository.FilialeRepository;
 import com.njila.njila_user_service.repository.ManagerLocalRepository;
@@ -102,77 +103,81 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
 
     // ── CRÉATION MANAGER LOCAL ──────────────────────────────────────────────
 
-	@Override
-	@Transactional
-	public ManagerLocalResponse createManagerLocal(UUID agenceId, CreateManagerLocalRequest request, JwtClaims caller) {
-		roleManager.assertCanCreateStaffByManagerGlobal(caller);
-		roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
+    @Override
+    @Transactional
+    public ManagerLocalResponse createManagerLocal(UUID agenceId, CreateManagerLocalRequest request, JwtClaims caller) {
+        roleManager.assertCanCreateStaffByManagerGlobal(caller);
+        roleManager.assertManagerGlobalCanManageAgence(caller, agenceId);
 
-		String email = request.getEmail().toLowerCase().strip();
-		if (userRepository.existsByEmail(email)) {
-		    throw new EmailAlreadyExistsException(email);
-		}
+        String email = request.getEmail().toLowerCase().strip();
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(email);
+        }
 
-		UUID filialeId = UUID.fromString(request.getFilialeId());
-		Filiale filiale = filialeRepository.findById(filialeId)
-		    .orElseThrow(() -> new FilialeNotFoundException(request.getFilialeId()));
+        UUID filialeId = UUID.fromString(request.getFilialeId());
+        Filiale filiale = filialeRepository.findById(filialeId)
+            .orElseThrow(() -> new FilialeNotFoundException(request.getFilialeId()));
 
-		if (!filiale.getAgenceId().equals(agenceId)) {
-		    throw new ForbiddenException("La filiale spécifiée n'appartient pas à votre agence.");
-		}
+        if (!filiale.getAgenceId().equals(agenceId)) {
+            throw new ForbiddenException("La filiale spécifiée n'appartient pas à votre agence.");
+        }
 
-		// Récupérer l'agence pour avoir son nom
-		Agence agence = agenceRepository.findById(agenceId)
-		    .orElseThrow(() -> new AgenceNotFoundException(agenceId.toString()));
+        // Vérification : une filiale ne peut avoir qu'un seul ManagerLocal
+        if (managerLocalRepository.existsByFilialeId(filialeId)) {
+            throw new ManagerLocalAlreadyExistsException(filiale.getNom());
+        }
 
-		UUID newUserId = UUID.randomUUID();
-		String tempPassword = "000000";
+        // Récupérer l'agence pour avoir son nom
+        Agence agence = agenceRepository.findById(agenceId)
+            .orElseThrow(() -> new AgenceNotFoundException(agenceId.toString()));
 
-		ManagerLocal managerLocal = ManagerLocal.builder()
-		    .idUser(newUserId)
-		    .name(request.getName().strip())
-		    .surname(request.getSurname().strip())
-		    .email(email)
-		    .phone(request.getPhone())
-		    .adresse(request.getAdresse())
-		    .agenceId(agenceId)
-		    .filialeId(filialeId)
-		    .isActive(true)
-		    .build();
+        UUID newUserId = UUID.randomUUID();
+        String tempPassword = "000000";
 
-		managerLocalRepository.save(managerLocal);
+        ManagerLocal managerLocal = ManagerLocal.builder()
+            .idUser(newUserId)
+            .name(request.getName().strip())
+            .surname(request.getSurname().strip())
+            .email(email)
+            .phone(request.getPhone())
+            .adresse(request.getAdresse())
+            .agenceId(agenceId)
+            .filialeId(filialeId)
+            .isActive(true)
+            .build();
 
-		eventPublisher.publishStaffToAuth(
-		    newUserId, email, tempPassword,
-		    Role.MANAGER_LOCAL.name(),
-		    request.getName().strip(),
-		    request.getSurname().strip(),
-		    request.getPhone(),
-		    request.getAdresse(),
-		    filialeId.toString(),
-		    agenceId.toString(),
-		    null,
-		    null
-		);
+        managerLocalRepository.save(managerLocal);
 
-		// Envoyer les noms au lieu des IDs
-		notificationEventPublisher.publishStaffCreated(
-		    newUserId.toString(),
-		    email,
-		    Role.MANAGER_LOCAL.name(),
-		    request.getName().strip(),
-		    request.getSurname().strip(),
-		    agence.getNom(),        // ← Nom de l'agence
-		    filiale.getNom(),       // ← Nom de la filiale
-		    caller.getUserId().toString(),
-		    getCallerFullName(caller)
-		);
+        eventPublisher.publishStaffToAuth(
+            newUserId, email, tempPassword,
+            Role.MANAGER_LOCAL.name(),
+            request.getName().strip(),
+            request.getSurname().strip(),
+            request.getPhone(),
+            request.getAdresse(),
+            filialeId.toString(),
+            agenceId.toString(),
+            null,
+            null
+        );
 
-		log.info("[MANAGER_GLOBAL] ManagerLocal créé | userId={} agence={} filiale={} par mg={}",
-		         newUserId, agence.getNom(), filiale.getNom(), caller.getUserId());
+        notificationEventPublisher.publishStaffCreated(
+            newUserId.toString(),
+            email,
+            Role.MANAGER_LOCAL.name(),
+            request.getName().strip(),
+            request.getSurname().strip(),
+            agence.getNom(),
+            filiale.getNom(),
+            caller.getUserId().toString(),
+            getCallerFullName(caller)
+        );
 
-		return toManagerLocalResponse(managerLocal);
-	}
+        log.info("[MANAGER_GLOBAL] ManagerLocal créé | userId={} agence={} filiale={} par mg={}",
+                 newUserId, agence.getNom(), filiale.getNom(), caller.getUserId());
+
+        return toManagerLocalResponse(managerLocal);
+    }
 
     // ── SUPPRESSION STAFF ───────────────────────────────────────────────────
 
