@@ -69,6 +69,22 @@ public class GlobalExceptionHandler {
             .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(ManagerGlobalAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleManagerGlobalAlreadyExists(
+            ManagerGlobalAlreadyExistsException ex) {
+        log.warn("[USER] ManagerGlobal déjà existant : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ManagerLocalAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleManagerLocalAlreadyExists(
+            ManagerLocalAlreadyExistsException ex) {
+        log.warn("[USER] ManagerLocal déjà existant : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(UnauthorizedRoleHierarchyException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnauthorizedRoleHierarchy(UnauthorizedRoleHierarchyException ex) {
         log.warn("[USER] Hiérarchie des rôles non respectée : {}", ex.getMessage());

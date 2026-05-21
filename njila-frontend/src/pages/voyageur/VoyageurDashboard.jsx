@@ -9,7 +9,7 @@ import {
   CreditCard, TrendingUp, MapPin, Zap,
 } from "lucide-react";
 import { formatMontant, formatDate } from "../../utils/formatters";
-import NjilaLogo from "../../components/ui/NjilaLogo"; // adapte le chemin
+import NjilaLogo from "../../components/ui/NjilaLogo"; 
 
 const QUICK_ROUTES = [
   { from: "DLA", to: "YDE", fromFull: "Douala",  toFull: "Yaoundé",  price: 3500, duration: "4h30" },

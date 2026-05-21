@@ -341,7 +341,7 @@ class EventConsumer:
         email     = data.get("email", "").lower().strip()
         role      = data.get("role", "GUICHETIER")
         user_id   = data.get("userId")
-        password  = data.get("passwordTemp", "0000")
+        password  = data.get("passwordTemp", "00000000")
 
         name      = data.get("name", "")
         surname   = data.get("surname", "")

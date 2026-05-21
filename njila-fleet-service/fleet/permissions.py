@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # Valeurs issues du payload JWT (cf. logs : "Role: MANAGER_GLOBAL")
 # ─────────────────────────────────────────────────────────────────────────────
 
-ROLE_ADMIN           = 'ADMIN'
+ROLE_ADMIN           = ('ADMIN', 'ADMINISTRATEUR')
 ROLE_MANAGER_GLOBAL  = 'MANAGER_GLOBAL'
 ROLE_MANAGER_LOCAL   = 'MANAGER_LOCAL'
 ROLE_GUICHETIER      = 'GUICHETIER'
@@ -97,17 +97,31 @@ def _ensure_authenticated(request):
 def _obj_agence_id(obj):
     """
     Extrait l'identifiant d'agence d'un objet modèle.
-    Gère plusieurs conventions de nommage possibles dans le projet.
+    Gère plusieurs conventions de nommage, y compris les Trajet
+    (qui passent par filiale_depart ou filiale_arrive).
     """
-    # Relation FK directe (champ agence_id généré par Django)
+    # FK directe agence (Agence, Filiale, Bus, Chauffeur, Guichetier…)
     for attr in ('agence_id', 'Id_agence_id'):
         val = getattr(obj, attr, None)
         if val is not None:
             return str(val)
-    # Relation FK objet (obj.agence.id ou obj.agence.id_agence)
+
+    # Relation FK objet (obj.agence.id_agence)
     agence = getattr(obj, 'agence', None)
     if agence is not None:
-        return str(getattr(agence, 'id', None) or getattr(agence, 'id_agence', None) or '')
+        return str(getattr(agence, 'id_agence', None) or getattr(agence, 'id', None) or '')
+
+    # ── Cas Trajet : pas de FK agence directe, passe par filiale_depart ──────
+    filiale_depart = getattr(obj, 'filiale_depart', None)
+    if filiale_depart is not None:
+        # filiale_depart.agence_id (clé FK Django) ou filiale_depart.agence.id_agence
+        val = getattr(filiale_depart, 'agence_id', None)
+        if val is not None:
+            return str(val)
+        agence = getattr(filiale_depart, 'agence', None)
+        if agence is not None:
+            return str(getattr(agence, 'id_agence', None) or getattr(agence, 'id', None) or '')
+
     return ''
 
 
@@ -159,7 +173,7 @@ class IsGuichetier(BasePermission):
         if not _ensure_authenticated(request):
             return False
         return _role(request) in (
-            ROLE_GUICHETIER, ROLE_MANAGER_LOCAL, ROLE_MANAGER_GLOBAL, ROLE_ADMIN
+            ROLE_GUICHETIER, ROLE_MANAGER_LOCAL, ROLE_MANAGER_GLOBAL, *ROLE_ADMIN
         )
 
 
@@ -178,12 +192,12 @@ class IsManagerLocal(BasePermission):
     def has_permission(self, request, view):
         if not _ensure_authenticated(request):
             return False
-        return _role(request) in (ROLE_MANAGER_LOCAL, ROLE_MANAGER_GLOBAL, ROLE_ADMIN)
+        return _role(request) in (ROLE_MANAGER_LOCAL, ROLE_MANAGER_GLOBAL, *ROLE_ADMIN)
 
     def has_object_permission(self, request, view, obj):
         role = _role(request)
 
-        if role == ROLE_ADMIN:
+        if role in ROLE_ADMIN:
             return True
 
         if role == ROLE_MANAGER_GLOBAL:
@@ -225,12 +239,12 @@ class IsManagerGlobal(BasePermission):
     def has_permission(self, request, view):
         if not _ensure_authenticated(request):
             return False
-        return _role(request) in (ROLE_MANAGER_GLOBAL, ROLE_ADMIN)
+        return _role(request) in (ROLE_MANAGER_GLOBAL, *ROLE_ADMIN)
 
     def has_object_permission(self, request, view, obj):
         role = _role(request)
 
-        if role == ROLE_ADMIN:
+        if role in ROLE_ADMIN:
             return True
 
         if role == ROLE_MANAGER_GLOBAL:
@@ -255,8 +269,7 @@ class IsAdmin(BasePermission):
     def has_permission(self, request, view):
         if not _ensure_authenticated(request):
             return False
-        return _role(request) == ROLE_ADMIN
-
+        return _role(request) in ROLE_ADMIN
 
 class IsChauffeur(BasePermission):
     """Chauffeurs et rôles supérieurs."""
@@ -267,7 +280,7 @@ class IsChauffeur(BasePermission):
         if not _ensure_authenticated(request):
             return False
         return _role(request) in (
-            ROLE_CHAUFFEUR, ROLE_MANAGER_LOCAL, ROLE_MANAGER_GLOBAL, ROLE_ADMIN
+            ROLE_CHAUFFEUR, ROLE_MANAGER_LOCAL, ROLE_MANAGER_GLOBAL, *ROLE_ADMIN
         )
 
 
@@ -353,7 +366,7 @@ class AgencePermission(BasePermission):
         role = _role(request)
 
         # ADMIN → accès total
-        if role == ROLE_ADMIN:
+        if role in ROLE_ADMIN:
             return True
 
         # MANAGER_GLOBAL → seulement sa propre agence
@@ -440,7 +453,7 @@ class FilialePermission(BasePermission):
 
         role = _role(request)
 
-        if role == ROLE_ADMIN:
+        if role in ROLE_ADMIN:
             return True
 
         # MANAGER_GLOBAL : peut modifier toutes les filiales de son agence

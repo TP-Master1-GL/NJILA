@@ -4,15 +4,13 @@ import uuid
 
 
 class RegisterSerializer(serializers.Serializer):
-    email   = serializers.EmailField()
+    email    = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True)
-
-    name    = serializers.CharField(max_length=100)            
-    surname = serializers.CharField(max_length=100)            
-    phone   = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True, default=None)
-    adresse = serializers.CharField(max_length=500, required=False, allow_blank=True, allow_null=True, default=None)
-
-    role = serializers.ChoiceField(
+    name     = serializers.CharField(max_length=100)
+    surname  = serializers.CharField(max_length=100)
+    phone    = serializers.CharField(max_length=20,  required=False, allow_blank=True, allow_null=True, default=None)
+    adresse  = serializers.CharField(max_length=500, required=False, allow_blank=True, allow_null=True, default=None)
+    role     = serializers.ChoiceField(
         choices=[c[0] for c in Role.choices], default=Role.VOYAGEUR,
     )
     photo_url  = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
@@ -37,7 +35,6 @@ class RegisterSerializer(serializers.Serializer):
         return value.strip()
 
     def validate_filiale_id(self, value):
-        """Convertit les chaînes vides en None et valide les UUID"""
         if not value or value == "":
             return None
         try:
@@ -47,7 +44,6 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError("Format d'UUID invalide.")
 
     def validate_agence_id(self, value):
-        """Convertit les chaînes vides en None et valide les UUID"""
         if not value or value == "":
             return None
         try:
@@ -82,6 +78,36 @@ class ResetPasswordSerializer(serializers.Serializer):
         return value
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CHANGE PASSWORD — nouveau serializer
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """
+    Serializer pour la modification du mot de passe depuis le profil connecté.
+    Champs :
+      old_password — mot de passe actuel (pour vérification)
+      new_password — nouveau mot de passe (min. 8 caractères)
+    """
+    old_password = serializers.CharField(min_length=1, write_only=True)
+    new_password = serializers.CharField(min_length=8, write_only=True)
+
+    def validate_new_password(self, value):
+        if len(value) < 8:
+            raise serializers.ValidationError(
+                "Le nouveau mot de passe doit contenir au moins 8 caractères."
+            )
+        return value
+
+    def validate(self, data):
+        # Vérification croisée : ancien ≠ nouveau (comparaison en clair avant hachage)
+        if data.get("old_password") == data.get("new_password"):
+            raise serializers.ValidationError(
+                {"new_password": "Le nouveau mot de passe doit être différent de l'ancien."}
+            )
+        return data
+
+
 class ValidateTokenSerializer(serializers.Serializer):
     token = serializers.CharField()
 
@@ -99,7 +125,6 @@ class PhotoUpdateSerializer(serializers.Serializer):
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
-    # AJOUT du champ email
     email   = serializers.EmailField(required=False, allow_null=True)
     name    = serializers.CharField(max_length=100, required=False, allow_null=True)
     surname = serializers.CharField(max_length=100, required=False, allow_null=True)
@@ -107,9 +132,7 @@ class ProfileUpdateSerializer(serializers.Serializer):
     adresse = serializers.CharField(max_length=500, required=False, allow_null=True)
 
     def validate_email(self, value):
-        """Validation optionnelle de l'email"""
         if value is not None:
-            # Si l'email est fourni, on le nettoie
             return value.lower().strip()
         return value
 

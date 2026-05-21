@@ -16,6 +16,7 @@ from authentication.middleware.auth_middleware import (
 from authentication.models import Role
 from authentication.serializers.auth_serializers import (
     AccountStatusSerializer,
+    ChangePasswordSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
     PhotoUpdateSerializer,
@@ -202,7 +203,7 @@ def register(request):
         401: OpenApiResponse(response=ErrorSerializer, description="Email ou mot de passe incorrect"),
         403: OpenApiResponse(
             response=ErrorSerializer,
-            description="Compte verrouillé (trop de tentatives) ou inactif. Si `code: SUBSCRIPTION_EXPIRED` → abonnement expiré.",
+            description="Compte verrouillé (trop de tentatives) ou inactif.",
         ),
     },
 )
@@ -265,14 +266,14 @@ def login(request):
         OpenApiParameter(
             name="all",
             location=OpenApiParameter.QUERY,
-            description="Si `true`, révoque **toutes** les sessions actives de l'utilisateur.",
+            description="Si `true`, révoque toutes les sessions actives.",
             required=False,
             type=bool,
             default=False,
         )
     ],
     responses={
-        204: OpenApiResponse(description="Déconnexion réussie (aucun corps de réponse)"),
+        204: OpenApiResponse(description="Déconnexion réussie"),
         401: OpenApiResponse(response=ErrorSerializer, description="Token manquant ou invalide"),
     },
 )
@@ -298,10 +299,6 @@ def logout(request):
 @extend_schema(
     tags=["Auth"],
     summary="Rafraîchir les tokens",
-    description=(
-        "Échange un refresh token valide contre une nouvelle paire access/refresh. "
-        "L'ancien refresh token est invalidé (rotation automatique)."
-    ),
     request=RefreshSerializer,
     responses={
         200: TokenPairResponseSerializer,
@@ -336,10 +333,6 @@ def refresh_token(request):
 @extend_schema(
     tags=["Mot de passe"],
     summary="Demande de réinitialisation",
-    description=(
-        "Envoie un email contenant un lien de réinitialisation si l'adresse est connue. "
-        "La réponse est identique dans tous les cas (protection anti-énumération d'emails)."
-    ),
     request=ForgotPasswordSerializer,
     responses={
         200: MessageResponseSerializer,
@@ -370,17 +363,10 @@ def forgot_password(request):
 @extend_schema(
     tags=["Mot de passe"],
     summary="Confirmer la réinitialisation",
-    description=(
-        "Valide le token reçu par email et applique le nouveau mot de passe. "
-        "Le token est à usage unique et expire après 1 heure."
-    ),
     request=ResetPasswordSerializer,
     responses={
         200: MessageResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorSerializer,
-            description="Token expiré/invalide ou nouveau mot de passe trop court (min. 8 caractères)",
-        ),
+        400: OpenApiResponse(response=ErrorSerializer, description="Token expiré/invalide"),
     },
 )
 @api_view(["POST"])
@@ -408,10 +394,9 @@ def reset_password(request):
 @extend_schema(
     tags=["Profil"],
     summary="Mon profil",
-    description="Retourne le profil complet de l'utilisateur actuellement authentifié.",
     responses={
         200: UserMeSerializer,
-        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié ou token invalide"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié"),
         404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
     },
 )
@@ -428,16 +413,11 @@ def me(request):
 @extend_schema(
     tags=["Profil"],
     summary="Mettre à jour le profil",
-    description=(
-        "Met à jour les données de profil de l'utilisateur connecté (PATCH partiel). "
-        "Seuls les champs fournis sont modifiés. "
-        "Champs disponibles : `name`, `surname`, `phone`, `adresse`, `email`."
-    ),
     request=ProfileUpdateSerializer,
     responses={
         200: UserMeSerializer,
         400: OpenApiResponse(response=ErrorSerializer, description="Données invalides"),
-        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié ou token invalide"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié"),
         404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
     },
 )
@@ -447,7 +427,7 @@ def me(request):
 def update_profile(request):
     from django.core.validators import validate_email
     from django.core.exceptions import ValidationError
-    
+
     serializer = ProfileUpdateSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -459,37 +439,30 @@ def update_profile(request):
     if user is None:
         return Response({"error": "Utilisateur introuvable."}, status=status.HTTP_404_NOT_FOUND)
 
-    data = serializer.validated_data
+    data           = serializer.validated_data
     updated_fields = []
-    email_changed = False
-    old_email = user.email
+    email_changed  = False
+    old_email      = user.email
 
-    # Mise à jour de l'email
     if "email" in data and data["email"] is not None:
         new_email = data["email"].lower().strip()
-        
-        # Validation de l'email
         try:
             validate_email(new_email)
         except ValidationError:
-            return Response(
-                {"error": "Email invalide."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Vérifier si l'email n'est pas déjà pris
+            return Response({"error": "Email invalide."}, status=status.HTTP_400_BAD_REQUEST)
+
         if new_email != user.email:
             from authentication.repositories.auth_repository import AuthRepository
             repo = AuthRepository()
             if repo.exists_by_email(new_email):
                 return Response(
                     {"error": "Cet email est déjà utilisé par un autre compte."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            user.email = new_email
-            updated_fields.append("email")
+            user.email    = new_email
             email_changed = True
-            logger.info(f"[UPDATE] Email changé pour user={user.id}: {old_email} -> {new_email}")
+            updated_fields.append("email")
+            logger.info("[UPDATE] Email changé pour user=%s : %s → %s", user.id, old_email, new_email)
 
     if "name"    in data and data["name"]    is not None:
         user.name    = data["name"];    updated_fields.append("name")
@@ -504,30 +477,24 @@ def update_profile(request):
         updated_fields.append("updated_at")
         user.save(update_fields=updated_fields)
 
-        # Publier l'événement de mise à jour
         try:
             from authentication.events.publisher import EventPublisher
             publisher = EventPublisher()
-            
-            # Toujours publier une mise à jour (même sans changement d'email)
             publisher.publish_user_updated(
                 user_id       = str(user.id),
                 email         = user.email,
                 email_changed = email_changed,
                 photo_url     = user.photo_url,
             )
-            
-            # Si l'email a changé, invalider tous les tokens
             if email_changed:
                 from authentication.repositories.auth_repository import AuthRepository
                 from authentication.services.redis_cache import RedisSessionCache
-                repo = AuthRepository()
+                repo  = AuthRepository()
                 cache = RedisSessionCache()
                 repo.invalidate_all(str(user.id))
                 cache.delete_all_user_sessions(str(user.id))
                 cache.delete_refresh_token(str(user.id))
-                logger.info(f"[UPDATE] Tokens invalidés pour user={user.id} après changement d'email")
-                
+                logger.info("[UPDATE] Tokens invalidés pour user=%s après changement email", user.id)
         except Exception as e:
             logger.warning("[VIEW] Événement profile update non envoyé : %s", e)
 
@@ -537,18 +504,11 @@ def update_profile(request):
 @extend_schema(
     tags=["Profil"],
     summary="Mettre à jour la photo de profil",
-    description=(
-        "Remplace l'URL de la photo de profil de l'utilisateur connecté. "
-        "L'URL doit obligatoirement utiliser HTTPS."
-    ),
     request=PhotoUpdateSerializer,
     responses={
         200: PhotoResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorSerializer,
-            description="URL invalide ou ne commence pas par HTTPS",
-        ),
-        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié ou token invalide"),
+        400: OpenApiResponse(response=ErrorSerializer, description="URL invalide"),
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié"),
         404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
     },
 )
@@ -574,14 +534,94 @@ def update_photo(request):
     return Response({"message": "Photo de profil mise à jour.", "photoUrl": user.photo_url})
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CHANGE PASSWORD — nouveau endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+@extend_schema(
+    tags=["Profil"],
+    summary="Modifier le mot de passe",
+    description=(
+        "Modifie le mot de passe de l'utilisateur connecté. "
+        "Vérifie l'ancien mot de passe avant d'appliquer le nouveau. "
+        "Invalide toutes les sessions actives après la modification."
+    ),
+    request=ChangePasswordSerializer,
+    responses={
+        200: MessageResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorSerializer,
+            description="Ancien mot de passe incorrect ou nouveau mot de passe invalide (min. 8 caractères)",
+        ),
+        401: OpenApiResponse(response=ErrorSerializer, description="Non authentifié ou token invalide"),
+        404: OpenApiResponse(response=ErrorSerializer, description="Utilisateur introuvable"),
+    },
+)
+@api_view(["POST"])
+@authentication_classes([NjilaJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    serializer = ChangePasswordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"error": "Données invalides.", "details": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ── Récupérer l'utilisateur depuis le cache / DB ──────────────────────
+    from authentication.models import NjilaUser
+    try:
+        user = NjilaUser.objects.get(pk=request.user.id)
+    except NjilaUser.DoesNotExist:
+        return Response({"error": "Utilisateur introuvable."}, status=status.HTTP_404_NOT_FOUND)
+
+    old_password = serializer.validated_data["old_password"]
+    new_password = serializer.validated_data["new_password"]
+
+    # ── Vérifier l'ancien mot de passe ────────────────────────────────────
+    from django.contrib.auth.hashers import check_password
+    if not check_password(old_password, user.password):
+        return Response(
+            {"error": "Mot de passe actuel incorrect."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ── Refuser si ancien == nouveau ──────────────────────────────────────
+    if check_password(new_password, user.password):
+        return Response(
+            {"error": "Le nouveau mot de passe doit être différent de l'ancien."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ── Appliquer le nouveau mot de passe ─────────────────────────────────
+    user.set_password(new_password)
+    user.save(update_fields=["password", "updated_at"])
+    logger.info("[AUTH] Mot de passe modifié pour user=%s", user.id)
+
+    # ── Invalider toutes les sessions (forcer reconnexion) ────────────────
+    try:
+        from authentication.repositories.auth_repository import AuthRepository
+        from authentication.services.redis_cache import RedisSessionCache
+        repo  = AuthRepository()
+        cache = RedisSessionCache()
+        repo.invalidate_all(str(user.id))
+        cache.delete_all_user_sessions(str(user.id))
+        cache.delete_refresh_token(str(user.id))
+        _auth_service.invalidate_profile_cache(str(user.id))
+        logger.info("[AUTH] Sessions invalidées après changement MDP pour user=%s", user.id)
+    except Exception as e:
+        logger.warning("[AUTH] Sessions non invalidées après changement MDP : %s", e)
+
+    return Response({"message": "Mot de passe modifié avec succès."})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VALIDATE TOKEN
+# ─────────────────────────────────────────────────────────────────────────────
+
 @extend_schema(
     tags=["Interne"],
     summary="Valider un token JWT (usage inter-services)",
-    description=(
-        "Endpoint réservé aux services internes. "
-        "Vérifie la validité d'un access token et retourne son payload décodé. "
-        "Requiert le header `X-Internal-Token` avec le secret partagé."
-    ),
     request=ValidateTokenSerializer,
     responses={
         200: ValidateTokenResponseSerializer,
@@ -615,19 +655,18 @@ def validate_token(request):
     })
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ACCOUNT STATUS
+# ─────────────────────────────────────────────────────────────────────────────
+
 @extend_schema(
     tags=["Administration"],
     summary="Modifier le statut d'un compte",
-    description=(
-        "Active ou désactive/suspend le compte d'un utilisateur. "
-        "Réservé au rôle `ADMINISTRATEUR`. "
-        "Valeurs possibles pour `status` : `active`, `inactive`, `suspended`."
-    ),
     parameters=[
         OpenApiParameter(
             name="user_id",
             location=OpenApiParameter.PATH,
-            description="UUID de l'utilisateur dont le statut doit être modifié.",
+            description="UUID de l'utilisateur.",
             required=True,
             type=str,
         )
@@ -663,6 +702,9 @@ def account_status(request, user_id: str):
     })
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SYNC ADMIN (utilitaire)
+# ─────────────────────────────────────────────────────────────────────────────
 
 @api_view(["POST"])
 @authentication_classes([])
@@ -671,75 +713,64 @@ def sync_admin(request):
     """Force la synchronisation du compte admin avec user-service."""
     from authentication.models import NjilaUser
     from authentication.events.publisher import EventPublisher
-    
-    email = "ronelmaamoc52@gmail.com"
-    name = "ronel"
-    surname = "maamoc"
+
+    email    = "ronelmaamoc52@gmail.com"
+    name     = "ronel"
+    surname  = "maamoc"
     password = "Ronel789"
-    role = "ADMINISTRATEUR"
-    
-    created = False
-    
+    role     = "ADMINISTRATEUR"
+    created  = False
+
     try:
-        # Vérifier si l'utilisateur existe déjà
         user = NjilaUser.objects.filter(email=email).first()
-        
+
         if user:
-            # Mettre à jour les informations existantes
-            user.name = name
+            user.name    = name
             user.surname = surname
-            user.role = role
-            # Ne pas changer le mot de passe s'il existe déjà
-            # user.set_password(password)  # Décommentez pour forcer la mise à jour du mot de passe
+            user.role    = role
             user.save()
             print(f"Admin mis à jour: {user.email}")
         else:
-            # Créer le nouvel utilisateur admin
             user = NjilaUser.objects.create_user(
-                email=email,
-                name=name,
-                surname=surname,
-                password=password,
-                role=role,
-                phone="",
-                adresse="",
-                photo_url="",
-                is_active=True
+                email     = email,
+                name      = name,
+                surname   = surname,
+                password  = password,
+                role      = role,
+                phone     = "",
+                adresse   = "",
+                photo_url = "",
+                is_active = True,
             )
             created = True
             print(f"Admin créé avec succès: {user.email}")
-        
-        # Publier l'événement vers user-service
+
         publisher = EventPublisher()
-        
         publisher.publish_user_registered(
-            user_id=str(user.id),
-            email=user.email,
-            name=user.name,
-            surname=user.surname,
-            role=user.role,
-            phone=user.phone or "",
-            adresse=user.adresse or "",
-            photo_url=user.photo_url or "",
-            filiale_id=getattr(user, 'filiale_id', None),
-            agence_id=getattr(user, 'agence_id', None)
+            user_id    = str(user.id),
+            email      = user.email,
+            name       = user.name,
+            surname    = user.surname,
+            role       = user.role,
+            phone      = user.phone    or "",
+            adresse    = user.adresse  or "",
+            photo_url  = user.photo_url or "",
+            filiale_id = getattr(user, "filiale_id", None),
+            agence_id  = getattr(user, "agence_id",  None),
         )
-        
+
         return Response({
             "success": True,
             "message": "Admin créé et synchronisé" if created else "Admin existant synchronisé",
-            "userId": str(user.id),
-            "email": user.email,
-            "name": user.name,
+            "userId":  str(user.id),
+            "email":   user.email,
+            "name":    user.name,
             "surname": user.surname,
-            "role": user.role,
-            "created": created
+            "role":    user.role,
+            "created": created,
         })
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return Response({
-            "success": False,
-            "error": str(e)
-        }, status=500)
+        return Response({"success": False, "error": str(e)}, status=500)

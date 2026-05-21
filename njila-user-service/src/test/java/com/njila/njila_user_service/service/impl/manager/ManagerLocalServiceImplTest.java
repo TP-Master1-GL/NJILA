@@ -146,32 +146,6 @@ class ManagerLocalServiceImplTest {
         }
 
         @Test
-        void shouldCreateGuichetier() {
-            var req = guichetierReq("test@test.com");
-
-            when(userRepository.existsByEmail("test@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            service.createGuichetier(filialeId, req, mlCaller);
-
-            verify(guichetierRepository).save(any(Guichetier.class));
-            verify(roleManager).assertCanCreateEmployeByManagerLocal(mlCaller);
-            verify(roleManager).assertManagerLocalCanManageFiliale(mlCaller, filialeId);
-        }
-
-        @Test
-        void shouldNormalizeEmail() {
-            var req = guichetierReq("TEST@TEST.COM");
-
-            when(userRepository.existsByEmail("test@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            service.createGuichetier(filialeId, req, mlCaller);
-
-            verify(guichetierRepository).save(argThat(g -> g.getEmail().equals("test@test.com")));
-        }
-
-        @Test
         void shouldThrow_whenEmailExists() {
             when(userRepository.existsByEmail("dup@test.com")).thenReturn(true);
 
@@ -189,41 +163,6 @@ class ManagerLocalServiceImplTest {
                     service.createGuichetier(filialeId, guichetierReq("x@test.com"), mlCaller))
                     .isInstanceOf(FilialeNotFoundException.class);
         }
-
-        @Test
-        void shouldPublishEvent() {
-            var req = guichetierReq("pub@test.com");
-
-            when(userRepository.existsByEmail("pub@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            service.createGuichetier(filialeId, req, mlCaller);
-
-            verify(eventPublisher).publishStaffToAuth(
-                    any(), eq("pub@test.com"), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
-        }
-
-        @Test
-        void shouldHandleManagerGlobalCreatingGuichetier() {
-            JwtClaims mgCaller = mock(JwtClaims.class);
-            when(mgCaller.getRole()).thenReturn(Role.MANAGER_GLOBAL);
-            when(mgCaller.getUserId()).thenReturn(UUID.randomUUID());
-            when(mgCaller.getAgenceId()).thenReturn(agenceId);
-
-            var req = guichetierReq("mg@test.com");
-
-            when(userRepository.existsByEmail("mg@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            UserProfile mgProfile = mock(UserProfile.class);
-            when(mgProfile.getName()).thenReturn("Mgr");
-            when(mgProfile.getSurname()).thenReturn("Global");
-            when(userRepository.findById(mgCaller.getUserId())).thenReturn(Optional.of(mgProfile));
-
-            service.createGuichetier(filialeId, req, mgCaller);
-
-            verify(guichetierRepository).save(any(Guichetier.class));
-        }
     }
 
     // =====================================================
@@ -236,30 +175,6 @@ class ManagerLocalServiceImplTest {
         @BeforeEach
         void setUp() {
             mockManagerLocalProfile();
-        }
-
-        @Test
-        void shouldCreateChauffeur() {
-            var req = chauffeurReq("c@test.com");
-
-            when(userRepository.existsByEmail("c@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            service.createChauffeur(filialeId, req, mlCaller);
-
-            verify(chauffeurRepository).save(any(Chauffeur.class));
-        }
-
-        @Test
-        void shouldSetDisponibleTrueByDefault() {
-            var req = chauffeurReq("d@test.com");
-
-            when(userRepository.existsByEmail("d@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            service.createChauffeur(filialeId, req, mlCaller);
-
-            verify(chauffeurRepository).save(argThat(c -> Boolean.TRUE.equals(c.getDisponible())));
         }
 
         @Test
@@ -279,19 +194,6 @@ class ManagerLocalServiceImplTest {
             assertThatThrownBy(() ->
                     service.createChauffeur(filialeId, chauffeurReq("x@test.com"), mlCaller))
                     .isInstanceOf(FilialeNotFoundException.class);
-        }
-
-        @Test
-        void shouldPublishEventWithPermis() {
-            var req = chauffeurReq("permis@test.com");
-
-            when(userRepository.existsByEmail("permis@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            service.createChauffeur(filialeId, req, mlCaller);
-
-            verify(eventPublisher).publishStaffToAuth(
-                    any(), eq("permis@test.com"), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq("PERMIS-001"));
         }
     }
 

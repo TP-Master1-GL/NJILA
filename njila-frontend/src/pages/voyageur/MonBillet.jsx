@@ -459,9 +459,6 @@ export default function MonBillet() {
 
         {/* ── Actions ── */}
         <div className="no-print mt-5 flex gap-3">
-          <Button variant="primary" size="lg" className="flex-1" onClick={handleTelechargerPdf}>
-            <Download className="w-4 h-4 mr-1.5" /> PDF
-          </Button>
           <Button variant="secondary" size="lg" className="flex-1" onClick={handleImprimer}>
             <Printer className="w-4 h-4 mr-1.5" /> Imprimer
           </Button>

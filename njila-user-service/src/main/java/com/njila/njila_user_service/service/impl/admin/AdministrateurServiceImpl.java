@@ -8,6 +8,7 @@ import com.njila.njila_user_service.entity.UserProfile;
 import com.njila.njila_user_service.enums.Role;
 import com.njila.njila_user_service.exception.AgenceNotFoundException;
 import com.njila.njila_user_service.exception.EmailAlreadyExistsException;
+import com.njila.njila_user_service.exception.ManagerGlobalAlreadyExistsException;
 import com.njila.njila_user_service.exception.ProfileNotFoundException;
 import com.njila.njila_user_service.middleware.JwtClaims;
 import com.njila.njila_user_service.repository.AgenceRepository;
@@ -45,68 +46,71 @@ public class AdministrateurServiceImpl implements AdministrateurService {
             .orElse("Admin");
     }
 
-    // Dans createManagerGlobal, remplacer l'appel à notificationEventPublisher
-	@Override
-	@Transactional
-	public ManagerGlobalResponse createManagerGlobal(CreateManagerGlobalRequest request, JwtClaims caller) {
-		roleManager.assertIsAdmin(caller);
-		
-		String email = request.getEmail().toLowerCase().strip();
-		if (userRepository.existsByEmail(email)) {
-		    throw new EmailAlreadyExistsException(email);
-		}
-		
-		UUID agenceId = UUID.fromString(request.getAgenceId());
-		Agence agence = agenceRepository.findById(agenceId)
-		    .orElseThrow(() -> new AgenceNotFoundException(request.getAgenceId()));
-		
-		UUID newUserId = UUID.randomUUID();
-		String tempPassword = "000000";
-		
-		ManagerGlobal managerGlobal = ManagerGlobal.builder()
-		    .idUser(newUserId)
-		    .name(request.getName().strip())
-		    .surname(request.getSurname().strip())
-		    .email(email)
-		    .phone(request.getPhone())
-		    .adresse(request.getAdresse())
-		    .agenceId(agenceId)
-		    .isActive(true)
-		    .build();
-		
-		managerGlobalRepository.save(managerGlobal);
-		
-		eventPublisher.publishStaffToAuth(
-		    newUserId, email, tempPassword,
-		    Role.MANAGER_GLOBAL.name(),
-		    request.getName().strip(),
-		    request.getSurname().strip(),
-		    request.getPhone(),
-		    request.getAdresse(),
-		    null,
-		    agenceId.toString(),
-		    null,
-		    null
-		);
-		
-		// Maintenant on envoie directement le nom de l'agence
-		notificationEventPublisher.publishStaffCreated(
-		    newUserId.toString(),
-		    email,
-		    Role.MANAGER_GLOBAL.name(),
-		    request.getName().strip(),
-		    request.getSurname().strip(),
-		    agence.getNom(),  // ← On envoie le nom de l'agence directement
-		    null,  // Pas de filiale pour ManagerGlobal
-		    caller.getUserId().toString(),
-		    getCallerFullName(caller)
-		);
-		
-		log.info("[ADMIN] ManagerGlobal créé | userId={} agence={} par admin={}", 
-		         newUserId, agence.getNom(), caller.getUserId());
-		
-		return toResponse(managerGlobal);
-	}
+    @Override
+    @Transactional
+    public ManagerGlobalResponse createManagerGlobal(CreateManagerGlobalRequest request, JwtClaims caller) {
+        roleManager.assertIsAdmin(caller);
+
+        String email = request.getEmail().toLowerCase().strip();
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(email);
+        }
+
+        UUID agenceId = UUID.fromString(request.getAgenceId());
+        Agence agence = agenceRepository.findById(agenceId)
+            .orElseThrow(() -> new AgenceNotFoundException(request.getAgenceId()));
+
+        // Vérification : une agence ne peut avoir qu'un seul ManagerGlobal
+        if (managerGlobalRepository.existsByAgenceId(agenceId)) {
+            throw new ManagerGlobalAlreadyExistsException(agence.getNom());
+        }
+
+        UUID newUserId = UUID.randomUUID();
+        String tempPassword = "00000000";
+
+        ManagerGlobal managerGlobal = ManagerGlobal.builder()
+            .idUser(newUserId)
+            .name(request.getName().strip())
+            .surname(request.getSurname().strip())
+            .email(email)
+            .phone(request.getPhone())
+            .adresse(request.getAdresse())
+            .agenceId(agenceId)
+            .isActive(true)
+            .build();
+
+        managerGlobalRepository.save(managerGlobal);
+
+        eventPublisher.publishStaffToAuth(
+            newUserId, email, tempPassword,
+            Role.MANAGER_GLOBAL.name(),
+            request.getName().strip(),
+            request.getSurname().strip(),
+            request.getPhone(),
+            request.getAdresse(),
+            null,
+            agenceId.toString(),
+            null,
+            null
+        );
+
+        notificationEventPublisher.publishStaffCreated(
+            newUserId.toString(),
+            email,
+            Role.MANAGER_GLOBAL.name(),
+            request.getName().strip(),
+            request.getSurname().strip(),
+            agence.getNom(),
+            null,
+            caller.getUserId().toString(),
+            getCallerFullName(caller)
+        );
+
+        log.info("[ADMIN] ManagerGlobal créé | userId={} agence={} par admin={}",
+                 newUserId, agence.getNom(), caller.getUserId());
+
+        return toResponse(managerGlobal);
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -122,10 +126,10 @@ public class AdministrateurServiceImpl implements AdministrateurService {
     @CacheEvict(value = "profiles", key = "#managerId.toString()")
     public void deleteManagerGlobal(UUID managerId, JwtClaims caller) {
         roleManager.assertIsAdmin(caller);
-        
+
         ManagerGlobal managerGlobal = managerGlobalRepository.findById(managerId)
             .orElseThrow(() -> new RuntimeException("ManagerGlobal non trouvé"));
-        
+
         notificationEventPublisher.publishStaffDeleted(
             managerGlobal.getIdUser().toString(),
             managerGlobal.getEmail(),
@@ -135,11 +139,11 @@ public class AdministrateurServiceImpl implements AdministrateurService {
             caller.getUserId().toString(),
             getCallerFullName(caller)
         );
-        
+
         managerGlobalRepository.delete(managerGlobal);
         log.info("[ADMIN] ManagerGlobal supprimé | userId={} par admin={}", managerId, caller.getUserId());
     }
-    
+
     private ManagerGlobalResponse toResponse(ManagerGlobal mg) {
         return ManagerGlobalResponse.builder()
             .idUser(mg.getIdUser())

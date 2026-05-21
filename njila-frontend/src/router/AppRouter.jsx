@@ -11,6 +11,7 @@ import SearchResultsPage   from "../pages/public/SearchResultsPage";
 import SeatSelectionPage   from "../pages/public/SeatSelectionPage";
 import PaymentPage         from "../pages/public/PaymentPage";
 import NotFoundPage        from "../pages/public/NotFoundPage";
+import AgenceProfilPage    from "../pages/public/AgenceProfilPage";
 
 // Voyageur
 import VoyageurDashboard   from "../pages/voyageur/VoyageurDashboard";
@@ -57,6 +58,7 @@ export default function AppRouter() {
         <Route path="/recherche"                  element={<SearchResultsPage />} />
         <Route path="/selection-places/:voyageId" element={<SeatSelectionPage />} />
         <Route path="/paiement"                   element={<PaymentPage />} />
+        <Route path="/agences/:id_agence" element={<AgenceProfilPage />} />
 
         {/* ── Voyageur ──────────────────────────────────────────────────── */}
         <Route path="/voyageur" element={

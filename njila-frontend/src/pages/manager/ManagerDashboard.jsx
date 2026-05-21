@@ -1,16 +1,13 @@
 /**
  * ManagerDashboard.jsx
  *
- * Dashboard unifié :
- *  - MANAGER_GLOBAL : voit toutes les filiales de son agence, recettes agence entières
- *                     Vue personnel hiérarchique : par filiale → manager-local, guichetiers, chauffeurs
- *  - MANAGER_LOCAL  : voit uniquement sa filiale, ses recettes, ses guichetiers et chauffeurs
+ * CORRECTION : trajets et voyages sont désormais récupérés via le profil
+ * public de l'agence (/api/agences/{agenceId}/profil/) et non via les
+ * endpoints /api/trajets/ et /api/voyages/ qui retournaient toutes les agences.
  *
- * Corrections :
- *  1. Recettes → utilisation des IDs (UUID) au lieu des codes
- *  2. Personnel Manager Global → vue hiérarchique par filiale
- *  3. Personnel Manager Local → guichetiers + chauffeurs de sa filiale uniquement
- *  4. Chaque employé affiche son rôle précis
+ * Manager Global  → tous les trajets et voyages de son agence
+ * Manager Local   → trajets où sa filiale est départ ou arrivée
+ *                   voyages dont la filiale de départ = sa filiale
  */
 
 import { useState } from "react";
@@ -25,7 +22,7 @@ import {
   Search, Plus, Edit2, Eye, DollarSign, Activity,
   Navigation, ArrowUpRight, ArrowDownRight,
   Smartphone, Banknote, ChevronDown, ChevronUp,
-  UserCheck, RefreshCw, ChevronRight,
+  RefreshCw, ChevronRight,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Spinner from "../../components/ui/Spinner";
@@ -46,7 +43,6 @@ const CANAL_COLORS = {
   total:   { bg: "#F8FAFC", text: "#0F172A", bar: "#0F172A", icon: DollarSign },
 };
 
-// Labels rôles
 const ROLE_LABELS = {
   MANAGER_GLOBAL: "Manager Global",
   MANAGER_LOCAL:  "Manager Local",
@@ -64,7 +60,15 @@ const ROLE_STYLES = {
   ADMIN:          "bg-slate-100 text-slate-600",
 };
 
-// ─── Tooltip recharts ─────────────────────────────────────────────────────────
+const STATUT_CONFIG = {
+  programme: { label: "Planifié",  color: "text-emerald-600", bg: "bg-emerald-50" },
+  confirme:  { label: "Confirmé",  color: "text-blue-600",    bg: "bg-blue-50"    },
+  en_cours:  { label: "En cours",  color: "text-indigo-600",  bg: "bg-indigo-50"  },
+  termine:   { label: "Terminé",   color: "text-slate-500",   bg: "bg-slate-50"   },
+  annule:    { label: "Annulé",    color: "text-red-600",     bg: "bg-red-50"     },
+  retarde:   { label: "Retardé",   color: "text-amber-600",   bg: "bg-amber-50"   },
+};
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -79,9 +83,6 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// KPI Card
-// ─────────────────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, icon: Icon, iconBg, iconColor, badge, badgePositive }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-3">
@@ -109,9 +110,6 @@ function KpiCard({ label, value, sub, icon: Icon, iconBg, iconColor, badge, badg
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Canal Pill
-// ─────────────────────────────────────────────────────────────────────────────
 function CanalPill({ icon: Icon, label, montant, pct, color }) {
   return (
     <div className="flex items-center justify-between px-3 py-2 rounded-xl"
@@ -132,9 +130,6 @@ function CanalPill({ icon: Icon, label, montant, pct, color }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RecettesCard
-// ─────────────────────────────────────────────────────────────────────────────
 function RecettesCard({ data, isLoading, titre = "Recettes" }) {
   const recetteTotale  = Number(data?.recetteTotale)  || 0;
   const recetteEnLigne = Number(data?.recetteEnLigne) || 0;
@@ -145,8 +140,8 @@ function RecettesCard({ data, isLoading, titre = "Recettes" }) {
   const pctGuichet     = Number(data?.partGuichetPct) || 0;
 
   const pieData = [
-    { name: "En ligne",  value: recetteEnLigne,  fill: CANAL_COLORS.enligne.bar },
-    { name: "Guichet",   value: recetteGuichet,  fill: CANAL_COLORS.guichet.bar },
+    { name: "En ligne", value: recetteEnLigne, fill: CANAL_COLORS.enligne.bar },
+    { name: "Guichet",  value: recetteGuichet, fill: CANAL_COLORS.guichet.bar },
   ];
 
   return (
@@ -155,20 +150,16 @@ function RecettesCard({ data, isLoading, titre = "Recettes" }) {
         <h3 className="font-extrabold text-slate-900">{titre}</h3>
         <span className="text-xs text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">XAF</span>
       </div>
-
       {isLoading ? (
         <Spinner size="md" className="py-10" />
       ) : (
         <>
           <div className="text-center mb-6">
-            <p className="text-4xl font-black text-slate-900">
-              {formatMontant(recetteTotale)}
-            </p>
+            <p className="text-4xl font-black text-slate-900">{formatMontant(recetteTotale)}</p>
             <p className="text-xs text-slate-400 mt-1">
               {(nbEnLigne + nbGuichet).toLocaleString("fr")} réservations payées
             </p>
           </div>
-
           {recetteTotale > 0 && (
             <div className="mb-5">
               <ResponsiveContainer width="100%" height={160}>
@@ -185,7 +176,6 @@ function RecettesCard({ data, isLoading, titre = "Recettes" }) {
               </ResponsiveContainer>
             </div>
           )}
-
           <div className="space-y-2">
             <CanalPill
               icon={CANAL_COLORS.enligne.icon}
@@ -208,12 +198,8 @@ function RecettesCard({ data, isLoading, titre = "Recettes" }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Filiale Card (Manager Global uniquement)
-// ─────────────────────────────────────────────────────────────────────────────
 function FilialeCard({ filiale, recettes, onViewDetail, onEdit }) {
   const [expanded, setExpanded] = useState(false);
-
   const recetteTotale  = Number(recettes?.recetteTotale)  || 0;
   const recetteEnLigne = Number(recettes?.recetteEnLigne) || 0;
   const recetteGuichet = Number(recettes?.recetteGuichet) || 0;
@@ -236,7 +222,6 @@ function FilialeCard({ filiale, recettes, onViewDetail, onEdit }) {
           {filiale.est_active ? "Actif" : "Inactif"}
         </span>
       </div>
-
       <div className="grid grid-cols-3 gap-2 pb-4 border-b border-slate-100 mb-4">
         {[
           { label: "Bus",      value: filiale.nb_bus },
@@ -249,7 +234,6 @@ function FilialeCard({ filiale, recettes, onViewDetail, onEdit }) {
           </div>
         ))}
       </div>
-
       {recettes && (
         <>
           <button
@@ -257,9 +241,7 @@ function FilialeCard({ filiale, recettes, onViewDetail, onEdit }) {
             className="w-full flex items-center justify-between text-xs font-semibold text-slate-500 hover:text-slate-700 mb-2"
           >
             <span>Recettes — {formatCompact(recetteTotale)}</span>
-            {expanded
-              ? <ChevronUp className="w-3.5 h-3.5" />
-              : <ChevronDown className="w-3.5 h-3.5" />}
+            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
           {expanded && (
             <div className="space-y-1.5 mb-3">
@@ -285,7 +267,6 @@ function FilialeCard({ filiale, recettes, onViewDetail, onEdit }) {
           )}
         </>
       )}
-
       <div className="flex gap-2">
         <button
           onClick={() => onViewDetail(filiale)}
@@ -304,14 +285,10 @@ function FilialeCard({ filiale, recettes, onViewDetail, onEdit }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Employé Card — affiche le rôle précis
-// ─────────────────────────────────────────────────────────────────────────────
 function EmployeCard({ employe, onEdit }) {
   const role = employe.role || "GUICHETIER";
   const roleLabel = ROLE_LABELS[role] || role;
   const roleStyle = ROLE_STYLES[role] || "bg-slate-100 text-slate-600";
-
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-center gap-4">
       <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -351,32 +328,9 @@ function EmployeCard({ employe, onEdit }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Filiale Personnel Block — Vue hiérarchique par filiale (Manager Global)
-// ─────────────────────────────────────────────────────────────────────────────
 function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
   const [collapsed, setCollapsed] = useState(false);
-
   const filialeId = filiale.id || filiale.id_filiale;
-
-  // Manager local de la filiale
-  const { data: managersLocaux = [] } = useQuery({
-    queryKey: ["managers-locaux-filiale", filialeId],
-    queryFn: async () => {
-      try {
-        const staff = await userService.listStaffByAgence
-          ? userService.listEmployesByFiliale?.(filialeId) || []
-          : [];
-        // Filtrer les MANAGER_LOCAL parmi les employés
-        //return (staff || []).filter(e => e.role === "MANAGER_LOCAL");
-        return (staff || []);
-      } catch {
-        return [];
-      }
-    },
-    enabled: !!filialeId,
-    staleTime: 3 * 60 * 1000,
-  });
 
   const { data: guichetiers = [] } = useQuery({
     queryKey: ["guichetiers-filiale", filialeId],
@@ -384,7 +338,6 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
     enabled: !!filialeId,
     staleTime: 3 * 60 * 1000,
   });
-
   const { data: chauffeurs = [] } = useQuery({
     queryKey: ["chauffeurs-filiale", filialeId],
     queryFn: () => userService.listChauffeursByFiliale(filialeId).catch(() => []),
@@ -393,7 +346,6 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
   });
 
   const allEmployes = [
-    ...managersLocaux.map(e => ({ ...e, role: "MANAGER_LOCAL" })),
     ...guichetiers.map(e => ({ ...e, role: "GUICHETIER" })),
     ...chauffeurs.map(e => ({ ...e, role: "CHAUFFEUR" })),
   ];
@@ -403,11 +355,8 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
       .toLowerCase().includes(searchEmploye.toLowerCase())
   );
 
-  const totalCount = allEmployes.length;
-
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-      {/* En-tête filiale */}
       <button
         onClick={() => setCollapsed(v => !v)}
         className="w-full flex items-center justify-between px-5 py-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-100"
@@ -418,17 +367,13 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
           </div>
           <div className="text-left">
             <p className="font-bold text-slate-900 text-sm">{filiale.nom}</p>
-            <p className="text-xs text-slate-500">{filiale.ville} — {totalCount} employé{totalCount !== 1 ? "s" : ""}</p>
+            <p className="text-xs text-slate-500">
+              {filiale.ville} — {allEmployes.length} employé{allEmployes.length !== 1 ? "s" : ""}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Badges compteurs */}
           <div className="flex items-center gap-2">
-            {managersLocaux.length > 0 && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                {managersLocaux.length} Mgr
-              </span>
-            )}
             {guichetiers.length > 0 && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
                 {guichetiers.length} Guich.
@@ -440,73 +385,33 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
               </span>
             )}
           </div>
-          {collapsed
-            ? <ChevronDown className="w-4 h-4 text-slate-400" />
-            : <ChevronUp className="w-4 h-4 text-slate-400" />}
+          {collapsed ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronUp className="w-4 h-4 text-slate-400" />}
         </div>
       </button>
-
-      {/* Contenu déplié */}
       {!collapsed && (
         <div className="p-4">
           {filtered.length === 0 ? (
             <p className="text-center text-slate-400 text-sm py-6">
-              {searchEmploye ? "Aucun résultat pour cette recherche." : "Aucun employé dans cette filiale."}
+              {searchEmploye ? "Aucun résultat." : "Aucun employé dans cette filiale."}
             </p>
           ) : (
             <div className="space-y-4">
-              {/* Manager Local */}
-              {filtered.filter(e => e.role === "MANAGER_LOCAL").length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-purple-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 inline-block" />
-                    Manager Local
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {filtered.filter(e => e.role === "MANAGER_LOCAL").map((e, i) => (
-                      <EmployeCard
-                        key={e.id || e.Id_guichetier || i}
-                        employe={e}
-                        onEdit={onEdit}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Guichetiers */}
               {filtered.filter(e => e.role === "GUICHETIER").length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
-                    Guichetiers
-                  </p>
+                  <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">Guichetiers</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {filtered.filter(e => e.role === "GUICHETIER").map((e, i) => (
-                      <EmployeCard
-                        key={e.Id_guichetier || e.id || i}
-                        employe={e}
-                        onEdit={onEdit}
-                      />
+                      <EmployeCard key={e.Id_guichetier || i} employe={e} onEdit={onEdit} />
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* Chauffeurs */}
               {filtered.filter(e => e.role === "CHAUFFEUR").length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-amber-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-                    Chauffeurs
-                  </p>
+                  <p className="text-xs font-bold text-amber-600 uppercase tracking-wide mb-2">Chauffeurs</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {filtered.filter(e => e.role === "CHAUFFEUR").map((e, i) => (
-                      <EmployeCard
-                        key={e.id_chauffeur || e.id || i}
-                        employe={e}
-                        onEdit={onEdit}
-                      />
+                      <EmployeCard key={e.id_chauffeur || i} employe={e} onEdit={onEdit} />
                     ))}
                   </div>
                 </div>
@@ -519,10 +424,10 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Trajet Card
-// ─────────────────────────────────────────────────────────────────────────────
-function TrajetCard({ trajet, onDelete, onEdit }) {
+// ─── TrajetCard ───────────────────────────────────────────────────────────────
+// Adapté au format du profil agence (id_trajet, filiale_depart, filiale_arrivee,
+// ville_depart, ville_arrivee, distance_km)
+function TrajetCard({ trajet, onDelete, isManagerGlobal }) {
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center gap-3 mb-3">
@@ -531,34 +436,65 @@ function TrajetCard({ trajet, onDelete, onEdit }) {
         </div>
         <div className="flex-1">
           <p className="font-bold text-slate-900 text-sm">
-            {trajet.filiale_depart?.nom ?? trajet.filiale_depart_nom ?? "—"}
-            {" → "}
-            {trajet.filiale_arrive?.nom ?? trajet.filiale_arrive_nom ?? "—"}
+            {trajet.filiale_depart} → {trajet.filiale_arrivee}
           </p>
-          <p className="text-xs text-slate-500 mt-0.5">{trajet.distance ?? "—"} km</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {trajet.ville_depart} → {trajet.ville_arrivee}
+            {trajet.distance_km ? ` · ${trajet.distance_km} km` : ""}
+          </p>
         </div>
       </div>
-      <div className="flex gap-2">
+      {isManagerGlobal && (
         <button
-          onClick={() => onEdit(trajet)}
-          className="flex-1 px-2 py-1.5 text-xs bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
-        >
-          Éditer
-        </button>
-        <button
-          onClick={() => onDelete(trajet.Id_trajet)}
-          className="flex-1 px-2 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+          onClick={() => onDelete(trajet.id_trajet)}
+          className="w-full px-2 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
         >
           Supprimer
         </button>
-      </div>
+      )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPOSANT PRINCIPAL
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── VoyageCard (pour le dashboard) ──────────────────────────────────────────
+function VoyageCard({ voyage }) {
+  const statut = voyage.status || "programme";
+  const cfg    = STATUT_CONFIG[statut] || { label: statut, color: "text-slate-500", bg: "bg-slate-50" };
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-2">
+        <p className="font-bold text-slate-900 text-sm">
+          {voyage.filiale_depart} <ChevronRight className="inline w-3 h-3 text-slate-400" /> {voyage.filiale_arrivee}
+        </p>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${cfg.bg} ${cfg.color}`}>
+          {cfg.label}
+        </span>
+      </div>
+      <div className="flex items-center gap-3 text-xs text-slate-500">
+        <span>
+          {voyage.date_heure_depart
+            ? new Date(voyage.date_heure_depart).toLocaleDateString("fr-FR", {
+                day: "2-digit", month: "short",
+              })
+            : "—"}
+        </span>
+        <span className="text-slate-300">·</span>
+        <span>{voyage.prix ? `${Number(voyage.prix).toLocaleString("fr-FR")} FCFA` : "—"}</span>
+        <span className="text-slate-300">·</span>
+        <span>{voyage.places_disponibles ?? "—"} places</span>
+      </div>
+      {voyage.bus_immatriculation && (
+        <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+          <Bus className="w-3 h-3" /> {voyage.bus_immatriculation}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  COMPOSANT PRINCIPAL
+// ═════════════════════════════════════════════════════════════════════════════
 export default function ManagerDashboard() {
   const { user } = useAuthStore();
   const navigate  = useNavigate();
@@ -566,19 +502,20 @@ export default function ManagerDashboard() {
   const isManagerLocal  = user?.role === "MANAGER_LOCAL";
   const isManagerGlobal = user?.role === "MANAGER_GLOBAL";
 
-  // ✅ Utilisation des IDs (UUID) exclusivement
-  const agenceId    = user?.agenceId || user?.agence?.id;
-  const filialeId   = user?.filialeId || user?.filiale?.id;
+  const agenceId  = user?.agenceId || user?.agence?.id;
+  const filialeId = user?.filialeId || user?.filiale?.id;
 
-  const [activeTab, setActiveTab]             = useState("apercu");
-  const [searchFiliale, setSearchFiliale]     = useState("");
+  const [activeTab, setActiveTab]               = useState("apercu");
+  const [searchFiliale, setSearchFiliale]       = useState("");
   const [showFilialeDetail, setShowFilialeDetail] = useState(false);
-  const [selectedFiliale, setSelectedFiliale] = useState(null);
+  const [selectedFiliale, setSelectedFiliale]   = useState(null);
   const [showAgenceSettings, setShowAgenceSettings] = useState(false);
-  const [searchTrajet, setSearchTrajet]       = useState("");
-  const [searchEmploye, setSearchEmploye]     = useState("");
+  const [searchTrajet, setSearchTrajet]         = useState("");
+  const [searchEmploye, setSearchEmploye]       = useState("");
+  const [searchVoyage, setSearchVoyage]         = useState("");
+  const [filtreStatutVoyage, setFiltreStatutVoyage] = useState("");
 
-  // ── Agence ──────────────────────────────────────────────────────────────────
+  // ── Agence ────────────────────────────────────────────────────────────────
   const { data: agenceDetail } = useQuery({
     queryKey: ["agence-detail", agenceId],
     queryFn: () => agenceService.getAgenceDetail(agenceId),
@@ -586,7 +523,39 @@ export default function ManagerDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Filiales ─────────────────────────────────────────────────────────────────
+  // ── PROFIL AGENCE — source unique de vérité pour trajets et voyages ───────
+  const {
+    data: profilAgence,
+    isLoading: isLoadingProfil,
+    refetch: refetchProfil,
+  } = useQuery({
+    queryKey: ["agence-profil-dashboard", agenceId],
+    queryFn: () => fleetService.getAgenceProfilNormalise(agenceId),
+    enabled: !!agenceId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // ── Extraction des trajets depuis le profil ───────────────────────────────
+  const tousTrajets = profilAgence?.trajets ?? [];
+
+  // Manager Local → trajets où sa filiale est départ ou arrivée
+  const trajetsFiltresRole = isManagerLocal && (filialeId || user?.filialeNom)
+    ? tousTrajets.filter(
+        (t) =>
+          t.filiale_depart === user?.filialeNom ||
+          t.filiale_arrivee === user?.filialeNom
+      )
+    : tousTrajets;
+
+  // ── Extraction des voyages depuis le profil ───────────────────────────────
+  const tousVoyagesBruts = profilAgence?.voyages ?? [];
+
+  // Manager Local → voyages dont la filiale de départ = sa filiale
+  const voyagesFiltresRole = isManagerLocal && user?.filialeNom
+    ? tousVoyagesBruts.filter((v) => v.filiale_depart === user?.filialeNom)
+    : tousVoyagesBruts;
+
+  // ── Filiales ──────────────────────────────────────────────────────────────
   const { data: filiales = [], isLoading: isLoadingFiliales } = useQuery({
     queryKey: ["filiales-dashboard", agenceId, isManagerLocal, filialeId],
     queryFn: async () => {
@@ -604,14 +573,7 @@ export default function ManagerDashboard() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // ── Trajets ──────────────────────────────────────────────────────────────────
-  const { data: trajets = [] } = useQuery({
-    queryKey: ["trajets-agence"],
-    queryFn: () => fleetService.getTrajets({}),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // ── Personnel Manager Local (guichetiers + chauffeurs de sa filiale) ─────────
+  // ── Personnel Manager Local ───────────────────────────────────────────────
   const { data: guichetiers = [] } = useQuery({
     queryKey: ["guichetiers-local", filialeId],
     queryFn: () => userService.listGuichetiersByFiliale(filialeId).catch(() => []),
@@ -626,97 +588,63 @@ export default function ManagerDashboard() {
     staleTime: 3 * 60 * 1000,
   });
 
-  // Employés fusionnés pour Manager Local (avec rôle précis)
   const employesLocal = [
     ...guichetiers.map(g => ({ ...g, role: "GUICHETIER" })),
     ...chauffeurs.map(c => ({ ...c, role: "CHAUFFEUR" })),
   ];
 
-  // ─── RECETTES — utilisation des IDs uniquement ─────────────────────────────
-
-  // ── Recettes AGENCE (Manager Global) — par agenceId UUID ────────────────────
+  // ── Recettes ──────────────────────────────────────────────────────────────
   const {
     data: recettesAgence,
     isLoading: isLoadingRecettesAgence,
     refetch: refetchRecettesAgence,
   } = useQuery({
     queryKey: ["recettes-agence-dashboard", agenceId],
-    queryFn: () => {
-      if (!agenceId) {
-        console.warn("[ManagerDashboard] Aucun agenceId disponible");
-        return Promise.resolve(null);
-      }
-      return bookingService.getRecettesAgence(agenceId, "XAF");
-    },
+    queryFn: () => bookingService.getRecettesAgence(agenceId, "XAF"),
     enabled: !!agenceId && isManagerGlobal,
     staleTime: 3 * 60 * 1000,
-    onError: (err) => console.error("[ManagerDashboard] Erreur getRecettesAgence:", err),
   });
 
-  // ── Recettes FILIALE (Manager Local) — par filialeId UUID ────────────────────
   const {
     data: recettesFiliale,
     isLoading: isLoadingRecettesFiliale,
     refetch: refetchRecettesFiliale,
   } = useQuery({
     queryKey: ["recettes-filiale-dashboard", filialeId],
-    queryFn: () => {
-      if (!filialeId) {
-        console.warn("[ManagerDashboard] Aucun filialeId disponible");
-        return Promise.resolve(null);
-      }
-      return bookingService.getRecettesFiliale(filialeId, "XAF");
-    },
+    queryFn: () => bookingService.getRecettesFiliale(filialeId, "XAF"),
     enabled: !!filialeId && isManagerLocal,
     staleTime: 3 * 60 * 1000,
-    onError: (err) => console.error("[ManagerDashboard] Erreur getRecettesFiliale:", err),
   });
 
-  const recettes = isManagerLocal ? recettesFiliale : recettesAgence;
-  const isLoadingRecettes = isManagerLocal ? isLoadingRecettesFiliale : isLoadingRecettesAgence;
-  const refetchRecettes = isManagerLocal ? refetchRecettesFiliale : refetchRecettesAgence;
+  const recettes           = isManagerLocal ? recettesFiliale        : recettesAgence;
+  const isLoadingRecettes  = isManagerLocal ? isLoadingRecettesFiliale : isLoadingRecettesAgence;
+  const refetchRecettes    = isManagerLocal ? refetchRecettesFiliale  : refetchRecettesAgence;
 
-  // ── Recettes de TOUTES les FILIALES (Manager Global) — par filialeId UUID ───
   const { data: recettesFiliales = [] } = useQuery({
     queryKey: ["recettes-filiales-dashboard", filiales.map(f => f.id || f.id_filiale).join(",")],
     queryFn: async () => {
       const results = await Promise.allSettled(
         filiales.map(async (f) => {
-          const idFiliale = f.id || f.id_filiale || f.filialeId;
-
-          if (!idFiliale) {
-            console.warn(`[ManagerDashboard] Filiale sans ID : ${f.nom}`);
-            return null;
-          }
-
+          const idFiliale = f.id || f.id_filiale;
+          if (!idFiliale) return null;
           try {
-            // ✅ Appel avec l'UUID de la filiale
             const data = await bookingService.getRecettesFiliale(idFiliale, "XAF");
             return { idFiliale, data };
-          } catch (error) {
-            console.error(`Erreur recettes filiale ${idFiliale}:`, error);
+          } catch {
             return null;
           }
         })
       );
-
       return results.map((result, index) => {
         const filiale = filiales[index];
         const idFiliale = filiale?.id || filiale?.id_filiale;
-
         return {
           idFiliale,
           data: result.status === "fulfilled" && result.value?.data
             ? result.value.data
-            : {
-                recetteTotale: 0,
-                recetteEnLigne: 0,
-                recetteGuichet: 0,
-                nbReservationsEnLigne: 0,
-                nbReservationsGuichet: 0,
-                partEnLignePct: 0,
-                partGuichetPct: 0,
-              },
+            : { recetteTotale: 0, recetteEnLigne: 0, recetteGuichet: 0,
+                nbReservationsEnLigne: 0, nbReservationsGuichet: 0,
+                partEnLignePct: 0, partGuichetPct: 0 },
         };
       });
     },
@@ -724,15 +652,13 @@ export default function ManagerDashboard() {
     staleTime: 3 * 60 * 1000,
   });
 
-  // Helper — recettes d'une filiale par son UUID
   const getRecettesFiliale = (f) => {
-    const idFiliale = f.id || f.id_filiale || f.filialeId;
+    const idFiliale = f.id || f.id_filiale;
     if (!idFiliale) return null;
-    const found = recettesFiliales.find(r => r.idFiliale === idFiliale);
-    return found?.data || null;
+    return recettesFiliales.find(r => r.idFiliale === idFiliale)?.data || null;
   };
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  // ── Filtres locaux ────────────────────────────────────────────────────────
   const filialesActives = filiales.filter(f => f.est_active).length;
 
   const filiaLesFiltrees = filiales.filter(f =>
@@ -740,12 +666,19 @@ export default function ManagerDashboard() {
     (f.ville?.toLowerCase() || "").includes(searchFiliale.toLowerCase())
   );
 
-  const trajetsFiltres = trajets.filter(t =>
-    `${t.filiale_depart?.nom ?? ""} ${t.filiale_arrive?.nom ?? ""}`
+  const trajetsFiltres = trajetsFiltresRole.filter(t =>
+    `${t.filiale_depart || ""} ${t.filiale_arrivee || ""} ${t.ville_depart || ""} ${t.ville_arrivee || ""}`
       .toLowerCase().includes(searchTrajet.toLowerCase())
   );
 
-  // Employés filtrés pour Manager Local
+  const voyagesFiltres = voyagesFiltresRole.filter(v => {
+    const matchSearch = !searchVoyage ||
+      `${v.filiale_depart || ""} ${v.filiale_arrivee || ""} ${v.bus_immatriculation || ""}`
+        .toLowerCase().includes(searchVoyage.toLowerCase());
+    const matchStatut = !filtreStatutVoyage || v.status === filtreStatutVoyage;
+    return matchSearch && matchStatut;
+  });
+
   const employesLocalFiltres = employesLocal.filter(e =>
     `${e.name || e.nom || ""} ${e.surname || e.prenom || ""} ${e.email || ""}`
       .toLowerCase().includes(searchEmploye.toLowerCase())
@@ -760,43 +693,31 @@ export default function ManagerDashboard() {
     };
   });
 
-  const handleEditFiliale = (filiale) => {
-    navigate(`/manager/filiales/${filiale.id_filiale}/editer`);
+  const handleEditFiliale  = (f) => navigate(`/manager/filiales/${f.id_filiale}/editer`);
+  const handleEditEmploye  = (employe, role) => {
+    if (role === "GUICHETIER") navigate(`/manager/personnel/guichetiers/${employe.Id_guichetier || employe.id}/editer`);
+    else if (role === "CHAUFFEUR") navigate(`/manager/chauffeurs/${employe.id_chauffeur || employe.id}/editer`);
+    else navigate(`/manager/personnel/${employe.id}/editer`);
   };
 
-  const handleEditTrajet = (trajet) => {
-    navigate(`/manager/trajets/${trajet.Id_trajet}/editer`);
-  };
+  const kpiTotal       = Number(recettes?.recetteTotale)  || 0;
+  const kpiEnLigne     = Number(recettes?.recetteEnLigne) || 0;
+  const kpiGuichet     = Number(recettes?.recetteGuichet) || 0;
+  const kpiNbEnLigne   = Number(recettes?.nbReservationsEnLigne)  || 0;
+  const kpiNbGuichet   = Number(recettes?.nbReservationsGuichet) || 0;
+  const kpiPctEnLigne  = Number(recettes?.partEnLignePct) || 0;
+  const kpiPctGuichet  = Number(recettes?.partGuichetPct) || 0;
 
-  const handleEditEmploye = (employe, role) => {
-    if (role === "GUICHETIER") {
-      navigate(`/manager/personnel/guichetiers/${employe.Id_guichetier || employe.id}/editer`);
-    } else if (role === "CHAUFFEUR") {
-      navigate(`/manager/chauffeurs/${employe.id_chauffeur || employe.id}/editer`);
-    } else if (role === "MANAGER_LOCAL") {
-      navigate(`/manager/personnel/managers/${employe.id}/editer`);
-    } else {
-      navigate(`/manager/personnel/${employe.id}/editer`);
-    }
-  };
+  const isLoading = isLoadingFiliales || isLoadingProfil;
 
   const tabs = [
     { id: "apercu",    label: "Aperçu",    icon: Activity   },
     ...(isManagerGlobal ? [{ id: "filiales", label: "Filiales", icon: Building2 }] : []),
     { id: "recettes",  label: "Recettes",  icon: TrendingUp },
     { id: "trajets",   label: "Trajets",   icon: Navigation },
+    { id: "voyages",   label: "Voyages",   icon: Bus        },
     { id: "personnel", label: "Personnel", icon: Users      },
   ];
-
-  const kpiTotal    = Number(recettes?.recetteTotale)  || 0;
-  const kpiEnLigne  = Number(recettes?.recetteEnLigne) || 0;
-  const kpiGuichet  = Number(recettes?.recetteGuichet) || 0;
-  const kpiNbEnLigne  = Number(recettes?.nbReservationsEnLigne)  || 0;
-  const kpiNbGuichet  = Number(recettes?.nbReservationsGuichet) || 0;
-  const kpiPctEnLigne = Number(recettes?.partEnLignePct) || 0;
-  const kpiPctGuichet = Number(recettes?.partGuichetPct) || 0;
-
-  const isLoading = isLoadingFiliales;
 
   return (
     <DashboardLayout>
@@ -816,7 +737,7 @@ export default function ManagerDashboard() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => refetchRecettes?.()}
+            onClick={() => { refetchRecettes?.(); refetchProfil(); }}
             className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2 text-sm"
           >
             <RefreshCw className="w-4 h-4" /> Actualiser
@@ -868,11 +789,11 @@ export default function ManagerDashboard() {
           iconColor="text-emerald-600"
         />
         <KpiCard
-          label={isManagerLocal ? "Employés / Trajets" : "Filiales actives / Trajets"}
+          label={isManagerLocal ? "Voyages / Trajets" : "Filiales actives / Trajets"}
           value={isManagerLocal
-            ? `${employesLocal.length} / ${trajets.length}`
-            : `${filialesActives} / ${trajets.length}`}
-          icon={Building2}
+            ? `${voyagesFiltresRole.length} / ${trajetsFiltresRole.length}`
+            : `${filialesActives} / ${trajetsFiltresRole.length}`}
+          icon={isManagerLocal ? Bus : Building2}
           iconBg="bg-amber-100"
           iconColor="text-amber-600"
         />
@@ -933,95 +854,50 @@ export default function ManagerDashboard() {
                 />
               </div>
 
-              {isManagerGlobal && filiales.slice(0, 4).map(f => {
-                const rec = getRecettesFiliale(f);
-                return (
-                  <div
-                    key={f.id_filiale}
-                    className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => { setSelectedFiliale(f); setShowFilialeDetail(true); }}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-bold text-slate-900">{f.nom}</h4>
-                        <p className="text-xs text-slate-500 mt-0.5">{f.ville}</p>
-                      </div>
-                      {rec && (
-                        <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                          {formatCompact(rec.recetteTotale || 0)}
+              {/* Voyages récents (aperçu) */}
+              {voyagesFiltresRole.length > 0 && (
+                <div className="lg:col-span-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-slate-900 text-sm">
+                      Voyages récents
+                      {isManagerLocal && (
+                        <span className="ml-2 text-xs font-normal text-slate-400">
+                          — Filiale {user?.filialeNom}
                         </span>
                       )}
-                    </div>
-                    {rec && (
-                      <div className="flex gap-2 text-[10px]">
-                        <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-lg font-semibold">
-                          <Smartphone className="w-2.5 h-2.5" />
-                          {Number(rec.partEnLignePct) || 0}% WEB
-                        </span>
-                        <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg font-semibold">
-                          <Banknote className="w-2.5 h-2.5" />
-                          {Number(rec.partGuichetPct) || 0}% Guichet
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {isManagerLocal && filiales[0] && (
-                <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-                  <h3 className="font-bold text-slate-900 mb-4">Ma filiale</h3>
-                  <div className="flex items-center gap-4 flex-wrap">
-                    <div className="flex-1">
-                      <p className="text-lg font-extrabold text-slate-900">{filiales[0].nom}</p>
-                      <p className="text-sm text-slate-500">{filiales[0].ville} — {filiales[0].adresse || "—"}</p>
-                    </div>
-                    <div className="flex gap-4">
-                      {[
-                        { label: "Bus",      value: filiales[0].nb_bus },
-                        { label: "Employés", value: employesLocal.length },
-                        { label: "Voyages",  value: filiales[0].nb_voyages },
-                      ].map(({ label, value }) => (
-                        <div key={label} className="text-center">
-                          <p className="text-2xl font-bold text-slate-900">{value ?? "—"}</p>
-                          <p className="text-xs text-slate-400">{label}</p>
-                        </div>
-                      ))}
-                    </div>
+                    </h3>
                     <button
-                      onClick={() => { setSelectedFiliale(filiales[0]); setShowFilialeDetail(true); }}
-                      className="px-4 py-2 bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-2"
+                      onClick={() => setActiveTab("voyages")}
+                      className="text-xs text-blue-600 hover:underline"
                     >
-                      <Eye className="w-4 h-4" /> Voir détails
+                      Voir tout ({voyagesFiltresRole.length})
                     </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {voyagesFiltresRole.slice(0, 6).map((v) => (
+                      <VoyageCard key={v.id_voyage} voyage={v} />
+                    ))}
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* ══════════ FILIALES (Manager Global uniquement) ══════════ */}
+          {/* ══════════ FILIALES ══════════ */}
           {activeTab === "filiales" && isManagerGlobal && (
             <div className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher une filiale…"
-                    value={searchFiliale}
-                    onChange={e => setSearchFiliale(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <input type="text" placeholder="Rechercher une filiale…"
+                    value={searchFiliale} onChange={e => setSearchFiliale(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <button
-                  onClick={() => navigate("/manager/filiales/nouvelle")}
-                  className="px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2"
-                >
+                <button onClick={() => navigate("/manager/filiales/nouvelle")}
+                  className="px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2">
                   <Plus className="w-4 h-4" /> Nouvelle
                 </button>
               </div>
-
               {filiaLesFiltrees.length === 0 ? (
                 <p className="text-center py-12 text-slate-400">Aucune filiale trouvée.</p>
               ) : (
@@ -1064,13 +940,11 @@ export default function ManagerDashboard() {
                   <p className="text-emerald-200 text-xs mt-1">{kpiPctGuichet}% du total</p>
                 </div>
               </div>
-
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="font-bold text-slate-900">
                     {isManagerLocal ? "Détail recettes — ma filiale" : "Détail recettes par filiale"}
                   </h3>
-                  <p className="text-xs text-slate-400">Canaux : WEB | GUICHET</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -1085,97 +959,65 @@ export default function ManagerDashboard() {
                     </thead>
                     <tbody>
                       {filiales.map(f => {
-                        // ✅ Utilisation des recettes par UUID
-                        const rec = isManagerLocal
-                          ? recettesFiliale
-                          : getRecettesFiliale(f);
+                        const rec = isManagerLocal ? recettesFiliale : getRecettesFiliale(f);
                         const tot     = Number(rec?.recetteTotale)  || 0;
                         const enLigne = Number(rec?.recetteEnLigne) || 0;
                         const guichet = Number(rec?.recetteGuichet) || 0;
                         const pct     = Number(rec?.partEnLignePct) || 0;
                         const nbTotal = (Number(rec?.nbReservationsEnLigne) || 0) + (Number(rec?.nbReservationsGuichet) || 0);
-
                         return (
-                          <tr
-                            key={f.id_filiale}
+                          <tr key={f.id_filiale}
                             className="border-t border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-                            onClick={() => { setSelectedFiliale(f); setShowFilialeDetail(true); }}
-                          >
+                            onClick={() => { setSelectedFiliale(f); setShowFilialeDetail(true); }}>
                             <td className="px-5 py-3 font-medium text-slate-900">{f.nom}</td>
                             <td className="px-5 py-3 text-slate-500 text-sm">{f.ville}</td>
-                            <td className="px-5 py-3 text-right font-extrabold text-slate-900">
-                              {formatMontant(tot)}
-                            </td>
-                            <td className="px-5 py-3 text-right">
-                              <span className="text-blue-700 font-bold text-sm">
-                                {formatMontant(enLigne)}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3 text-right">
-                              <span className="text-emerald-700 font-bold text-sm">
-                                {formatMontant(guichet)}
-                              </span>
-                            </td>
+                            <td className="px-5 py-3 text-right font-extrabold text-slate-900">{formatMontant(tot)}</td>
+                            <td className="px-5 py-3 text-right"><span className="text-blue-700 font-bold text-sm">{formatMontant(enLigne)}</span></td>
+                            <td className="px-5 py-3 text-right"><span className="text-emerald-700 font-bold text-sm">{formatMontant(guichet)}</span></td>
                             <td className="px-5 py-3 text-right">
                               <span className="inline-flex items-center gap-1 text-xs font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
                                 <Smartphone className="w-3 h-3" /> {pct}%
                               </span>
                             </td>
-                            <td className="px-5 py-3 text-right text-slate-500 text-sm">
-                              {nbTotal.toLocaleString("fr")}
-                            </td>
+                            <td className="px-5 py-3 text-right text-slate-500 text-sm">{nbTotal.toLocaleString("fr")}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                    {isManagerGlobal && recettesAgence && (
-                      <tfoot>
-                        <tr className="bg-slate-50 border-t-2 border-slate-200">
-                          <td className="px-5 py-3 font-extrabold text-slate-900" colSpan={2}>TOTAL AGENCE</td>
-                          <td className="px-5 py-3 text-right font-extrabold text-slate-900">
-                            {formatMontant(Number(recettesAgence.recetteTotale) || 0)}
-                          </td>
-                          <td className="px-5 py-3 text-right font-extrabold text-blue-700">
-                            {formatMontant(Number(recettesAgence.recetteEnLigne) || 0)}
-                          </td>
-                          <td className="px-5 py-3 text-right font-extrabold text-emerald-700">
-                            {formatMontant(Number(recettesAgence.recetteGuichet) || 0)}
-                          </td>
-                          <td className="px-5 py-3 text-right font-bold text-blue-700">
-                            {Number(recettesAgence.partEnLignePct) || 0}%
-                          </td>
-                          <td className="px-5 py-3 text-right font-bold text-slate-700">
-                            {((Number(recettesAgence.nbReservationsEnLigne) || 0) + (Number(recettesAgence.nbReservationsGuichet) || 0)).toLocaleString("fr")}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    )}
                   </table>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ══════════ TRAJETS ══════════ */}
+          {/* ══════════ TRAJETS — depuis le profil agence ══════════ */}
           {activeTab === "trajets" && (
             <div className="space-y-6">
+              {/* Bandeau info périmètre */}
+              {isManagerLocal && (
+                <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-center gap-2">
+                  <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                  Trajets impliquant la filiale <strong>{user?.filialeNom}</strong> uniquement.
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher un trajet…"
-                    value={searchTrajet}
-                    onChange={e => setSearchTrajet(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <input type="text" placeholder="Rechercher un trajet…"
+                    value={searchTrajet} onChange={e => setSearchTrajet(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <button
-                  onClick={() => navigate("/manager/trajets/nouveau")}
-                  className="px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" /> Nouveau
-                </button>
+                {isManagerGlobal && (
+                  <button onClick={() => navigate("/manager/trajets")}
+                    className="px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2">
+                    <Plus className="w-4 h-4" /> Gérer les trajets
+                  </button>
+                )}
+              </div>
+
+              <div className="mb-2 text-xs text-slate-400">
+                {trajetsFiltres.length} trajet(s) — source : profil agence
               </div>
 
               {trajetsFiltres.length === 0 ? (
@@ -1184,12 +1026,14 @@ export default function ManagerDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {trajetsFiltres.map(t => (
                     <TrajetCard
-                      key={t.Id_trajet}
+                      key={t.id_trajet}
                       trajet={t}
-                      onEdit={handleEditTrajet}
-                      onDelete={id => {
+                      isManagerGlobal={isManagerGlobal}
+                      onDelete={(id) => {
                         if (confirm("Supprimer ce trajet ?")) {
-                          fleetService.supprimerTrajet(id).catch(console.error);
+                          fleetService.supprimerTrajet(id)
+                            .then(() => refetchProfil())
+                            .catch(console.error);
                         }
                       }}
                     />
@@ -1199,47 +1043,88 @@ export default function ManagerDashboard() {
             </div>
           )}
 
+          {/* ══════════ VOYAGES — depuis le profil agence ══════════ */}
+          {activeTab === "voyages" && (
+            <div className="space-y-6">
+              {/* Bandeau info périmètre */}
+              {isManagerLocal && (
+                <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-center gap-2">
+                  <Bus className="w-3.5 h-3.5 flex-shrink-0" />
+                  Voyages au départ de la filiale <strong>{user?.filialeNom}</strong> uniquement.
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                  <input type="text" placeholder="Filiale, bus…"
+                    value={searchVoyage} onChange={e => setSearchVoyage(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <select value={filtreStatutVoyage} onChange={e => setFiltreStatutVoyage(e.target.value)}
+                  className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Tous les statuts</option>
+                  {Object.entries(STATUT_CONFIG).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+                <button onClick={() => navigate("/manager/voyages")}
+                  className="px-4 py-2.5 bg-[#135bec] text-white font-bold rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm">
+                  <Plus className="w-4 h-4" /> Gérer les voyages
+                </button>
+              </div>
+
+              <div className="mb-2 text-xs text-slate-400">
+                {voyagesFiltres.length} voyage(s) affiché(s) sur {voyagesFiltresRole.length}
+              </div>
+
+              {/* KPIs voyages */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: "Total",     value: voyagesFiltresRole.length,                                          bg: "bg-slate-50",   color: "text-slate-900"   },
+                  { label: "Planifiés", value: voyagesFiltresRole.filter(v => v.status === "programme").length,   bg: "bg-emerald-50", color: "text-emerald-600" },
+                  { label: "En cours",  value: voyagesFiltresRole.filter(v => v.status === "en_cours").length,    bg: "bg-blue-50",    color: "text-blue-600"    },
+                  { label: "Terminés",  value: voyagesFiltresRole.filter(v => v.status === "termine").length,     bg: "bg-slate-50",   color: "text-slate-500"   },
+                ].map(({ label, value, bg, color }) => (
+                  <div key={label} className={`${bg} rounded-xl p-3`}>
+                    <p className={`text-2xl font-extrabold ${color}`}>{value}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {voyagesFiltres.length === 0 ? (
+                <p className="text-center py-12 text-slate-400">Aucun voyage trouvé.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {voyagesFiltres.map(v => (
+                    <VoyageCard key={v.id_voyage} voyage={v} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ══════════ PERSONNEL ══════════ */}
           {activeTab === "personnel" && (
             <div className="space-y-6">
-              {/* Barre de recherche + bouton */}
               <div className="flex items-center gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher un employé…"
-                    value={searchEmploye}
-                    onChange={e => setSearchEmploye(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <input type="text" placeholder="Rechercher un employé…"
+                    value={searchEmploye} onChange={e => setSearchEmploye(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <button
-                  onClick={() => navigate("/manager/personnel/nouveau")}
-                  className="px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2"
-                >
+                <button onClick={() => navigate("/manager/personnel/nouveau")}
+                  className="px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center gap-2">
                   <Plus className="w-4 h-4" /> Nouveau
                 </button>
               </div>
 
-              {/* Légende des rôles */}
-              <div className="flex gap-3 flex-wrap text-xs">
-                {[
-                  { role: "MANAGER_LOCAL", label: "Manager Local" },
-                  { role: "GUICHETIER",    label: "Guichetier"    },
-                  { role: "CHAUFFEUR",     label: "Chauffeur"     },
-                ].map(({ role, label }) => (
-                  <span key={role} className={`px-2 py-1 rounded-full font-bold ${ROLE_STYLES[role]}`}>
-                    {label}
-                  </span>
-                ))}
-              </div>
-
-              {/* ── Manager Global : vue hiérarchique par filiale ── */}
               {isManagerGlobal && (
                 <div className="space-y-4">
                   {filiales.length === 0 ? (
-                    <p className="text-center py-12 text-slate-400">Aucune filiale trouvée.</p>
+                    <p className="text-center py-12 text-slate-400">Aucune filiale.</p>
                   ) : (
                     filiales.map(f => (
                       <FilialePersonnelBlock
@@ -1253,10 +1138,8 @@ export default function ManagerDashboard() {
                 </div>
               )}
 
-              {/* ── Manager Local : guichetiers + chauffeurs de sa filiale ── */}
               {isManagerLocal && (
                 <div className="space-y-4">
-                  {/* Guichetiers */}
                   {employesLocalFiltres.filter(e => e.role === "GUICHETIER").length > 0 && (
                     <div>
                       <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wide mb-3 flex items-center gap-2">
@@ -1265,17 +1148,11 @@ export default function ManagerDashboard() {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {employesLocalFiltres.filter(e => e.role === "GUICHETIER").map((e, i) => (
-                          <EmployeCard
-                            key={e.Id_guichetier || e.id || i}
-                            employe={e}
-                            onEdit={handleEditEmploye}
-                          />
+                          <EmployeCard key={e.Id_guichetier || i} employe={e} onEdit={handleEditEmploye} />
                         ))}
                       </div>
                     </div>
                   )}
-
-                  {/* Chauffeurs */}
                   {employesLocalFiltres.filter(e => e.role === "CHAUFFEUR").length > 0 && (
                     <div>
                       <h3 className="text-sm font-bold text-amber-600 uppercase tracking-wide mb-3 flex items-center gap-2">
@@ -1284,19 +1161,14 @@ export default function ManagerDashboard() {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {employesLocalFiltres.filter(e => e.role === "CHAUFFEUR").map((e, i) => (
-                          <EmployeCard
-                            key={e.id_chauffeur || e.id || i}
-                            employe={e}
-                            onEdit={handleEditEmploye}
-                          />
+                          <EmployeCard key={e.id_chauffeur || i} employe={e} onEdit={handleEditEmploye} />
                         ))}
                       </div>
                     </div>
                   )}
-
                   {employesLocalFiltres.length === 0 && (
                     <p className="text-center py-12 text-slate-400">
-                      {searchEmploye ? "Aucun résultat pour cette recherche." : "Aucun employé dans votre filiale."}
+                      {searchEmploye ? "Aucun résultat." : "Aucun employé dans votre filiale."}
                     </p>
                   )}
                 </div>

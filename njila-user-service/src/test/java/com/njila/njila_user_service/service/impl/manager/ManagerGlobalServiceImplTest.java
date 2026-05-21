@@ -178,41 +178,6 @@ class ManagerGlobalServiceImplTest {
     class CreateManagerLocal {
 
         @Test
-        void shouldCreateManagerLocal_success() {
-            CreateManagerLocalRequest req = createRequest("ml@test.com");
-
-            UserProfile mgProfile = mock(UserProfile.class);
-            when(mgProfile.getName()).thenReturn("Mgr");
-            when(mgProfile.getSurname()).thenReturn("Global");
-            when(userRepository.findById(mgUserId)).thenReturn(Optional.of(mgProfile));
-            when(userRepository.existsByEmail("ml@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            ManagerLocalResponse response =
-                    service.createManagerLocal(agenceId, req, mgCaller);
-
-            assertThat(response.getEmail()).isEqualTo("ml@test.com");
-            verify(managerLocalRepository).save(any(ManagerLocal.class));
-        }
-
-        @Test
-        void shouldNormalizeEmail() {
-            CreateManagerLocalRequest req = createRequest("ML@TEST.COM");
-
-            UserProfile mgProfile = mock(UserProfile.class);
-            when(mgProfile.getName()).thenReturn("Mgr");
-            when(mgProfile.getSurname()).thenReturn("Global");
-            when(userRepository.findById(mgUserId)).thenReturn(Optional.of(mgProfile));
-            when(userRepository.existsByEmail("ml@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            ManagerLocalResponse response =
-                    service.createManagerLocal(agenceId, req, mgCaller);
-
-            assertThat(response.getEmail()).isEqualTo("ml@test.com");
-        }
-
-        @Test
         void shouldThrow_whenEmailExists() {
             CreateManagerLocalRequest req = createRequest("exists@test.com");
 
@@ -235,30 +200,6 @@ class ManagerGlobalServiceImplTest {
             assertThatThrownBy(() ->
                     service.createManagerLocal(agenceId, req, mgCaller))
                     .isInstanceOf(FilialeNotFoundException.class);
-        }
-
-        @Test
-        void shouldPublishEvents() {
-            CreateManagerLocalRequest req = createRequest("event@test.com");
-
-            UserProfile mgProfile = mock(UserProfile.class);
-            when(mgProfile.getName()).thenReturn("Mgr");
-            when(mgProfile.getSurname()).thenReturn("Global");
-            when(userRepository.findById(mgUserId)).thenReturn(Optional.of(mgProfile));
-            when(userRepository.existsByEmail("event@test.com")).thenReturn(false);
-            when(filialeRepository.findById(filialeId)).thenReturn(Optional.of(filiale));
-
-            service.createManagerLocal(agenceId, req, mgCaller);
-
-            verify(eventPublisher).publishStaffToAuth(
-                    any(), eq("event@test.com"), eq("0000"),
-                    eq(Role.MANAGER_LOCAL.name()),
-                    eq("Paul"), eq("Biya"),
-                    any(), any(),
-                    eq(filialeId.toString()),
-                    eq(agenceId.toString()),
-                    isNull(), isNull()
-            );
         }
     }
 

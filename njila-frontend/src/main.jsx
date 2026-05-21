@@ -2,16 +2,19 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
+import { rehydrateAccessToken } from "./services/axios";
 
 async function enableMocking() {
-  // Activer MSW uniquement en développement
   if (import.meta.env.DEV) {
     const { worker } = await import("./mocks/browser");
     return worker.start({
-      onUnhandledRequest: "bypass", // laisser passer les requêtes non mockées
+      onUnhandledRequest: "bypass",
     });
   }
 }
+
+// Réhydrater le token AVANT le premier render et avant React Query
+rehydrateAccessToken();
 
 enableMocking().then(() => {
   createRoot(document.getElementById("root")).render(

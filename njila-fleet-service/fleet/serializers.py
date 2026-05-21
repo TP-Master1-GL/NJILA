@@ -279,18 +279,90 @@ class TrajetListSerializer(serializers.ModelSerializer):
 # ============ VOYAGE ============
 
 class VoyageSerializer(serializers.ModelSerializer):
+    """
+    Serializer pour le DÉTAIL d'un voyage (GET /api/voyages/{id}/).
+
+    ⚠️  CORRECTION : on ajoute les SerializerMethodField idAgence, idFiliale,
+    codeAgence, codeFiliale, origine et destination — identiques à ceux de
+    VoyageListSerializer — pour que le frontend puisse accéder à ces valeurs
+    aussi bien via la liste que via le détail.
+    """
     trajet_detail = TrajetSerializer(source='Id_trajet', read_only=True)
     bus_detail = BusDetailSerializer(source='IdBus', read_only=True)
     chauffeur_detail = ChauffeurSerializer(source='id_chauffeur', read_only=True)
     places_restantes = serializers.SerializerMethodField()
+
+    # ── IDs UUID (nécessaires pour le booking-service) ────────────────────────
+    idAgence  = serializers.SerializerMethodField()
+    idFiliale = serializers.SerializerMethodField()
+
+    # ── Codes lisibles (affichage / compatibilité) ────────────────────────────
+    codeAgence  = serializers.SerializerMethodField()
+    codeFiliale = serializers.SerializerMethodField()
+
+    # ── Alias ville départ / arrivée ──────────────────────────────────────────
+    origine     = serializers.SerializerMethodField()
+    destination = serializers.SerializerMethodField()
 
     class Meta:
         model = Voyage
         fields = '__all__'
         read_only_fields = ['Id_voyage', 'created_at', 'updated_at']
 
+    # ── Champs calculés existants ─────────────────────────────────────────────
+
     def get_places_restantes(self, obj):
         return obj.places_disponibles
+
+    # ── Getters IDs ───────────────────────────────────────────────────────────
+
+    def get_idAgence(self, obj):
+        """
+        PK UUID de l'agence propriétaire du bus.
+        Chemin : Voyage → Bus (IdBus) → Agence (Id_agence) → id_agence.
+        """
+        try:
+            return str(obj.IdBus.Id_agence.id_agence)
+        except AttributeError:
+            return None
+
+    def get_idFiliale(self, obj):
+        """
+        PK UUID de la filiale de départ du trajet.
+        Chemin : Voyage → Trajet (Id_trajet) → filiale_depart → id_filiale.
+        """
+        try:
+            return str(obj.Id_trajet.filiale_depart.id_filiale)
+        except AttributeError:
+            return None
+
+    # ── Getters codes (affichage) ─────────────────────────────────────────────
+
+    def get_codeAgence(self, obj):
+        try:
+            return obj.IdBus.Id_agence.name
+        except AttributeError:
+            return None
+
+    def get_codeFiliale(self, obj):
+        try:
+            return obj.Id_trajet.filiale_depart.code
+        except AttributeError:
+            return None
+
+    # ── Getters origine / destination ─────────────────────────────────────────
+
+    def get_origine(self, obj):
+        try:
+            return obj.Id_trajet.filiale_depart.ville
+        except AttributeError:
+            return None
+
+    def get_destination(self, obj):
+        try:
+            return obj.Id_trajet.filiale_arrive.ville
+        except AttributeError:
+            return None
 
 
 class VoyageListSerializer(serializers.ModelSerializer):
@@ -300,14 +372,19 @@ class VoyageListSerializer(serializers.ModelSerializer):
     places_restantes     = serializers.SerializerMethodField()
     capacite             = serializers.IntegerField(source='IdBus.capacite', read_only=True)
 
-    # ── Champs nécessaires au booking-service ────────────────────────────────
-    # codeAgence  : code de l'agence propriétaire du bus
-    # codeFiliale : code de la filiale de départ du trajet
-    # Ces deux valeurs sont obligatoires dans ReservationRequest (backend Java).
+    # ── Identifiants (UUID) — utilisés par le booking-service pour l'enregistrement ──
+    # idAgence  : PK (UUID) de l'agence propriétaire du bus
+    # idFiliale : PK (UUID) de la filiale de départ du trajet
+    idAgence  = serializers.SerializerMethodField()
+    idFiliale = serializers.SerializerMethodField()
+
+    # ── Codes lisibles — conservés pour l'affichage / compatibilité ──────────
+    # codeAgence  : name de l'agence (utilisé comme code côté affichage)
+    # codeFiliale : code de la filiale de départ
     codeAgence  = serializers.SerializerMethodField()
     codeFiliale = serializers.SerializerMethodField()
 
-    # Alias lisibles pour le frontend (origine / destination)
+    # ── Alias lisibles pour le frontend (origine / destination) ──────────────
     origine     = serializers.SerializerMethodField()
     destination = serializers.SerializerMethodField()
 
@@ -317,7 +394,12 @@ class VoyageListSerializer(serializers.ModelSerializer):
             'Id_voyage', 'date_heure_depart', 'date_heure_arrive_prevue', 'prix',
             'type_voyage', 'status', 'places_disponibles', 'places_total_reservees',
             'trajet_info', 'bus_immatriculation', 'chauffeur_nom', 'places_restantes',
-            'capacite', 'codeAgence', 'codeFiliale', 'origine', 'destination',
+            'capacite',
+            # IDs (pour enregistrement en base via booking-service)
+            'idAgence', 'idFiliale',
+            # Codes (pour affichage / compatibilité)
+            'codeAgence', 'codeFiliale',
+            'origine', 'destination',
         ]
 
     def get_trajet_info(self, obj):
@@ -331,11 +413,36 @@ class VoyageListSerializer(serializers.ModelSerializer):
     def get_places_restantes(self, obj):
         return obj.places_disponibles
 
+    # ── Getters IDs ───────────────────────────────────────────────────────────
+
+    def get_idAgence(self, obj):
+        """
+        Retourne le PK UUID de l'agence propriétaire du bus.
+        Chemin : Voyage → Bus (IdBus) → Agence (Id_agence) → id_agence (PK UUID).
+        C'est cette valeur qui doit être stockée en base dans la réservation.
+        """
+        try:
+            return str(obj.IdBus.Id_agence.id_agence)
+        except AttributeError:
+            return None
+
+    def get_idFiliale(self, obj):
+        """
+        Retourne le PK UUID de la filiale de départ du trajet.
+        Chemin : Voyage → Trajet (Id_trajet) → filiale_depart → id_filiale (PK UUID).
+        C'est cette valeur qui doit être stockée en base dans la réservation.
+        """
+        try:
+            return str(obj.Id_trajet.filiale_depart.id_filiale)
+        except AttributeError:
+            return None
+
+    # ── Getters codes (affichage) ─────────────────────────────────────────────
+
     def get_codeAgence(self, obj):
         """
-        Remonte depuis Voyage → Bus → Agence.
-        Retourne le champ `name` de l'agence (utilisé comme code côté booking).
-        Adaptez si l'agence expose un champ `code` distinct de `name`.
+        Retourne le name de l'agence (utilisé comme code lisible côté affichage).
+        Adaptez vers un champ `code` dédié si l'agence en expose un.
         """
         try:
             return obj.IdBus.Id_agence.name
@@ -344,13 +451,14 @@ class VoyageListSerializer(serializers.ModelSerializer):
 
     def get_codeFiliale(self, obj):
         """
-        Remonte depuis Voyage → Trajet → filiale_depart.
-        Retourne le champ `code` de la filiale de départ.
+        Retourne le code de la filiale de départ (affichage / compatibilité).
         """
         try:
             return obj.Id_trajet.filiale_depart.code
         except AttributeError:
             return None
+
+    # ── Getters origine / destination ─────────────────────────────────────────
 
     def get_origine(self, obj):
         try:

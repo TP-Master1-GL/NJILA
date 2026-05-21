@@ -1,3 +1,13 @@
+/**
+ * GestionVoyages.jsx – Manager Local / Manager Global
+ *
+ * CORRECTION : les voyages sont désormais récupérés via le profil public
+ * de l'agence (/api/agences/{id_agence}/profil/) et non plus via
+ * /api/voyages/ qui retournait les voyages de TOUTES les agences.
+ *
+ * Manager Global → tous les voyages de son agence (bus de son agence)
+ * Manager Local  → voyages dont la filiale de départ = sa filiale
+ */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -44,9 +54,32 @@ const fmtDate = (dt) =>
 const fmtPrix = (p) =>
   p != null ? Number(p).toLocaleString("fr-FR") + " FCFA" : "—";
 
-// Extrait ville départ / ville arrivée depuis trajet_info "VilleDep → VilleArr"
+// ─── Normalise un voyage issu du profil agence vers la structure
+//     attendue par le reste du composant (même forme que _normaliserVoyage)
+const normaliserVoyageProfil = (v) => ({
+  Id_voyage:              v.id_voyage,
+  date_heure_depart:      v.date_heure_depart || v.dateHeureDepart,
+  date_heure_arrive_prevue: v.date_heure_arrivee || v.dateHeureArrivee,
+  prix:                   v.prix,
+  type_voyage:            (v.type_voyage || "standard").toLowerCase(),
+  status:                 v.status,
+  places_disponibles:     v.places_disponibles,
+  places_total_reservees: v.places_total_reservees,
+  bus_immatriculation:    v.bus_immatriculation,
+  trajet_info:            `${v.filiale_depart} → ${v.filiale_arrivee}`,
+  origine:                v.origine,
+  destination:            v.destination,
+  filiale_depart:         v.filiale_depart,
+  filiale_arrivee:        v.filiale_arrivee,
+  _raw:                   v,
+});
+
+// Extrait ville départ / arrivée depuis trajet_info "Dep → Arr" ou directement
 const parseTrajet = (v) => {
-  const info = v.trajet_info || v.trajet_nom || "";
+  if (v.origine && v.destination) {
+    return { depart: v.origine, arrivee: v.destination };
+  }
+  const info = v.trajet_info || "";
   const parts = info.split("→").map((s) => s.trim());
   return { depart: parts[0] || "—", arrivee: parts[1] || "—" };
 };
@@ -96,7 +129,7 @@ function ModalAnnulation({ open, onClose, onConfirm, voyage, isPending }) {
           />
         </div>
         <p className="text-xs text-slate-400">
-          Cette action libérera le bus et le chauffeur assignés et ne peut pas être annulée.
+          Cette action libèrera le bus et le chauffeur assignés et ne peut pas être annulée.
         </p>
       </div>
     </Modal>
@@ -104,17 +137,15 @@ function ModalAnnulation({ open, onClose, onConfirm, voyage, isPending }) {
 }
 
 // ─── Modale modification voyage ──────────────────────────────────────────────
-function ModalModification({ open, onClose, voyage, trajets, busDisponibles, chauffeurs, onSave, isPending }) {
+function ModalModification({ open, onClose, voyage, onSave, isPending }) {
   const [form, setForm] = useState(null);
 
-  // Initialiser le formulaire quand la modale s'ouvre
   if (open && voyage && !form) {
     setForm({
       date_heure_depart:        voyage.date_heure_depart?.slice(0, 16) || "",
-      date_heure_arrive_prevue: voyage.date_heure_arrive_prevue?.slice(0, 16)
-                                  || voyage.dateHeureArrivee?.slice(0, 16) || "",
+      date_heure_arrive_prevue: voyage.date_heure_arrive_prevue?.slice(0, 16) || "",
       prix:                     voyage.prix || "",
-      type_voyage:              voyage.type_voyage?.toLowerCase() || "standard",
+      type_voyage:              (voyage.type_voyage || "standard").toLowerCase(),
       places_disponibles:       voyage.places_disponibles || "",
     });
   }
@@ -122,7 +153,6 @@ function ModalModification({ open, onClose, voyage, trajets, busDisponibles, cha
   if (!open || !voyage || !form) return null;
 
   const { depart, arrivee } = parseTrajet(voyage);
-
   const handleClose = () => { setForm(null); onClose(); };
 
   return (
@@ -141,8 +171,6 @@ function ModalModification({ open, onClose, voyage, trajets, busDisponibles, cha
         </>
       }>
       <div className="space-y-5">
-
-        {/* En-tête trajet non modifiable */}
         <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
           <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0" />
           <div>
@@ -151,7 +179,6 @@ function ModalModification({ open, onClose, voyage, trajets, busDisponibles, cha
           </div>
         </div>
 
-        {/* Horaires */}
         <div>
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Horaires</p>
           <div className="grid grid-cols-2 gap-4">
@@ -170,7 +197,6 @@ function ModalModification({ open, onClose, voyage, trajets, busDisponibles, cha
           </div>
         </div>
 
-        {/* Tarification */}
         <div className="border-t border-slate-100 pt-4">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Tarification</p>
           <div className="grid grid-cols-2 gap-4">
@@ -216,49 +242,124 @@ export default function GestionVoyages() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
 
-  const [search,          setSearch]          = useState("");
-  const [filtreDate,      setFiltreDate]      = useState("");
-  const [filtreStatut,    setFiltreStatut]    = useState("");
-  const [isModalCreate,   setIsModalCreate]   = useState(false);
-  const [voyageAnnuler,   setVoyageAnnuler]   = useState(null);
-  const [voyageModifier,  setVoyageModifier]  = useState(null);
-  const [form,            setForm]            = useState(FORM_INIT);
+  const agenceId  = user?.agenceId;
+  const filialeId = user?.filialeId;
+  const isManagerLocal  = user?.role === "MANAGER_LOCAL";
+  const isManagerGlobal = user?.role === "MANAGER_GLOBAL";
 
-  // ── Queries ────────────────────────────────────────────────────────────────
-  const { data: voyages = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ["voyages", filtreDate],
-    queryFn:  () => fleetService.getVoyages(filtreDate ? { date_debut: filtreDate } : {}),
+  const [search,         setSearch]         = useState("");
+  const [filtreDate,     setFiltreDate]     = useState("");
+  const [filtreStatut,   setFiltreStatut]   = useState("");
+  const [isModalCreate,  setIsModalCreate]  = useState(false);
+  const [voyageAnnuler,  setVoyageAnnuler]  = useState(null);
+  const [voyageModifier, setVoyageModifier] = useState(null);
+  const [form,           setForm]           = useState(FORM_INIT);
+
+  // ── Source unique : profil agence ─────────────────────────────────────────
+  // Filtre optionnel par statut si sélectionné, sinon tous les voyages
+  const {
+    data: profilAgence,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ["agence-profil-voyages", agenceId, filtreStatut],
+    queryFn: () =>
+      fleetService.getAgenceProfilNormalise(agenceId, {
+        statut_voyage: filtreStatut || undefined,
+      }),
+    enabled: !!agenceId,
+    staleTime: 60 * 1000,
     retry: 1,
   });
 
-  const { data: busDisponibles = [] } = useQuery({
-    queryKey: ["bus-disponibles"],
-    queryFn:  fleetService.getBusDisponibles,
-    enabled:  isModalCreate,
-    retry: 1,
+  // ── Extraction et normalisation des voyages ───────────────────────────────
+  const tousVoyagesBruts = profilAgence?.voyages ?? [];
+
+  // Normaliser vers la structure attendue par le composant
+  const tousVoyages = tousVoyagesBruts.map(normaliserVoyageProfil);
+
+  // Filtrage par rôle :
+  // Manager Local → uniquement les voyages dont filiale_depart = sa filiale
+  const voyagesFiltresParRole = isManagerLocal && filialeId
+    ? tousVoyages.filter((v) => {
+        const raw = v._raw;
+        // On compare l'id de filiale si disponible (id_filiale dans le profil)
+        // sinon on compare le nom de filiale depuis le store
+        return (
+          raw.filiale_depart === user?.filialeNom ||
+          raw.filiale_depart_id === filialeId
+        );
+      })
+    : tousVoyages; // Manager Global : tous les voyages de l'agence
+
+  // ── Filtrage date côté client (le profil ne filtre pas par date) ──────────
+  const voyagesFiltresDate = filtreDate
+    ? voyagesFiltresParRole.filter((v) => {
+        if (!v.date_heure_depart) return false;
+        const dateVoyage = new Date(v.date_heure_depart)
+          .toISOString()
+          .split("T")[0];
+        return dateVoyage >= filtreDate;
+      })
+    : voyagesFiltresParRole;
+
+  // ── Recherche et filtre statut local ─────────────────────────────────────
+  const voyagesFiltres = voyagesFiltresDate.filter((v) => {
+    const { depart, arrivee } = parseTrajet(v);
+    const q = search.toLowerCase();
+    const matchSearch =
+      !search ||
+      depart.toLowerCase().includes(q) ||
+      arrivee.toLowerCase().includes(q) ||
+      (v.type_voyage || "").toLowerCase().includes(q) ||
+      (v.bus_immatriculation || "").toLowerCase().includes(q);
+    const matchStatut = !filtreStatut || v.status === filtreStatut;
+    return matchSearch && matchStatut;
   });
+
+  // ── Bus disponibles : extraits du profil agence (déjà chargé) ───────────
+  // On filtre les bus de l'agence dont l'état est "disponible".
+  // Aucune requête supplémentaire nécessaire — le profil est déjà en cache.
+  // Le profil expose : { id, immatriculation, modele, capacite, etat, etat_label }
+  // On normalise vers la forme attendue par le formulaire (IdBus = id).
+  const busDisponibles = (profilAgence?.bus ?? [])
+    .filter((b) => b.etat === "disponible")
+    .map((b) => ({
+      IdBus:           b.id,
+      immatriculation: b.immatriculation,
+      modele:          b.modele,
+      capacite:        b.capacite,
+    }));
 
   const { data: tousLesChauffeurs = [] } = useQuery({
     queryKey: ["chauffeurs-all"],
-    queryFn:  () => fleetService.getChauffeurs({}),
-    enabled:  isModalCreate,
+    queryFn: () => fleetService.getChauffeurs({}),
+    enabled: isModalCreate,
     retry: 1,
   });
 
-  const { data: trajets = [] } = useQuery({
-    queryKey: ["trajets"],
-    queryFn:  () => fleetService.getTrajets(),
-    enabled:  isModalCreate,
-    retry: 1,
-  });
+  // Trajets issus du profil agence pour la création
+  const trajetsDisponibles = (profilAgence?.trajets ?? []).map((t) => ({
+    Id_trajet: t.id_trajet,
+    filiale_depart_nom: t.filiale_depart,
+    filiale_arrive_nom: t.filiale_arrivee,
+    distance: t.distance_km,
+  }));
+
+  // Si manager local, proposer uniquement les trajets au départ de sa filiale
+  const trajetsPourCreation = isManagerLocal && filialeId
+    ? trajetsDisponibles.filter(
+        (t) => t.filiale_depart_nom === user?.filialeNom
+      )
+    : trajetsDisponibles;
 
   const chauffeursDisponibles = tousLesChauffeurs.filter(isDisponible);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const invalidateAll = () => {
-    qc.invalidateQueries({ queryKey: ["voyages"] });
+    qc.invalidateQueries({ queryKey: ["agence-profil-voyages", agenceId] });
     qc.invalidateQueries({ queryKey: ["chauffeurs-all"] });
-    qc.invalidateQueries({ queryKey: ["bus-disponibles"] });
   };
 
   const { mutate: creerVoyage, isPending: pendingCreate } = useMutation({
@@ -269,7 +370,8 @@ export default function GestionVoyages() {
       setIsModalCreate(false);
       setForm(FORM_INIT);
     },
-    onError: (err) => toast.error(err?.response?.data?.error || "Erreur lors de la création."),
+    onError: (err) =>
+      toast.error(err?.response?.data?.error || "Erreur lors de la création."),
   });
 
   const { mutate: changerStatut, isPending: pendingStatut } = useMutation({
@@ -277,9 +379,9 @@ export default function GestionVoyages() {
       fleetService.changerStatutVoyage(Id_voyage, status, motif),
     onSuccess: (_, { status }) => {
       toast.success(
-        status === "annule" ? "Voyage annulé." :
-        status === "confirme" ? "Voyage confirmé." :
-        status === "en_cours" ? "Voyage démarré." : "Statut mis à jour."
+        status === "annule"  ? "Voyage annulé."   :
+        status === "confirme"? "Voyage confirmé." :
+        status === "en_cours"? "Voyage démarré."  : "Statut mis à jour."
       );
       invalidateAll();
       setVoyageAnnuler(null);
@@ -288,13 +390,15 @@ export default function GestionVoyages() {
   });
 
   const { mutate: modifierVoyage, isPending: pendingModif } = useMutation({
-    mutationFn: ({ Id_voyage, payload }) => fleetService.modifierVoyage(Id_voyage, payload),
+    mutationFn: ({ Id_voyage, payload }) =>
+      fleetService.modifierVoyage(Id_voyage, payload),
     onSuccess: () => {
       toast.success("Voyage modifié avec succès !");
       invalidateAll();
       setVoyageModifier(null);
     },
-    onError: (err) => toast.error(err?.response?.data?.error || "Erreur lors de la modification."),
+    onError: (err) =>
+      toast.error(err?.response?.data?.error || "Erreur lors de la modification."),
   });
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -321,52 +425,41 @@ export default function GestionVoyages() {
       payload: {
         date_heure_depart:        formData.date_heure_depart || undefined,
         date_heure_arrive_prevue: formData.date_heure_arrive_prevue || undefined,
-        prix:                     formData.prix ? parseInt(formData.prix, 10) : undefined,
+        prix:    formData.prix ? parseInt(formData.prix, 10) : undefined,
         type_voyage:              formData.type_voyage,
         places_disponibles:       formData.places_disponibles
-                                    ? parseInt(formData.places_disponibles, 10)
-                                    : undefined,
+          ? parseInt(formData.places_disponibles, 10)
+          : undefined,
       },
     });
   };
 
-  // ── Filtrage ───────────────────────────────────────────────────────────────
-  const filtered = voyages.filter((v) => {
-    const { depart, arrivee } = parseTrajet(v);
-    const q = search.toLowerCase();
-    const matchSearch = !search ||
-      depart.toLowerCase().includes(q) ||
-      arrivee.toLowerCase().includes(q) ||
-      (v.type_voyage || "").toLowerCase().includes(q) ||
-      (v.bus_immatriculation || "").toLowerCase().includes(q);
-    const matchStatut = !filtreStatut || v.status === filtreStatut;
-    return matchSearch && matchStatut;
-  });
-
   // ── KPIs ───────────────────────────────────────────────────────────────────
   const kpis = [
-    { label: "Total",     value: voyages.length,                                          color: "text-slate-900",   bg: "bg-slate-50"   },
-    { label: "Planifiés", value: voyages.filter((v) => v.status === "programme").length,  color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "En cours",  value: voyages.filter((v) => v.status === "en_cours").length,   color: "text-[#135bec]",   bg: "bg-blue-50"    },
-    { label: "Annulés",   value: voyages.filter((v) => v.status === "annule").length,     color: "text-red-600",     bg: "bg-red-50"     },
+    { label: "Total",     value: voyagesFiltresParRole.length,                                          color: "text-slate-900",   bg: "bg-slate-50"   },
+    { label: "Planifiés", value: voyagesFiltresParRole.filter((v) => v.status === "programme").length,  color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "En cours",  value: voyagesFiltresParRole.filter((v) => v.status === "en_cours").length,   color: "text-[#135bec]",   bg: "bg-blue-50"    },
+    { label: "Annulés",   value: voyagesFiltresParRole.filter((v) => v.status === "annule").length,     color: "text-red-600",     bg: "bg-red-50"     },
   ];
 
   // ── PDF ────────────────────────────────────────────────────────────────────
   const handlePDF = () => {
-    const rows = filtered.map((v) => {
-      const { depart, arrivee } = parseTrajet(v);
-      return `<tr>
-        <td>${fmtDate(v.date_heure_depart)}</td>
-        <td>${fmtHeure(v.date_heure_depart)}</td>
-        <td>${fmtHeure(v.date_heure_arrive_prevue || v.dateHeureArrivee)}</td>
-        <td>${depart}</td>
-        <td>${arrivee}</td>
-        <td>${(v.type_voyage || "").toUpperCase()}</td>
-        <td>${fmtPrix(v.prix)}</td>
-        <td>${v.places_disponibles ?? "—"}</td>
-        <td>${STATUT_CONFIG[v.status]?.label || v.status}</td>
-      </tr>`;
-    }).join("");
+    const rows = voyagesFiltres
+      .map((v) => {
+        const { depart, arrivee } = parseTrajet(v);
+        return `<tr>
+          <td>${fmtDate(v.date_heure_depart)}</td>
+          <td>${fmtHeure(v.date_heure_depart)}</td>
+          <td>${fmtHeure(v.date_heure_arrive_prevue)}</td>
+          <td>${depart}</td>
+          <td>${arrivee}</td>
+          <td>${(v.type_voyage || "").toUpperCase()}</td>
+          <td>${fmtPrix(v.prix)}</td>
+          <td>${v.places_disponibles ?? "—"}</td>
+          <td>${STATUT_CONFIG[v.status]?.label || v.status}</td>
+        </tr>`;
+      })
+      .join("");
 
     const win = window.open("", "_blank");
     win.document.write(`<html><head><title>Planning Voyages</title>
@@ -380,7 +473,7 @@ export default function GestionVoyages() {
         tr:hover td{background:#f8fafc}
       </style></head><body>
       <h1>Planning des Voyages</h1>
-      <p>Généré le ${new Date().toLocaleDateString("fr-FR")} — ${filtered.length} voyage(s)</p>
+      <p>Généré le ${new Date().toLocaleDateString("fr-FR")} — ${voyagesFiltres.length} voyage(s)</p>
       <table>
         <tr><th>Date</th><th>Départ</th><th>Arrivée</th><th>Ville départ</th><th>Ville arrivée</th><th>Type</th><th>Prix</th><th>Places</th><th>Statut</th></tr>
         ${rows}
@@ -395,24 +488,45 @@ export default function GestionVoyages() {
       {/* ── En-tête ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Gestion des Voyages</h1>
-          <p className="text-slate-400 text-sm mt-1">Planning, tarification et suivi des départs</p>
+          <h1 className="text-2xl font-extrabold text-slate-900">
+            Gestion des Voyages
+          </h1>
+          <p className="text-slate-400 text-sm mt-1">
+            {isManagerLocal
+              ? `Voyages au départ de ${user?.filialeNom || "votre filiale"}`
+              : "Planning, tarification et suivi des départs de votre agence"}
+          </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => refetch()}
-            className="flex items-center gap-2 border border-slate-200 text-slate-600 text-sm font-semibold px-3 py-2 rounded-xl hover:bg-slate-50">
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 border border-slate-200 text-slate-600 text-sm font-semibold px-3 py-2 rounded-xl hover:bg-slate-50"
+          >
             <RefreshCw className="w-4 h-4" />
           </button>
-          <button onClick={handlePDF}
-            className="flex items-center gap-2 border border-slate-200 text-slate-600 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-slate-50">
+          <button
+            onClick={handlePDF}
+            className="flex items-center gap-2 border border-slate-200 text-slate-600 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-slate-50"
+          >
             <Download className="w-4 h-4" /> PDF
           </button>
-          <button onClick={() => setIsModalCreate(true)}
-            className="flex items-center gap-2 bg-[#135bec] hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-[#135bec]/20 transition-colors">
+          <button
+            onClick={() => setIsModalCreate(true)}
+            className="flex items-center gap-2 bg-[#135bec] hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg shadow-[#135bec]/20 transition-colors"
+          >
             <Plus className="w-4 h-4" /> Créer un voyage
           </button>
         </div>
       </div>
+
+      {/* ── Bandeau info périmètre ── */}
+      {isManagerLocal && (
+        <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-center gap-2">
+          <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+          Affichage restreint aux voyages au départ de la filiale{" "}
+          <strong>{user?.filialeNom || "votre filiale"}</strong>.
+        </div>
+      )}
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -429,14 +543,24 @@ export default function GestionVoyages() {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Ville, trajet, immatriculation…"
-              className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]" />
+              className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+            />
           </div>
-          <input type="date" value={filtreDate} onChange={(e) => setFiltreDate(e.target.value)}
-            className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]" />
-          <select value={filtreStatut} onChange={(e) => setFiltreStatut(e.target.value)}
-            className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]">
+          <input
+            type="date"
+            value={filtreDate}
+            onChange={(e) => setFiltreDate(e.target.value)}
+            className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+          />
+          <select
+            value={filtreStatut}
+            onChange={(e) => setFiltreStatut(e.target.value)}
+            className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+          >
             <option value="">Tous les statuts</option>
             {Object.entries(STATUT_CONFIG).map(([k, v]) => (
               <option key={k} value={k}>{v.label}</option>
@@ -445,35 +569,38 @@ export default function GestionVoyages() {
         </div>
       </Card>
 
-      {/* ── Tableau / Cartes ── */}
+      {/* ── Liste des voyages ── */}
       {isLoading ? (
         <Spinner size="lg" className="py-20" />
       ) : isError ? (
         <div className="text-center py-16 text-slate-400 text-sm">
           Impossible de charger les voyages.
         </div>
-      ) : filtered.length === 0 ? (
+      ) : voyagesFiltres.length === 0 ? (
         <div className="text-center py-20 text-slate-400 text-sm">
           Aucun voyage trouvé pour ces critères.
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((voyage) => {
-            const statut   = voyage.status || "programme";
-            const cfg      = STATUT_CONFIG[statut] || { label: statut, variant: "gray", color: "text-slate-500", bg: "bg-slate-50 border-slate-200" };
+          {voyagesFiltres.map((voyage) => {
+            const statut  = voyage.status || "programme";
+            const cfg     = STATUT_CONFIG[statut] || {
+              label: statut, variant: "gray",
+              color: "text-slate-500", bg: "bg-slate-50 border-slate-200",
+            };
             const { depart, arrivee } = parseTrajet(voyage);
-            const peutModifier = ["programme", "confirme"].includes(statut);
+            const peutModifier  = ["programme", "confirme"].includes(statut);
             const peutConfirmer = statut === "programme";
             const peutDemarrer  = statut === "confirme";
             const peutAnnuler   = ["programme", "confirme", "retarde"].includes(statut);
-
-            const dateDepart   = voyage.date_heure_depart;
-            const dateArrivee  = voyage.date_heure_arrive_prevue || voyage.dateHeureArrivee;
+            const dateDepart  = voyage.date_heure_depart;
+            const dateArrivee = voyage.date_heure_arrive_prevue;
 
             return (
-              <div key={voyage.Id_voyage}
-                className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-md transition-shadow">
-
+              <div
+                key={voyage.Id_voyage}
+                className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
+              >
                 {/* Barre statut */}
                 <div className={`h-1 w-full ${
                   statut === "programme" ? "bg-emerald-400" :
@@ -487,12 +614,14 @@ export default function GestionVoyages() {
                 <div className="p-5">
                   <div className="flex items-start gap-4 flex-wrap">
 
-                    {/* ── Colonne 1 : Date ── */}
+                    {/* Col 1 : Date */}
                     <div className="flex flex-col items-center justify-center bg-[#135bec]/5 rounded-xl p-3 min-w-[80px]">
                       <Calendar className="w-4 h-4 text-[#135bec] mb-1" />
                       <p className="text-xs font-bold text-[#135bec] text-center leading-tight">
                         {dateDepart
-                          ? new Date(dateDepart).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
+                          ? new Date(dateDepart).toLocaleDateString("fr-FR", {
+                              day: "2-digit", month: "short",
+                            })
                           : "—"}
                       </p>
                       <p className="text-xs text-slate-400 mt-0.5">
@@ -500,7 +629,7 @@ export default function GestionVoyages() {
                       </p>
                     </div>
 
-                    {/* ── Colonne 2 : Trajet ── */}
+                    {/* Col 2 : Trajet */}
                     <div className="flex-1 min-w-[200px]">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="flex items-center gap-1.5">
@@ -513,8 +642,6 @@ export default function GestionVoyages() {
                           <span className="text-sm font-bold text-slate-900">{arrivee}</span>
                         </div>
                       </div>
-
-                      {/* Horaires */}
                       <div className="flex items-center gap-4 text-xs text-slate-500">
                         <div className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" />
@@ -529,7 +656,7 @@ export default function GestionVoyages() {
                       </div>
                     </div>
 
-                    {/* ── Colonne 3 : Infos ── */}
+                    {/* Col 3 : Infos */}
                     <div className="flex gap-4 flex-wrap">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -545,7 +672,6 @@ export default function GestionVoyages() {
                           <span>{voyage.bus_immatriculation || "Bus non assigné"}</span>
                         </div>
                       </div>
-
                       <div className="flex flex-col gap-1 items-start">
                         <Badge variant={cfg.variant}>{cfg.label}</Badge>
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg border ${
@@ -558,33 +684,43 @@ export default function GestionVoyages() {
                       </div>
                     </div>
 
-                    {/* ── Colonne 4 : Actions ── */}
+                    {/* Col 4 : Actions */}
                     <div className="flex flex-col gap-2 min-w-[140px]">
                       {peutModifier && (
-                        <button onClick={() => setVoyageModifier(voyage)}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-[#135bec] hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg transition-colors">
+                        <button
+                          onClick={() => setVoyageModifier(voyage)}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-[#135bec] hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg transition-colors"
+                        >
                           <Edit3 className="w-3.5 h-3.5" /> Modifier
                         </button>
                       )}
                       {peutConfirmer && (
                         <button
-                          onClick={() => changerStatut({ Id_voyage: voyage.Id_voyage, status: "confirme" })}
+                          onClick={() =>
+                            changerStatut({ Id_voyage: voyage.Id_voyage, status: "confirme" })
+                          }
                           disabled={pendingStatut}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">
+                          className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+                        >
                           <CheckCircle className="w-3.5 h-3.5" /> Confirmer
                         </button>
                       )}
                       {peutDemarrer && (
                         <button
-                          onClick={() => changerStatut({ Id_voyage: voyage.Id_voyage, status: "en_cours" })}
+                          onClick={() =>
+                            changerStatut({ Id_voyage: voyage.Id_voyage, status: "en_cours" })
+                          }
                           disabled={pendingStatut}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">
+                          className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+                        >
                           <Play className="w-3.5 h-3.5" /> Démarrer
                         </button>
                       )}
                       {peutAnnuler && (
-                        <button onClick={() => setVoyageAnnuler(voyage)}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition-colors">
+                        <button
+                          onClick={() => setVoyageAnnuler(voyage)}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition-colors"
+                        >
                           <XCircle className="w-3.5 h-3.5" /> Annuler
                         </button>
                       )}
@@ -598,67 +734,106 @@ export default function GestionVoyages() {
       )}
 
       <p className="text-xs text-slate-400 mt-4 text-center">
-        {filtered.length} voyage(s) affiché(s) sur {voyages.length}
+        {voyagesFiltres.length} voyage(s) affiché(s) sur{" "}
+        {voyagesFiltresParRole.length}
       </p>
 
       {/* ── Modale Création ── */}
-      <Modal open={isModalCreate} onClose={() => { setIsModalCreate(false); setForm(FORM_INIT); }}
-        title="Créer un Nouveau Voyage" size="lg"
+      <Modal
+        open={isModalCreate}
+        onClose={() => { setIsModalCreate(false); setForm(FORM_INIT); }}
+        title="Créer un Nouveau Voyage"
+        size="lg"
         footer={
           <>
-            <button onClick={() => { setIsModalCreate(false); setForm(FORM_INIT); }}
-              className="px-4 py-2 text-sm font-semibold border border-slate-200 rounded-xl hover:bg-slate-50">
+            <button
+              onClick={() => { setIsModalCreate(false); setForm(FORM_INIT); }}
+              className="px-4 py-2 text-sm font-semibold border border-slate-200 rounded-xl hover:bg-slate-50"
+            >
               Annuler
             </button>
-            <button onClick={handleCreate} disabled={pendingCreate}
-              className="px-5 py-2 bg-[#135bec] hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl">
+            <button
+              onClick={handleCreate}
+              disabled={pendingCreate}
+              className="px-5 py-2 bg-[#135bec] hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl"
+            >
               {pendingCreate ? "Création…" : "Créer le voyage"}
             </button>
           </>
-        }>
+        }
+      >
         <form onSubmit={handleCreate} className="space-y-5">
-
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Trajet & Horaires</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+              Trajet & Horaires
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Trajet *</label>
-                <select value={form.Id_trajet}
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Trajet *
+                </label>
+                <select
+                  value={form.Id_trajet}
                   onChange={(e) => setForm((f) => ({ ...f, Id_trajet: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]">
-                  <option value="">Sélectionner un trajet</option>
-                  {trajets.map((t) => (
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                >
+                  <option value="">
+                    {trajetsPourCreation.length === 0
+                      ? "Aucun trajet disponible"
+                      : "Sélectionner un trajet"}
+                  </option>
+                  {trajetsPourCreation.map((t) => (
                     <option key={t.Id_trajet} value={t.Id_trajet}>
-                      {t.filiale_depart_nom || t.filiale_depart} → {t.filiale_arrive_nom || t.filiale_arrive}
+                      {t.filiale_depart_nom} → {t.filiale_arrive_nom}
                       {t.distance ? ` (${t.distance} km)` : ""}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Heure de départ *</label>
-                <input type="datetime-local" value={form.date_heure_depart}
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Heure de départ *
+                </label>
+                <input
+                  type="datetime-local"
+                  value={form.date_heure_depart}
                   onChange={(e) => setForm((f) => ({ ...f, date_heure_depart: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]" />
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Heure d'arrivée prévue</label>
-                <input type="datetime-local" value={form.date_heure_arrive_prevue}
-                  onChange={(e) => setForm((f) => ({ ...f, date_heure_arrive_prevue: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]" />
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Heure d'arrivée prévue
+                </label>
+                <input
+                  type="datetime-local"
+                  value={form.date_heure_arrive_prevue}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, date_heure_arrive_prevue: e.target.value }))
+                  }
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                />
               </div>
             </div>
           </div>
 
           <div className="border-t border-slate-100 pt-4">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Affectation</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+              Affectation
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Bus disponible *</label>
-                <select value={form.IdBus}
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Bus disponible *
+                </label>
+                <select
+                  value={form.IdBus}
                   onChange={(e) => setForm((f) => ({ ...f, IdBus: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]">
-                  <option value="">{busDisponibles.length === 0 ? "Aucun bus disponible" : "Sélectionner un bus"}</option>
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                >
+                  <option value="">
+                    {busDisponibles.length === 0 ? "Aucun bus disponible" : "Sélectionner un bus"}
+                  </option>
                   {busDisponibles.map((b) => (
                     <option key={b.IdBus} value={b.IdBus}>
                       {b.immatriculation} — {b.modele || "Bus"} ({b.capacite} pl.)
@@ -668,12 +843,21 @@ export default function GestionVoyages() {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Chauffeur <span className="text-slate-400 font-normal">({chauffeursDisponibles.length} dispo.)</span>
+                  Chauffeur{" "}
+                  <span className="text-slate-400 font-normal">
+                    ({chauffeursDisponibles.length} dispo.)
+                  </span>
                 </label>
-                <select value={form.id_chauffeur}
+                <select
+                  value={form.id_chauffeur}
                   onChange={(e) => setForm((f) => ({ ...f, id_chauffeur: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]">
-                  <option value="">{chauffeursDisponibles.length === 0 ? "Aucun chauffeur disponible" : "Optionnel"}</option>
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                >
+                  <option value="">
+                    {chauffeursDisponibles.length === 0
+                      ? "Aucun chauffeur disponible"
+                      : "Optionnel"}
+                  </option>
                   {chauffeursDisponibles.map((c) => (
                     <option key={c.id_chauffeur} value={c.id_chauffeur}>
                       {c.name} {c.surname}
@@ -685,37 +869,56 @@ export default function GestionVoyages() {
           </div>
 
           <div className="border-t border-slate-100 pt-4">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Tarification</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+              Tarification
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">Type</label>
                 <div className="flex gap-2">
                   {["standard", "vip"].map((t) => (
-                    <button key={t} type="button"
+                    <button
+                      key={t}
+                      type="button"
                       onClick={() => setForm((f) => ({ ...f, type_voyage: t }))}
                       className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
                         form.type_voyage === t
                           ? "bg-[#135bec] text-white border-[#135bec]"
                           : "border-slate-200 text-slate-500 hover:border-[#135bec]"
-                      }`}>
+                      }`}
+                    >
                       {t === "vip" ? "VIP" : "Standard"}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Prix (FCFA) *</label>
-                <input type="number" min="0" placeholder="Ex: 3000" value={form.prix}
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Prix (FCFA) *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Ex: 3000"
+                  value={form.prix}
                   onChange={(e) => setForm((f) => ({ ...f, prix: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]" />
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                />
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Places disponibles</label>
-                <input type="number" min="1"
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Places disponibles
+                </label>
+                <input
+                  type="number"
+                  min="1"
                   placeholder="Laisser vide pour utiliser la capacité du bus"
                   value={form.places_disponibles}
-                  onChange={(e) => setForm((f) => ({ ...f, places_disponibles: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]" />
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, places_disponibles: e.target.value }))
+                  }
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
+                />
               </div>
             </div>
           </div>
@@ -727,9 +930,6 @@ export default function GestionVoyages() {
         open={!!voyageModifier}
         onClose={() => setVoyageModifier(null)}
         voyage={voyageModifier}
-        trajets={trajets}
-        busDisponibles={busDisponibles}
-        chauffeurs={chauffeursDisponibles}
         onSave={handleSaveModif}
         isPending={pendingModif}
       />
@@ -740,7 +940,11 @@ export default function GestionVoyages() {
         onClose={() => setVoyageAnnuler(null)}
         voyage={voyageAnnuler}
         onConfirm={(motif) =>
-          changerStatut({ Id_voyage: voyageAnnuler.Id_voyage, status: "annule", motif })
+          changerStatut({
+            Id_voyage: voyageAnnuler.Id_voyage,
+            status: "annule",
+            motif,
+          })
         }
         isPending={pendingStatut}
       />
