@@ -50,6 +50,7 @@ class JWTAuthenticationMiddleware:
             r'^/api/bus/disponibles/?$',    
             r'^/api/stats/?$', 
             r'^/api/docs/.*$',
+            r'^/api/agences/[^/]+/profil/?$',
             r'^/api/docs/redoc/?$'             
         ]
         

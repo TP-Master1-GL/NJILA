@@ -66,7 +66,7 @@ public class AdministrateurServiceImpl implements AdministrateurService {
         }
 
         UUID newUserId = UUID.randomUUID();
-        String tempPassword = "000000";
+        String tempPassword = "00000000";
 
         ManagerGlobal managerGlobal = ManagerGlobal.builder()
             .idUser(newUserId)

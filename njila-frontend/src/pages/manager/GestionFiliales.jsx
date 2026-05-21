@@ -1,19 +1,21 @@
 /**
  * GestionFiliales.jsx – Manager Global
- * Création filiale et assignation d'un manager local sont deux opérations distinctes :
- *   1. Créer la filiale  → POST /api/filiales/
- *   2. Assigner un manager local à une filiale existante → POST /api/users/agences/{agenceId}/managers-locaux
+ *
+ * CORRECTIONS :
+ * 1. Bouton "Détails" ouvre FilialeDetailModal avec la filiale sélectionnée.
+ * 2. Import et gestion d'état du modal de détail ajoutés.
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, MapPin, Users, Bus, TrendingUp,
-  ArrowRight, Download, ToggleLeft, ToggleRight, UserPlus,
+  ArrowRight, Download, ToggleLeft, ToggleRight, UserPlus, Eye,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Modal from "../../components/ui/Modal";
 import Spinner from "../../components/ui/Spinner";
+import FilialeDetailModal from "./FilialeDetailModal";
 import { filialeService } from "../../services/filialeService";
 import { userService } from "../../services/userService";
 import { formatMontant } from "../../utils/formatters";
@@ -48,15 +50,18 @@ export default function GestionFiliales() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
 
-  // ── Modals ─────────────────────────────────────────────────────────────────
-  // Modal 1 : Créer une filiale
+  // ── Modal 1 : Créer une filiale ───────────────────────────────────────────
   const [isFilialeModalOpen, setIsFilialeModalOpen] = useState(false);
   const [filialeForm, setFilialeForm] = useState(FILIALE_FORM_INIT);
 
-  // Modal 2 : Assigner un manager local à une filiale existante
+  // ── Modal 2 : Assigner un manager local ──────────────────────────────────
   const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
-  const [selectedFiliale, setSelectedFiliale] = useState(null); // filiale cible
+  const [selectedFilialeForManager, setSelectedFilialeForManager] = useState(null);
   const [managerForm, setManagerForm] = useState(MANAGER_FORM_INIT);
+
+  // ── Modal 3 : Détail filiale ──────────────────────────────────────────────
+  // CORRECTION : état pour ouvrir FilialeDetailModal au clic sur "Détails"
+  const [filialeDetail, setFilialeDetail] = useState(null); // filiale à afficher
 
   const agenceId      = user?.agenceId;
   const planActuel    = user?.plan || "MENSUEL";
@@ -70,7 +75,7 @@ export default function GestionFiliales() {
     retry: 1,
   });
 
-  // ── Mutation 1 : Créer une filiale (sans manager) ─────────────────────────
+  // ── Mutation 1 : Créer une filiale ────────────────────────────────────────
   const { mutate: creerFiliale, isPending: isCreatingFiliale } = useMutation({
     mutationFn: (payload) =>
       filialeService.creerFiliale({
@@ -90,7 +95,7 @@ export default function GestionFiliales() {
 
       // Proposer d'assigner un manager immédiatement après la création
       if (nouvelleFiliale?.id_filiale) {
-        setSelectedFiliale(nouvelleFiliale);
+        setSelectedFilialeForManager(nouvelleFiliale);
         setIsManagerModalOpen(true);
       }
     },
@@ -98,7 +103,7 @@ export default function GestionFiliales() {
       toast.error(err?.response?.data?.error || "Erreur lors de la création de la filiale."),
   });
 
-  // ── Mutation 2 : Assigner un manager local (opération indépendante) ────────
+  // ── Mutation 2 : Assigner un manager local ────────────────────────────────
   const { mutate: assignerManager, isPending: isAssigningManager } = useMutation({
     mutationFn: (payload) =>
       userService.createManagerLocal(agenceId, {
@@ -106,20 +111,20 @@ export default function GestionFiliales() {
         surname:   payload.managerPrenom,
         email:     payload.managerEmail,
         phone:     payload.managerTelephone,
-        filialeId: selectedFiliale?.id_filiale,
+        filialeId: selectedFilialeForManager?.id_filiale,
       }),
     onSuccess: () => {
       toast.success("Manager local assigné avec succès !");
       qc.invalidateQueries({ queryKey: ["filiales"] });
       setIsManagerModalOpen(false);
-      setSelectedFiliale(null);
+      setSelectedFilialeForManager(null);
       setManagerForm(MANAGER_FORM_INIT);
     },
     onError: (err) =>
       toast.error(err?.response?.data?.error || "Erreur lors de l'assignation du manager."),
   });
 
-  // ── Mutation 3 : Toggle activation filiale ─────────────────────────────────
+  // ── Mutation 3 : Toggle activation filiale ────────────────────────────────
   const { mutate: toggleFiliale } = useMutation({
     mutationFn: ({ id, est_active }) => filialeService.toggleFiliale(id, est_active),
     onSuccess: () => {
@@ -143,15 +148,20 @@ export default function GestionFiliales() {
     e?.preventDefault();
     if (!managerForm.managerEmail)
       return toast.error("L'email du manager est requis.");
-    if (!selectedFiliale?.id_filiale)
+    if (!selectedFilialeForManager?.id_filiale)
       return toast.error("Aucune filiale sélectionnée.");
     assignerManager(managerForm);
   };
 
   const openManagerModal = (filiale) => {
-    setSelectedFiliale(filiale);
+    setSelectedFilialeForManager(filiale);
     setManagerForm(MANAGER_FORM_INIT);
     setIsManagerModalOpen(true);
+  };
+
+  // CORRECTION : ouvrir le modal de détail
+  const openDetailModal = (filiale) => {
+    setFilialeDetail(filiale);
   };
 
   // ── PDF ────────────────────────────────────────────────────────────────────
@@ -193,10 +203,9 @@ export default function GestionFiliales() {
 
   const actives = filiales.filter((f) => f.est_active !== false).length;
 
-  // ── Rendu ──────────────────────────────────────────────────────────────────
   return (
     <DashboardLayout>
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">Mes Filiales</h1>
@@ -223,7 +232,7 @@ export default function GestionFiliales() {
         </div>
       </div>
 
-      {/* KPI Banner */}
+      {/* ── KPI Banner ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
           { label: "Total filiales", value: filiales.length,           color: "text-slate-900",   bg: "bg-slate-50"   },
@@ -238,23 +247,28 @@ export default function GestionFiliales() {
         ))}
       </div>
 
-      {/* Liste */}
+      {/* ── Liste ── */}
       {isLoading ? (
         <Spinner size="lg" className="py-20" />
       ) : isError ? (
-        <div className="text-center py-20 text-slate-400 text-sm">Impossible de charger les filiales.</div>
+        <div className="text-center py-20 text-slate-400 text-sm">
+          Impossible de charger les filiales.
+        </div>
       ) : filiales.length === 0 ? (
         <div className="text-center py-20 text-slate-400 text-sm">
           Aucune filiale enregistrée.{" "}
-          <button onClick={() => setIsFilialeModalOpen(true)} className="text-[#135bec] font-semibold hover:underline">
+          <button
+            onClick={() => setIsFilialeModalOpen(true)}
+            className="text-[#135bec] font-semibold hover:underline"
+          >
             Créer la première
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filiales.map((f) => {
-            const isActif  = f.est_active !== false;
-            const taux     = f.taux_occupation || 0;
+            const isActif   = f.est_active !== false;
+            const taux      = f.taux_occupation || 0;
             const tauxColor =
               taux >= 85 ? "text-emerald-600 bg-emerald-50"
               : taux >= 70 ? "text-blue-600 bg-blue-50"
@@ -277,7 +291,9 @@ export default function GestionFiliales() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-extrabold text-slate-900 text-sm truncate">{f.nom}</p>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${isActif ? "text-emerald-600 bg-emerald-50" : "text-red-600 bg-red-50"}`}>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                        isActif ? "text-emerald-600 bg-emerald-50" : "text-red-600 bg-red-50"
+                      }`}>
                         {isActif ? "Actif" : "Inactif"}
                       </span>
                     </div>
@@ -289,7 +305,9 @@ export default function GestionFiliales() {
                     )}
                   </div>
                   {taux > 0 && (
-                    <div className={`text-xs font-bold px-2 py-1 rounded-lg ${tauxColor}`}>{taux}%</div>
+                    <div className={`text-xs font-bold px-2 py-1 rounded-lg ${tauxColor}`}>
+                      {taux}%
+                    </div>
                   )}
                 </div>
 
@@ -319,7 +337,7 @@ export default function GestionFiliales() {
                   </div>
                 )}
 
-                {/* Footer */}
+                {/* Footer carte */}
                 <div className="flex items-center justify-between pt-3 border-t border-slate-50">
                   <div className="flex items-center gap-3">
                     {/* Toggle activation */}
@@ -332,7 +350,8 @@ export default function GestionFiliales() {
                         : <ToggleLeft  className="w-4 h-4 text-slate-300"   />}
                       {isActif ? "Désactiver" : "Activer"}
                     </button>
-                    {/* Assigner manager — opération distincte */}
+
+                    {/* Assigner manager */}
                     <button
                       onClick={() => openManagerModal(f)}
                       className="flex items-center gap-1.5 text-xs text-violet-600 hover:text-violet-800 transition-colors"
@@ -341,8 +360,13 @@ export default function GestionFiliales() {
                       <UserPlus className="w-4 h-4" /> Manager
                     </button>
                   </div>
-                  <button className="text-xs text-[#135bec] font-bold hover:underline flex items-center gap-1">
-                    Détails <ArrowRight className="w-3 h-3" />
+
+                  {/* CORRECTION : bouton Détails ouvre FilialeDetailModal */}
+                  <button
+                    onClick={() => openDetailModal(f)}
+                    className="text-xs text-[#135bec] font-bold hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" /> Détails <ArrowRight className="w-3 h-3" />
                   </button>
                 </div>
               </div>
@@ -358,13 +382,15 @@ export default function GestionFiliales() {
               <div className="w-12 h-12 bg-slate-100 group-hover:bg-[#135bec]/10 rounded-2xl flex items-center justify-center transition-colors">
                 <Plus className="w-6 h-6 text-slate-400 group-hover:text-[#135bec]" />
               </div>
-              <p className="text-sm font-semibold text-slate-400 group-hover:text-[#135bec]">Ajouter une filiale</p>
+              <p className="text-sm font-semibold text-slate-400 group-hover:text-[#135bec]">
+                Ajouter une filiale
+              </p>
             </button>
           )}
         </div>
       )}
 
-      {/* ── Modal 1 : Créer une filiale ──────────────────────────────────────── */}
+      {/* ══ Modal 1 : Créer une filiale ══ */}
       <Modal
         open={isFilialeModalOpen}
         onClose={() => { setIsFilialeModalOpen(false); setFilialeForm(FILIALE_FORM_INIT); }}
@@ -451,21 +477,30 @@ export default function GestionFiliales() {
             </div>
           </div>
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
-            <strong>Info :</strong> Après la création, vous pourrez assigner un Manager Local directement depuis la carte filiale.
+            <strong>Info :</strong> Après la création, vous pourrez assigner un Manager Local
+            directement depuis la carte filiale.
           </div>
         </div>
       </Modal>
 
-      {/* ── Modal 2 : Assigner un Manager Local ──────────────────────────────── */}
+      {/* ══ Modal 2 : Assigner un Manager Local ══ */}
       <Modal
         open={isManagerModalOpen}
-        onClose={() => { setIsManagerModalOpen(false); setSelectedFiliale(null); setManagerForm(MANAGER_FORM_INIT); }}
-        title={`Assigner un Manager Local${selectedFiliale?.nom ? ` — ${selectedFiliale.nom}` : ""}`}
+        onClose={() => {
+          setIsManagerModalOpen(false);
+          setSelectedFilialeForManager(null);
+          setManagerForm(MANAGER_FORM_INIT);
+        }}
+        title={`Assigner un Manager Local${selectedFilialeForManager?.nom ? ` — ${selectedFilialeForManager.nom}` : ""}`}
         size="md"
         footer={
           <>
             <button
-              onClick={() => { setIsManagerModalOpen(false); setSelectedFiliale(null); setManagerForm(MANAGER_FORM_INIT); }}
+              onClick={() => {
+                setIsManagerModalOpen(false);
+                setSelectedFilialeForManager(null);
+                setManagerForm(MANAGER_FORM_INIT);
+              }}
               className="px-4 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50"
             >
               Annuler
@@ -481,19 +516,20 @@ export default function GestionFiliales() {
         }
       >
         <div className="space-y-4">
-          {/* Filiale cible — affichée en lecture seule */}
-          {selectedFiliale && (
+          {selectedFilialeForManager && (
             <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2">
               <img
-                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(selectedFiliale.nom)}&background=135bec&color=fff&size=36&bold=true`}
+                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(selectedFilialeForManager.nom)}&background=135bec&color=fff&size=36&bold=true`}
                 className="w-9 h-9 rounded-lg"
-                alt={selectedFiliale.nom}
+                alt={selectedFilialeForManager.nom}
               />
               <div>
-                <p className="text-sm font-bold text-slate-900">{selectedFiliale.nom}</p>
+                <p className="text-sm font-bold text-slate-900">{selectedFilialeForManager.nom}</p>
                 <p className="text-xs text-slate-400 flex items-center gap-1">
-                  <MapPin className="w-3 h-3" />{selectedFiliale.ville}
-                  {selectedFiliale.code && <span className="font-mono ml-1">#{selectedFiliale.code}</span>}
+                  <MapPin className="w-3 h-3" />{selectedFilialeForManager.ville}
+                  {selectedFilialeForManager.code && (
+                    <span className="font-mono ml-1">#{selectedFilialeForManager.code}</span>
+                  )}
                 </p>
               </div>
             </div>
@@ -522,7 +558,9 @@ export default function GestionFiliales() {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email professionnel *</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Email professionnel *
+              </label>
               <input
                 type="email"
                 placeholder="manager@agence.cm"
@@ -542,10 +580,19 @@ export default function GestionFiliales() {
             </div>
           </div>
           <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 text-xs text-violet-700">
-            <strong>Info :</strong> Un email d'invitation sera envoyé au Manager Local avec ses identifiants de connexion.
+            <strong>Info :</strong> Un email d'invitation sera envoyé au Manager Local
+            avec ses identifiants de connexion.
           </div>
         </div>
       </Modal>
+
+      {/* ══ Modal 3 : Détail filiale — CORRECTION ══ */}
+      {filialeDetail && (
+        <FilialeDetailModal
+          filiale={filialeDetail}
+          onClose={() => setFilialeDetail(null)}
+        />
+      )}
     </DashboardLayout>
   );
 }

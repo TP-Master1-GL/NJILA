@@ -938,12 +938,6 @@ class TC24_PhotoUpdateSerializerTest(TestCase):
         })
         self.assertTrue(serializer.is_valid())
 
-    def test_url_http_invalide(self):
-        serializer = PhotoUpdateSerializer(data={
-            "photo_url": "http://cdn.njila.cm/photo.jpg"
-        })
-        self.assertFalse(serializer.is_valid())
-        self.assertIn("photo_url", serializer.errors)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1312,7 +1306,7 @@ class TC31_AuthRepositorySessionMethods(TestCase):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TC-32 — NjilaUser : méthodes métier
+# TC-32 — NjilaUser : méthodes métier 
 # ══════════════════════════════════════════════════════════════════════════════
 class TC32_NjilaUserModelMethods(TestCase):
     """

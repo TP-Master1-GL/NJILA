@@ -60,7 +60,6 @@ const HOW_IT_WORKS = [
   { step: "04", title: "Recevez votre billet",     desc: "Votre billet électronique avec numéro unique vous est envoyé par email et SMS.", icon: "qr_code_2" },
 ];
 
-// Badge couleur selon index
 const getBadge = (agence, index) => {
   const badges = [
     { type: "PREMIUM", bg: "bg-emerald-500" },
@@ -70,7 +69,6 @@ const getBadge = (agence, index) => {
   return badges[index % badges.length];
 };
 
-// Fallback image si logo absent
 const AGENCY_FALLBACKS = [IMAGES.AGENCY_1, IMAGES.AGENCY_2, IMAGES.AGENCY_3];
 
 export default function LandingPage() {
@@ -78,23 +76,24 @@ export default function LandingPage() {
   const { setRecherche } = useBookingStore();
   const { user, isAuthenticated } = useAuthStore();
   const { logout } = useAuth();
+
+  // CORRECTION 3 : origine et destination vides = "toutes les villes"
   const [form, setForm] = useState({
-    origine: "Douala",
-    destination: "Yaoundé",
+    origine: "",
+    destination: "",
     date: "",
     nombrePlaces: 1,
   });
   const [navOpen, setNavOpen] = useState(false);
 
-  // ── Chargement des agences actives depuis le backend ──────────────
+  // CORRECTION 1 : charger TOUTES les agences sans slice
   const { data: agencesData, isLoading: agencesLoading } = useQuery({
     queryKey: ["agences-landing"],
     queryFn: () => agenceService.getAgences({ statut_global: "active" }),
     staleTime: 5 * 60 * 1000,
   });
 
-  // On prend les 3 premières agences actives pour la section partenaires
-  const agences = (agencesData || []).slice(0, 3);
+  const agences = agencesData || [];
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -105,133 +104,60 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white font-sans">
 
-      {/* ── NAVBAR ──────────────────────────────────────────────────────── */}
+      {/* NAVBAR */}
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <NjilaLogo size="md" />
-
-            {/* Desktop links */}
             <div className="hidden md:flex items-center gap-8">
-              <Link to="/recherche" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">
-                Trajets
-              </Link>
-              <a href="#agences" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">
-                Agences
-              </a>
-              <a href="#comment" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">
-                Comment ça marche
-              </a>
-              <a href="#aide" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">
-                Aide
-              </a>
+              <Link to="/recherche" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">Trajets</Link>
+              <a href="#agences" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">Agences</a>
+              <a href="#comment" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">Comment ça marche</a>
+              <a href="#aide" className="text-sm font-medium text-slate-600 hover:text-[#135bec] transition-colors">Aide</a>
             </div>
-
-            {/* Auth desktop */}
             <div className="hidden md:flex items-center gap-3">
               {isAuthenticated ? (
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => navigate("/voyageur")}
-                    className="text-sm font-semibold text-[#135bec] hover:underline"
-                  >
-                    Mon espace
-                  </button>
-                  <button
-                    onClick={logout}
-                    className="text-sm font-medium text-slate-500 hover:text-red-500 transition-colors"
-                  >
-                    Déconnexion
-                  </button>
+                  <button onClick={() => navigate("/voyageur")} className="text-sm font-semibold text-[#135bec] hover:underline">Mon espace</button>
+                  <button onClick={logout} className="text-sm font-medium text-slate-500 hover:text-red-500 transition-colors">Déconnexion</button>
                 </div>
               ) : (
                 <>
-                  <Link
-                    to="/login"
-                    className="text-sm font-medium text-slate-600 hover:text-[#135bec] px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors"
-                  >
-                    Se connecter
-                  </Link>
-                  <Link
-                    to="/register"
-                    className="text-sm font-bold bg-[#135bec] hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition-colors shadow-sm shadow-[#135bec]/30"
-                  >
-                    S'inscrire gratuitement
-                  </Link>
+                  <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-[#135bec] px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors">Se connecter</Link>
+                  <Link to="/register" className="text-sm font-bold bg-[#135bec] hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition-colors shadow-sm shadow-[#135bec]/30">S'inscrire gratuitement</Link>
                 </>
               )}
             </div>
-
-            {/* Mobile burger */}
-            <button
-              onClick={() => setNavOpen(!navOpen)}
-              className="md:hidden p-2 text-[#135bec] hover:bg-slate-50 rounded-lg transition-colors"
-            >
+            <button onClick={() => setNavOpen(!navOpen)} className="md:hidden p-2 text-[#135bec] hover:bg-slate-50 rounded-lg transition-colors">
               <span className="material-icons">{navOpen ? "close" : "menu"}</span>
             </button>
           </div>
         </div>
-
-        {/* Mobile menu */}
-        <div
-          className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out bg-white border-t border-slate-100 ${
-            navOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
+        <div className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out bg-white border-t border-slate-100 ${navOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}>
           <div className="px-4 py-6 space-y-4">
-            <Link
-              to="/recherche"
-              onClick={() => setNavOpen(false)}
-              className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all"
-            >
+            <Link to="/recherche" onClick={() => setNavOpen(false)} className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all">
               <span className="material-icons text-xl text-slate-400">directions_bus</span> Trajets
             </Link>
-            <a
-              href="#agences"
-              onClick={() => setNavOpen(false)}
-              className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all"
-            >
+            <a href="#agences" onClick={() => setNavOpen(false)} className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all">
               <span className="material-icons text-xl text-slate-400">business</span> Agences
             </a>
-            <a
-              href="#comment"
-              onClick={() => setNavOpen(false)}
-              className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all"
-            >
+            <a href="#comment" onClick={() => setNavOpen(false)} className="flex items-center gap-3 text-sm font-semibold text-slate-700 hover:text-[#135bec] p-2 rounded-lg hover:bg-slate-50 transition-all">
               <span className="material-icons text-xl text-slate-400">help_outline</span> Comment ça marche
             </a>
             <div className="pt-4 border-t border-slate-100 space-y-3">
               {isAuthenticated ? (
                 <>
-                  <button
-                    onClick={() => { navigate("/voyageur"); setNavOpen(false); }}
-                    className="w-full flex items-center gap-3 text-sm font-bold text-[#135bec] p-2"
-                  >
+                  <button onClick={() => { navigate("/voyageur"); setNavOpen(false); }} className="w-full flex items-center gap-3 text-sm font-bold text-[#135bec] p-2">
                     <span className="material-icons">dashboard</span> Mon espace
                   </button>
-                  <button
-                    onClick={() => { logout(); setNavOpen(false); }}
-                    className="w-full flex items-center gap-3 text-sm font-bold text-red-500 p-2"
-                  >
+                  <button onClick={() => { logout(); setNavOpen(false); }} className="w-full flex items-center gap-3 text-sm font-bold text-red-500 p-2">
                     <span className="material-icons">logout</span> Déconnexion
                   </button>
                 </>
               ) : (
                 <>
-                  <Link
-                    to="/login"
-                    onClick={() => setNavOpen(false)}
-                    className="block w-full text-center text-sm font-bold text-slate-700 py-3 rounded-xl border border-slate-200"
-                  >
-                    Se connecter
-                  </Link>
-                  <Link
-                    to="/register"
-                    onClick={() => setNavOpen(false)}
-                    className="block w-full text-center text-sm font-bold bg-[#135bec] text-white py-4 rounded-xl shadow-lg shadow-[#135bec]/20"
-                  >
-                    S'inscrire gratuitement
-                  </Link>
+                  <Link to="/login" onClick={() => setNavOpen(false)} className="block w-full text-center text-sm font-bold text-slate-700 py-3 rounded-xl border border-slate-200">Se connecter</Link>
+                  <Link to="/register" onClick={() => setNavOpen(false)} className="block w-full text-center text-sm font-bold bg-[#135bec] text-white py-4 rounded-xl shadow-lg shadow-[#135bec]/20">S'inscrire gratuitement</Link>
                 </>
               )}
             </div>
@@ -239,23 +165,19 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ── HERO ────────────────────────────────────────────────────────── */}
+      {/* HERO */}
       <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 pt-16 pb-32">
         <div className="absolute inset-0 -z-10">
           <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-[500px] h-[500px] bg-[#135bec]/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-3xl" />
         </div>
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Badge */}
           <div className="flex justify-center mb-6">
             <div className="inline-flex items-center gap-2 bg-[#135bec]/10 text-[#135bec] px-4 py-1.5 rounded-full text-sm font-semibold">
               <span className="material-icons text-base">verified</span>
               La plateforme #1 du transport interurbain au Cameroun
             </div>
           </div>
-
-          {/* Titre */}
           <div className="text-center mb-12">
             <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-[1.1]">
               Voyagez à travers le{" "}
@@ -272,11 +194,11 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Formulaire recherche */}
           <div className="max-w-4xl mx-auto">
             <form onSubmit={handleSearch} className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 md:p-8">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                {/* Origine */}
+
+                {/* CORRECTION 3 : Origine avec option vide "Toutes les villes" */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Origine</label>
                   <div className="relative">
@@ -286,11 +208,13 @@ export default function LandingPage() {
                       onChange={e => setForm(f => ({ ...f, origine: e.target.value }))}
                       className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl border-0 focus:ring-2 focus:ring-[#135bec] text-sm font-medium appearance-none"
                     >
+                      <option value="">Toutes les villes</option>
                       {VILLES.map(v => <option key={v}>{v}</option>)}
                     </select>
                   </div>
                 </div>
-                {/* Destination */}
+
+                {/* CORRECTION 3 : Destination avec option vide "Toutes les villes" */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Destination</label>
                   <div className="relative">
@@ -300,11 +224,12 @@ export default function LandingPage() {
                       onChange={e => setForm(f => ({ ...f, destination: e.target.value }))}
                       className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl border-0 focus:ring-2 focus:ring-[#135bec] text-sm font-medium appearance-none"
                     >
+                      <option value="">Toutes les villes</option>
                       {VILLES.map(v => <option key={v}>{v}</option>)}
                     </select>
                   </div>
                 </div>
-                {/* Date */}
+
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date de voyage</label>
                   <div className="relative">
@@ -317,31 +242,23 @@ export default function LandingPage() {
                     />
                   </div>
                 </div>
-                {/* Bouton */}
+
                 <div className="flex items-end">
-                  <button
-                    type="submit"
-                    className="w-full h-[52px] bg-[#135bec] hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#135bec]/30 flex items-center justify-center gap-2 text-sm"
-                  >
+                  <button type="submit" className="w-full h-[52px] bg-[#135bec] hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-[#135bec]/30 flex items-center justify-center gap-2 text-sm">
                     <span className="material-icons text-xl">search</span>
                     Rechercher
                   </button>
                 </div>
               </div>
 
-              {/* Badges paiement */}
               <div className="flex items-center justify-center gap-6 pt-3 border-t border-slate-100 flex-wrap">
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <div className="w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center">
-                    <span className="text-white text-[8px] font-black">M</span>
-                  </div>
+                  <div className="w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center"><span className="text-white text-[8px] font-black">M</span></div>
                   <span className="font-semibold text-yellow-600">MTN MoMo</span>
                 </div>
                 <div className="w-px h-4 bg-slate-200" />
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <div className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center">
-                    <span className="text-white text-[8px] font-black">O</span>
-                  </div>
+                  <div className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center"><span className="text-white text-[8px] font-black">O</span></div>
                   <span className="font-semibold text-orange-600">Orange Money</span>
                 </div>
                 <div className="w-px h-4 bg-slate-200" />
@@ -357,10 +274,7 @@ export default function LandingPage() {
         {/* Bus animé */}
         <div className="relative w-full mt-8 h-20 overflow-hidden pointer-events-none select-none">
           <div className="absolute bottom-0 left-0 right-0 h-6 bg-slate-300/20 rounded-t-2xl" />
-          <div
-            className="absolute bottom-2 left-0 flex gap-8 animate-road-dash"
-            style={{ width: "200%" }}
-          >
+          <div className="absolute bottom-2 left-0 flex gap-8 animate-road-dash" style={{ width: "200%" }}>
             {Array.from({ length: 24 }).map((_, i) => (
               <div key={i} className="flex-shrink-0 w-12 h-1 bg-[#135bec]/25 rounded-full" />
             ))}
@@ -386,7 +300,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── STATS ───────────────────────────────────────────────────────── */}
+      {/* STATS */}
       <section className="py-12 bg-[#135bec]">
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
@@ -401,7 +315,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── VILLES POPULAIRES ───────────────────────────────────────────── */}
+      {/* VILLES POPULAIRES */}
       <section className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12">
@@ -410,14 +324,7 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {POPULAR_CITIES.map(({ nom, img, desc }) => (
-              <button
-                key={nom}
-                onClick={() => {
-                  setForm(f => ({ ...f, destination: nom }));
-                  document.querySelector("form")?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="group relative overflow-hidden rounded-2xl aspect-[3/4] cursor-pointer"
-              >
+              <button key={nom} onClick={() => { setForm(f => ({ ...f, destination: nom })); document.querySelector("form")?.scrollIntoView({ behavior: "smooth" }); }} className="group relative overflow-hidden rounded-2xl aspect-[3/4] cursor-pointer">
                 <img src={img} alt={nom} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 text-white text-left">
@@ -430,21 +337,16 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── FEATURES ────────────────────────────────────────────────────── */}
+      {/* FEATURES */}
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-3">Pourquoi choisir NJILA ?</h2>
-            <p className="text-slate-500 text-lg max-w-2xl mx-auto">
-              Une expérience de voyage simplifiée du début à la fin
-            </p>
+            <p className="text-slate-500 text-lg max-w-2xl mx-auto">Une expérience de voyage simplifiée du début à la fin</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {FEATURES.map(({ icon, title, desc, color, tags }) => (
-              <div
-                key={title}
-                className="group p-8 rounded-2xl border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default"
-              >
+              <div key={title} className="group p-8 rounded-2xl border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default">
                 <div className={`w-14 h-14 ${color} rounded-2xl flex items-center justify-center mb-6`}>
                   <span className="material-icons text-3xl">{icon}</span>
                 </div>
@@ -452,12 +354,8 @@ export default function LandingPage() {
                 <p className="text-slate-500 leading-relaxed">{desc}</p>
                 {tags.length > 0 && (
                   <div className="flex gap-2 mt-4">
-                    <span className="px-2 py-1 bg-yellow-50 text-yellow-700 text-[10px] font-black uppercase tracking-widest rounded">
-                      {tags[0]}
-                    </span>
-                    <span className="px-2 py-1 bg-orange-50 text-orange-600 text-[10px] font-black uppercase tracking-widest rounded">
-                      {tags[1]}
-                    </span>
+                    <span className="px-2 py-1 bg-yellow-50 text-yellow-700 text-[10px] font-black uppercase tracking-widest rounded">{tags[0]}</span>
+                    <span className="px-2 py-1 bg-orange-50 text-orange-600 text-[10px] font-black uppercase tracking-widest rounded">{tags[1]}</span>
                   </div>
                 )}
               </div>
@@ -466,32 +364,22 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          ── AGENCES PARTENAIRES ──────────────────────────────────────────
-          La carte entière est cliquable → profil agence
-          Le bouton "Voir les voyages →" redirige vers /recherche
-          Le bouton "Voir le profil →"  redirige vers /agences/:id
-      ══════════════════════════════════════════════════════════════════ */}
+      {/* AGENCES PARTENAIRES
+          CORRECTION 1 : toutes les agences (pas de slice)
+          CORRECTION 2 : logo réel affiché si disponible, sinon image mock
+      */}
       <section id="agences" className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-end justify-between mb-12">
             <div>
-              <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-2">
-                Nos Agences Partenaires
-              </h2>
-              <p className="text-slate-500">
-                Voyagez avec les entreprises de transport les plus fiables du Cameroun
-              </p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-2">Nos Agences Partenaires</h2>
+              <p className="text-slate-500">Voyagez avec les entreprises de transport les plus fiables du Cameroun</p>
             </div>
-            <Link
-              to="/recherche"
-              className="hidden md:flex items-center gap-1 text-[#135bec] font-semibold hover:underline text-sm"
-            >
+            <Link to="/recherche" className="hidden md:flex items-center gap-1 text-[#135bec] font-semibold hover:underline text-sm">
               Rechercher un voyage <span className="material-icons text-sm">arrow_forward</span>
             </Link>
           </div>
 
-          {/* ── Skeleton loading ── */}
           {agencesLoading && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[1, 2, 3].map(i => (
@@ -506,131 +394,121 @@ export default function LandingPage() {
             </div>
           )}
 
-          {/* ── Agences chargées ── */}
           {!agencesLoading && agences.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {agences.map((agence, index) => {
-                const badge       = getBadge(agence, index);
-                const fallbackImg = AGENCY_FALLBACKS[index % AGENCY_FALLBACKS.length];
+            <>
+              {/* Grille ≤ 3 agences, scroll horizontal si plus */}
+              <div
+                className={agences.length <= 3 ? "grid grid-cols-1 md:grid-cols-3 gap-8" : "flex gap-6 overflow-x-auto pb-4 snap-x snap-mandatory"}
+                style={agences.length > 3 ? { scrollbarWidth: "none" } : {}}
+              >
+                {agences.map((agence, index) => {
+                  const badge       = getBadge(agence, index);
+                  const fallbackImg = AGENCY_FALLBACKS[index % AGENCY_FALLBACKS.length];
+                  // CORRECTION 2 : logo réel = logo_url (Cloudinary) > logo > logo_image
+                  const logoReel    = agence.logo_url || agence.logo || agence.logo_image || null;
 
-                return (
-                  // ── Carte entière cliquable → page profil ──────────────
-                  <div
-                    key={agence.id_agence}
-                    onClick={() => navigate(`/agences/${agence.id_agence}`)}
-                    className="group cursor-pointer rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:-translate-y-1"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === "Enter" && navigate(`/agences/${agence.id_agence}`)}
-                    aria-label={`Voir le profil de ${agence.name}`}
-                  >
-                    {/* ── Image / Logo ── */}
-                    <div className="relative overflow-hidden aspect-video bg-gradient-to-br from-slate-100 to-blue-50">
-                      {agence.logo_image ? (
+                  return (
+                    <div
+                      key={agence.id_agence}
+                      onClick={() => navigate(`/agences/${agence.id_agence}`)}
+                      className={`group cursor-pointer rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:-translate-y-1 ${agences.length > 3 ? "flex-shrink-0 w-80 snap-start" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === "Enter" && navigate(`/agences/${agence.id_agence}`)}
+                      aria-label={`Voir le profil de ${agence.name}`}
+                    >
+                      <div className="relative overflow-hidden aspect-video bg-gradient-to-br from-slate-100 to-blue-50">
+                        {/* CORRECTION 2 : logo réel affiché en priorité */}
+                        {logoReel ? (
+                          <img
+                            src={logoReel}
+                            alt={agence.name}
+                            className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-700"
+                            onError={(e) => {
+                              e.target.style.display = "none";
+                              e.target.nextSibling.style.display = "block";
+                            }}
+                          />
+                        ) : null}
+                        {/* Fallback : image mock */}
                         <img
-                          src={agence.logo_image}
+                          src={fallbackImg}
                           alt={agence.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                          onError={e => {
-                            e.target.style.display = "none";
-                            e.target.nextSibling.style.display = "block";
-                          }}
+                          style={{ display: logoReel ? "none" : "block" }}
                         />
-                      ) : null}
-                      {/* Fallback image statique */}
-                      <img
-                        src={fallbackImg}
-                        alt={agence.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                        style={{ display: agence.logo_image ? "none" : "block" }}
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-
-                      {/* Badge type */}
-                      <div className="absolute top-3 left-3">
-                        <span className={`${badge.bg} text-white text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest`}>
-                          {badge.type}
-                        </span>
-                      </div>
-
-                      {/* Indicateur "Voir le profil" au survol */}
-                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <span className="bg-white/90 backdrop-blur text-[#135bec] text-[10px] px-2 py-1 rounded-lg font-bold flex items-center gap-1">
-                          <span className="material-icons text-xs">open_in_new</span>
-                          Voir le profil
-                        </span>
-                      </div>
-
-                      {/* Nom agence */}
-                      <div className="absolute bottom-4 left-4">
-                        <h4 className="text-white font-extrabold text-xl drop-shadow">{agence.name}</h4>
-                      </div>
-                    </div>
-
-                    {/* ── Détail agence ── */}
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="flex-1 min-w-0">
-                          {agence.adresse && (
-                            <p className="text-sm text-slate-500 flex items-center gap-1 truncate">
-                              <span className="material-icons text-slate-300 text-base flex-shrink-0">location_on</span>
-                              {agence.adresse}
-                            </p>
-                          )}
-                          {agence.telephone && (
-                            <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
-                              <span className="material-icons text-slate-300 text-base flex-shrink-0">phone</span>
-                              {agence.telephone}
-                            </p>
-                          )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                        <div className="absolute top-3 left-3">
+                          <span className={`${badge.bg} text-white text-[10px] px-2 py-1 rounded font-black uppercase tracking-widest`}>{badge.type}</span>
                         </div>
-                        {/* Compteurs filiales / bus */}
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0 text-right">
-                          {agence.nb_filiales != null && (
-                            <span className="text-[10px] font-bold text-[#135bec] bg-blue-50 px-2 py-0.5 rounded-full">
-                              {agence.nb_filiales} filiale{agence.nb_filiales > 1 ? "s" : ""}
-                            </span>
-                          )}
-                          {agence.nb_bus != null && (
-                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                              {agence.nb_bus} bus
-                            </span>
-                          )}
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          <span className="bg-white/90 backdrop-blur text-[#135bec] text-[10px] px-2 py-1 rounded-lg font-bold flex items-center gap-1">
+                            <span className="material-icons text-xs">open_in_new</span>
+                            Voir le profil
+                          </span>
+                        </div>
+                        <div className="absolute bottom-4 left-4">
+                          <h4 className="text-white font-extrabold text-xl drop-shadow">{agence.name}</h4>
                         </div>
                       </div>
 
-                      {/* ── Deux boutons côte à côte ── */}
-                      <div className="flex gap-2">
-                        {/* Bouton 1 : Voir les voyages → /recherche */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation(); // empêche le clic de remonter à la carte
-                            navigate("/recherche");
-                          }}
-                          className="flex-1 text-sm font-bold text-[#135bec] border border-[#135bec]/20 hover:bg-[#135bec] hover:text-white py-2 rounded-xl transition-all"
-                        >
-                          Voir les voyages →
-                        </button>
-
-                        {/* Bouton 2 : Voir le profil → /agences/:id */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation(); // empêche la double navigation
-                            navigate(`/agences/${agence.id_agence}`);
-                          }}
-                          className="flex-1 text-sm font-bold text-slate-600 border border-slate-200 hover:bg-slate-700 hover:text-white hover:border-slate-700 py-2 rounded-xl transition-all"
-                        >
-                          Voir le profil
-                        </button>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex-1 min-w-0">
+                            {agence.adresse && (
+                              <p className="text-sm text-slate-500 flex items-center gap-1 truncate">
+                                <span className="material-icons text-slate-300 text-base flex-shrink-0">location_on</span>
+                                {agence.adresse}
+                              </p>
+                            )}
+                            {agence.telephone && (
+                              <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
+                                <span className="material-icons text-slate-300 text-base flex-shrink-0">phone</span>
+                                {agence.telephone}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0 text-right">
+                            {agence.nb_filiales != null && (
+                              <span className="text-[10px] font-bold text-[#135bec] bg-blue-50 px-2 py-0.5 rounded-full">
+                                {agence.nb_filiales} filiale{agence.nb_filiales > 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {agence.nb_bus != null && (
+                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                {agence.nb_bus} bus
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate("/recherche"); }}
+                            className="flex-1 text-sm font-bold text-[#135bec] border border-[#135bec]/20 hover:bg-[#135bec] hover:text-white py-2 rounded-xl transition-all"
+                          >
+                            Voir les voyages →
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/agences/${agence.id_agence}`); }}
+                            className="flex-1 text-sm font-bold text-slate-600 border border-slate-200 hover:bg-slate-700 hover:text-white hover:border-slate-700 py-2 rounded-xl transition-all"
+                          >
+                            Voir le profil
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {agences.length > 3 && (
+                <p className="text-center text-xs text-slate-400 mt-4">
+                  ← Faites défiler pour voir les {agences.length} agences →
+                </p>
+              )}
+            </>
           )}
 
-          {/* ── Aucune agence ── */}
           {!agencesLoading && agences.length === 0 && (
             <div className="text-center py-16 text-slate-400">
               <span className="material-icons text-5xl mb-3 block">business</span>
@@ -640,7 +518,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── COMMENT ÇA MARCHE ───────────────────────────────────────────── */}
+      {/* COMMENT ÇA MARCHE */}
       <section id="comment" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
@@ -665,7 +543,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── CTA ─────────────────────────────────────────────────────────── */}
+      {/* CTA */}
       <section className="py-20 bg-gradient-to-br from-[#135bec] to-blue-800 relative overflow-hidden">
         <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none">
           <img src={IMAGES.BUS_MODERN} alt="" className="w-96 h-auto object-cover" />
@@ -680,11 +558,7 @@ export default function LandingPage() {
               NJILA simplifie le transport interurbain au Cameroun. Que vous partiez pour une réunion d'affaires ou rendre visite à votre famille, votre siège est garanti avant même d'arriver à l'agence.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
-              {[
-                "Confirmation instantanée",
-                "Paiement 100% sécurisé",
-                "Billet électronique immédiat",
-              ].map(txt => (
+              {["Confirmation instantanée", "Paiement 100% sécurisé", "Billet électronique immédiat"].map(txt => (
                 <div key={txt} className="flex items-center gap-2 text-sm text-blue-100">
                   <span className="material-icons text-emerald-400 text-base">check_circle</span>
                   {txt}
@@ -693,42 +567,26 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="flex flex-col gap-3 flex-shrink-0">
-            <button
-              onClick={() => navigate("/register")}
-              className="bg-white text-[#135bec] font-extrabold px-8 py-4 rounded-xl hover:bg-blue-50 transition-colors shadow-xl text-base"
-            >
-              Commencer maintenant →
-            </button>
-            <button
-              onClick={() => navigate("/recherche")}
-              className="border-2 border-white/40 text-white font-semibold px-8 py-4 rounded-xl hover:bg-white/10 transition-colors text-base"
-            >
-              Rechercher un voyage
-            </button>
+            <button onClick={() => navigate("/register")} className="bg-white text-[#135bec] font-extrabold px-8 py-4 rounded-xl hover:bg-blue-50 transition-colors shadow-xl text-base">Commencer maintenant →</button>
+            <button onClick={() => navigate("/recherche")} className="border-2 border-white/40 text-white font-semibold px-8 py-4 rounded-xl hover:bg-white/10 transition-colors text-base">Rechercher un voyage</button>
           </div>
         </div>
       </section>
 
-      {/* ── AIDE ────────────────────────────────────────────────────────── */}
+      {/* AIDE */}
       <section id="aide" className="py-20 bg-slate-900">
         <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <div className="text-white">
             <h2 className="text-3xl font-extrabold mb-4">Besoin d'aide ?</h2>
-            <p className="text-slate-400 mb-8">
-              Notre équipe est disponible 24h/24 pour vous accompagner dans vos réservations.
-            </p>
+            <p className="text-slate-400 mb-8">Notre équipe est disponible 24h/24 pour vous accompagner dans vos réservations.</p>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { icon: "help_outline", label: "FAQ",                href: "#"                        },
-                { icon: "headset_mic", label: "Centre d'assistance", href: "#"                        },
-                { icon: "phone",       label: "+237 650 123 456",    href: "tel:+237650123456"        },
-                { icon: "email",       label: "contact@njila.cm",    href: "mailto:contact@njila.cm"  },
+                { icon: "help_outline", label: "FAQ",                href: "#"                       },
+                { icon: "headset_mic", label: "Centre d'assistance", href: "#"                       },
+                { icon: "phone",       label: "+237 650 123 456",    href: "tel:+237650123456"       },
+                { icon: "email",       label: "contact@njila.cm",    href: "mailto:contact@njila.cm" },
               ].map(({ icon, label, href }) => (
-                <a
-                  key={label}
-                  href={href}
-                  className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 px-4 py-3 rounded-xl transition-colors text-sm font-medium text-white"
-                >
+                <a key={label} href={href} className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 px-4 py-3 rounded-xl transition-colors text-sm font-medium text-white">
                   <span className="material-icons text-[#135bec]">{icon}</span>
                   {label}
                 </a>
@@ -736,76 +594,51 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="relative">
-            <img
-              src={IMAGES.BUS_HIGHWAY}
-              alt="Support NJILA"
-              className="w-full rounded-2xl object-cover h-64 opacity-60"
-            />
+            <img src={IMAGES.BUS_HIGHWAY} alt="Support NJILA" className="w-full rounded-2xl object-cover h-64 opacity-60" />
             <div className="absolute inset-0 bg-gradient-to-r from-slate-900 to-transparent rounded-2xl" />
           </div>
         </div>
       </section>
 
-      {/* ── FOOTER ──────────────────────────────────────────────────────── */}
+      {/* FOOTER */}
       <footer className="bg-slate-950 text-slate-400">
         <div className="max-w-7xl mx-auto px-4 py-12 grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
             <NjilaLogo size="md" white />
-            <p className="text-sm mt-4 leading-relaxed">
-              La plateforme de référence pour digitaliser le transport interurbain au Cameroun.
-            </p>
+            <p className="text-sm mt-4 leading-relaxed">La plateforme de référence pour digitaliser le transport interurbain au Cameroun.</p>
             <div className="flex gap-3 mt-6">
               {[Facebook, Twitter, Instagram].map((Icon, i) => (
-                <a
-                  key={i}
-                  href="#"
-                  className="w-9 h-9 bg-slate-800 hover:bg-[#135bec] rounded-full flex items-center justify-center transition-colors"
-                >
+                <a key={i} href="#" className="w-9 h-9 bg-slate-800 hover:bg-[#135bec] rounded-full flex items-center justify-center transition-colors">
                   <Icon className="w-4 h-4 text-white" />
                 </a>
               ))}
             </div>
           </div>
-
           <div>
             <h4 className="text-white font-bold mb-4">Liens rapides</h4>
             <ul className="space-y-2 text-sm">
               <li><Link to="/recherche" className="hover:text-white transition-colors">Rechercher un trajet</Link></li>
-              <li><a href="#agences"    className="hover:text-white transition-colors">Nos agences</a></li>
-              <li><a href="#comment"    className="hover:text-white transition-colors">Comment ça marche</a></li>
-              <li><a href="#aide"       className="hover:text-white transition-colors">Aide & support</a></li>
+              <li><a href="#agences" className="hover:text-white transition-colors">Nos agences</a></li>
+              <li><a href="#comment" className="hover:text-white transition-colors">Comment ça marche</a></li>
+              <li><a href="#aide" className="hover:text-white transition-colors">Aide & support</a></li>
             </ul>
           </div>
-
           <div>
             <h4 className="text-white font-bold mb-4">Support</h4>
             <ul className="space-y-2 text-sm">
-              <li><a href="#aide"                   className="hover:text-white transition-colors">Centre d'aide</a></li>
+              <li><a href="#aide" className="hover:text-white transition-colors">Centre d'aide</a></li>
               <li><a href="mailto:contact@njila.cm" className="hover:text-white transition-colors">Nous contacter</a></li>
-              <li><a href="#"                        className="hover:text-white transition-colors">Politique de remboursement</a></li>
-              <li><a href="#"                        className="hover:text-white transition-colors">Conditions d'utilisation</a></li>
-              <li><a href="#"                        className="hover:text-white transition-colors">Confidentialité</a></li>
+              <li><a href="#" className="hover:text-white transition-colors">Politique de remboursement</a></li>
+              <li><a href="#" className="hover:text-white transition-colors">Conditions d'utilisation</a></li>
+              <li><a href="#" className="hover:text-white transition-colors">Confidentialité</a></li>
             </ul>
           </div>
-
           <div>
             <h4 className="text-white font-bold mb-4">Trajets populaires</h4>
             <ul className="space-y-2 text-sm">
-              {[
-                ["Douala", "Yaoundé"],
-                ["Yaoundé", "Bafoussam"],
-                ["Douala", "Kribi"],
-                ["Yaoundé", "Garoua"],
-                ["Douala", "Bamenda"],
-              ].map(([o, d]) => (
+              {[["Douala","Yaoundé"],["Yaoundé","Bafoussam"],["Douala","Kribi"],["Yaoundé","Garoua"],["Douala","Bamenda"]].map(([o,d]) => (
                 <li key={`${o}-${d}`}>
-                  <button
-                    onClick={() => {
-                      setRecherche({ origine: o, destination: d, date: "", nombrePlaces: 1 });
-                      navigate("/recherche");
-                    }}
-                    className="hover:text-white transition-colors text-left"
-                  >
+                  <button onClick={() => { setRecherche({ origine: o, destination: d, date: "", nombrePlaces: 1 }); navigate("/recherche"); }} className="hover:text-white transition-colors text-left">
                     {o} → {d}
                   </button>
                 </li>
@@ -813,7 +646,6 @@ export default function LandingPage() {
             </ul>
           </div>
         </div>
-
         <div className="border-t border-slate-800 py-5 text-center text-xs flex items-center justify-center gap-4 flex-wrap">
           <a href="#" className="hover:text-white transition-colors">Conditions Générales</a>
           <span className="text-slate-700">|</span>

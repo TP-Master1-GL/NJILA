@@ -119,7 +119,7 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
 		}
 
 		UUID newUserId = UUID.randomUUID();
-		String tempPassword = "0000";
+		String tempPassword = "00000000";
 
 		LocalDateTime dateEmbauche = null;
 		if (request.getDateEmbauche() != null && !request.getDateEmbauche().isBlank()) {
@@ -209,7 +209,7 @@ public class ManagerLocalServiceImpl implements ManagerLocalService {
 		}
 
 		UUID newUserId = UUID.randomUUID();
-		String tempPassword = "0000";
+		String tempPassword = "00000000";
 
 		LocalDateTime dateEmbauche = null;
 		if (request.getDateEmbauche() != null && !request.getDateEmbauche().isBlank()) {

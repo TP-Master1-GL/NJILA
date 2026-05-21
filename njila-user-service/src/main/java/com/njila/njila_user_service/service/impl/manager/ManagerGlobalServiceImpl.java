@@ -132,7 +132,7 @@ public class ManagerGlobalServiceImpl implements ManagerGlobalService {
             .orElseThrow(() -> new AgenceNotFoundException(agenceId.toString()));
 
         UUID newUserId = UUID.randomUUID();
-        String tempPassword = "000000";
+        String tempPassword = "00000000";
 
         ManagerLocal managerLocal = ManagerLocal.builder()
             .idUser(newUserId)
