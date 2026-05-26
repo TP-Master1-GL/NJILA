@@ -127,9 +127,6 @@ export const fleetService = {
     codeFiliale:        v.codeFiliale            || null,
 
     // ── IDs UUID (nécessaires pour le booking-service) ────────────────────
-    // Le backend les expose directement dans VoyageListSerializer.
-    // On les préserve ici pour que SeatSelectionPage puisse les lire
-    // sans avoir à fouiller dans _raw ou dans des chemins imbriqués.
     idAgence:           v.idAgence               || null,
     idFiliale:          v.idFiliale              || null,
 
@@ -148,23 +145,15 @@ export const fleetService = {
   /**
    * Recherche de voyages.
    * Le backend attend : depart (ville), arrivee (ville), date (YYYY-MM-DD)
-   * Les villes sont stockées en minuscule dans Django (choices),
-   * on convertit donc en minuscule avant l'envoi.
-   *
-   * Fallback : si /recherche/ retourne vide, on récupère tous
-   * les voyages non annulés/terminés pour la date demandée.
    */
   rechercherVoyages: async ({ origine, destination, date } = {}) => {
     const depart  = (origine      || "").toLowerCase().trim();
     const arrivee = (destination  || "").toLowerCase().trim();
 
-    // ── Tentative 1 : endpoint dédié /recherche/ ──
     try {
       const params = { depart, arrivee };
       if (date) params.date = date;
-
       const { data } = await api.get("/api/voyages/recherche/", { params });
-
       if (Array.isArray(data) && data.length > 0) {
         return data.map(fleetService._normaliserVoyage);
       }
@@ -172,7 +161,6 @@ export const fleetService = {
       console.warn("[fleetService] /voyages/recherche/ a échoué :", err.message);
     }
 
-    // ── Fallback : /voyages/ avec filtre de date ──
     console.info("[fleetService] Fallback sur /api/voyages/");
     const fallbackParams = {};
     if (date) fallbackParams.date_debut = date;
@@ -181,17 +169,8 @@ export const fleetService = {
 
     const voyagesFiltres = (Array.isArray(tous) ? tous : []).filter((v) => {
       if (["annule", "termine"].includes(v.status)) return false;
-
-      if (depart && v.trajet_info) {
-        const info = v.trajet_info.toLowerCase();
-        if (!info.includes(depart)) return false;
-      }
-
-      if (arrivee && v.trajet_info) {
-        const info = v.trajet_info.toLowerCase();
-        if (!info.includes(arrivee)) return false;
-      }
-
+      if (depart  && v.trajet_info && !v.trajet_info.toLowerCase().includes(depart))  return false;
+      if (arrivee && v.trajet_info && !v.trajet_info.toLowerCase().includes(arrivee)) return false;
       return true;
     });
 
@@ -246,23 +225,31 @@ export const fleetService = {
   // ═══════════════════════════════════════════════════════════
 
   /**
-   * Retourne le profil public complet d'une agence :
-   * filiales, bus, trajets, voyages, annonces, avis.
-   * Aucune information sur le personnel.
+   * Retourne le profil public complet d'une agence.
+   *
+   * Structure retournée par le backend (AgenceProfilPublicView) :
+   * {
+   *   agence, resume, filiales, bus, trajets, voyages, annonces, avis
+   * }
+   *
+   * Champs voyage exposés par le backend :
+   *   id_voyage, origine, destination, filiale_depart, filiale_arrivee,
+   *   date_heure_depart, date_heure_arrivee, prix, type_voyage, status,
+   *   status_label, places_disponibles, places_total_reservees,
+   *   bus_immatriculation, bus_modele, bus_capacite
+   *
+   * ⚠️  Le backend N'expose PAS filiale_depart_id / filiale_arrivee_id
+   * dans les voyages ni dans les trajets. La comparaison Manager Local
+   * doit donc se faire par NOM de filiale (filiale_depart / filiale_arrivee).
    *
    * @param {string} id_agence   - UUID de l'agence
    * @param {object} filtres     - Filtres optionnels :
    *   - statut_voyage  : "programme"|"en_cours"|"termine"|"annule"|"retarde"|"confirme"
    *   - ville_depart   : ex. "Douala"
    *   - ville_arrivee  : ex. "Yaoundé"
-   *
-   * @returns {object} {
-   *   agence, resume, filiales, bus, trajets, voyages, annonces, avis
-   * }
    */
   getAgenceProfil: async (id_agence, filtres = {}) => {
     const params = {};
-
     if (filtres.statut_voyage) params.statut_voyage = filtres.statut_voyage;
     if (filtres.ville_depart)  params.ville_depart  = filtres.ville_depart;
     if (filtres.ville_arrivee) params.ville_arrivee = filtres.ville_arrivee;
@@ -275,34 +262,71 @@ export const fleetService = {
   },
 
   /**
-   * Normalise les voyages contenus dans le profil public
-   * pour les rendre compatibles avec le reste du frontend.
+   * Normalise le profil agence retourné par le backend.
+   *
+   * RÈGLE CRITIQUE :
+   * Les voyages sont conservés tels quels (structure snake_case du backend)
+   * afin que GestionVoyages.jsx puisse lire directement les champs
+   * filiale_depart, filiale_arrivee, id_voyage, etc. sans double mapping.
+   *
+   * On ajoute seulement des alias camelCase pour les pages qui en ont besoin
+   * (ex : page de recherche publique), mais on ne supprime JAMAIS les clés
+   * snake_case originales.
    *
    * @param {object} profil  - Résultat brut de getAgenceProfil()
-   * @returns {object}       - Profil avec voyages normalisés
+   * @returns {object}       - Profil avec voyages enrichis (snake_case + alias camelCase)
    */
   normaliserProfilAgence: (profil) => {
     if (!profil) return null;
 
     return {
       ...profil,
+
+      // ── Bus : exposés tels quels par le backend ──────────────────────────
+      // Structure : { id, immatriculation, modele, capacite, etat, etat_label }
+      // Aucun remapping nécessaire — GestionVoyages lit directement ces clés.
+      bus: profil.bus || [],
+
+      // ── Trajets : exposés tels quels par le backend ──────────────────────
+      // Structure : { id_trajet, filiale_depart, ville_depart,
+      //               filiale_arrivee, ville_arrivee, distance_km }
+      // Aucun remapping nécessaire.
+      trajets: profil.trajets || [],
+
+      // ── Voyages : snake_case préservés + alias camelCase ajoutés ─────────
       voyages: (profil.voyages || []).map((v) => ({
-        id:                   v.id_voyage,
-        origine:              v.origine,
-        destination:          v.destination,
-        filialeDepart:        v.filiale_depart,
-        filialeArrivee:       v.filiale_arrivee,
-        dateHeureDepart:      v.date_heure_depart,
-        dateHeureArrivee:     v.date_heure_arrivee,
-        prix:                 parseFloat(v.prix),
-        typeVoyage:           (v.type_voyage || "standard").toUpperCase(),
-        status:               v.status,
-        statusLabel:          v.status_label,
-        placesDisponibles:    v.places_disponibles,
-        placesReservees:      v.places_total_reservees,
-        busImmatriculation:   v.bus_immatriculation,
-        busModele:            v.bus_modele,
-        busCapacite:          v.bus_capacite,
+        // ── Champs originaux du backend (snake_case) — NE PAS SUPPRIMER ──
+        id_voyage:               v.id_voyage,
+        origine:                 v.origine,
+        destination:             v.destination,
+        filiale_depart:          v.filiale_depart,
+        filiale_arrivee:         v.filiale_arrivee,
+        date_heure_depart:       v.date_heure_depart,
+        date_heure_arrivee:      v.date_heure_arrivee,
+        prix:                    v.prix,
+        type_voyage:             v.type_voyage,
+        status:                  v.status,
+        status_label:            v.status_label,
+        places_disponibles:      v.places_disponibles,
+        places_total_reservees:  v.places_total_reservees,
+        bus_immatriculation:     v.bus_immatriculation,
+        bus_modele:              v.bus_modele,
+        bus_capacite:            v.bus_capacite,
+
+        // ── Alias camelCase (pour compatibilité page recherche publique) ──
+        id:                      v.id_voyage,
+        dateHeureDepart:         v.date_heure_depart,
+        dateHeureArrivee:        v.date_heure_arrivee,
+        prixNum:                 parseFloat(v.prix),
+        typeVoyage:              (v.type_voyage || "standard").toUpperCase(),
+        statusLabel:             v.status_label,
+        placesDisponibles:       v.places_disponibles,
+        placesReservees:         v.places_total_reservees,
+        busImmatriculation:      v.bus_immatriculation,
+        busModele:               v.bus_modele,
+        busCapacite:             v.bus_capacite,
+        filialeDepart:           v.filiale_depart,
+        filialeArrivee:          v.filiale_arrivee,
       })),
     };
   },

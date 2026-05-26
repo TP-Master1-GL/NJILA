@@ -3,7 +3,7 @@ kind: Kustomization
 
 namespace: njila
 
-bases:
+resources:
   - ../../base
 
 # En développement : 1 seul réplica pour économiser les ressources

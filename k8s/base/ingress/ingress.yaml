@@ -4,16 +4,17 @@ metadata:
   name: njila-ingress
   namespace: njila
   annotations:
-    kubernetes.io/ingress.class: "nginx"
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Note: kubernetes.io/ingress.class est déprécié depuis K8s 1.18
+    # On utilise uniquement spec.ingressClassName ci-dessous
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization,Content-Type,Accept,Origin,X-Requested-With"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization,Content-Type,Accept,Origin,X-Requested-With,X-Auth-Token"
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
     nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
 spec:
   ingressClassName: nginx
   rules:
@@ -28,7 +29,7 @@ spec:
                 name: njila-frontend
                 port:
                   number: 80
-    # ── API Gateway (proxy-service)
+    # ── API Gateway (proxy-service) — pas de rewrite pour conserver les chemins
     - host: api.njila.local
       http:
         paths:

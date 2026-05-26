@@ -28,7 +28,7 @@ class VerifyAbonnementTest(TestCase):
 
     def test_verify_apres_souscription(self):
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/souscrire",
+            f"/api/agencies/agences/{self.agence.agence_id}/souscrire",
             {"plan": "MENSUEL", "id_transaction_paiement": "TXN-V01"},
             format="json",
         )
@@ -72,7 +72,7 @@ class VerifyAbonnementTest(TestCase):
 
     def test_modules_depuis_redis(self):
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/souscrire",
+            f"/api/agencies/agences/{self.agence.agence_id}/souscrire",
             {"plan": "MENSUEL", "id_transaction_paiement": "TXN-V02"},
             format="json",
         )
@@ -109,7 +109,7 @@ class TableauDeBordTest(TestCase):
             email_officiel="buca@voyages.cm",
         )
         self.client.post(
-            f"/api/subscribe/agences/{agence.agence_id}/souscrire",
+            f"/api/agencies/agences/{agence.agence_id}/souscrire",
             {"plan": "MENSUEL", "id_transaction_paiement": "TXN-B01"},
             format="json",
         )

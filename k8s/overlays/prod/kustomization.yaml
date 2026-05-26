@@ -3,8 +3,9 @@ kind: Kustomization
 
 namespace: njila
 
-bases:
+resources:
   - ../../base
+  - pdb.yaml
 
 # En production : 2+ réplicas pour la haute disponibilité
 patches:
@@ -29,3 +30,41 @@ configMapGenerator:
     literals:
       - ENVIRONMENT=production
       - LOG_LEVEL=WARN
+
+# Images : mises à jour automatiquement par le CI/CD via 'kustomize edit set image'
+# Format : njila/<service> → ghcr.io/tp-master1-gl/njila/<service>:sha-<commit>
+images:
+  - name: njila/conf-service
+    newName: ghcr.io/tp-master1-gl/njila/conf-service
+    newTag: latest
+  - name: njila/registry-service
+    newName: ghcr.io/tp-master1-gl/njila/registry-service
+    newTag: latest
+  - name: njila/proxy-service
+    newName: ghcr.io/tp-master1-gl/njila/proxy-service
+    newTag: latest
+  - name: njila/user-service
+    newName: ghcr.io/tp-master1-gl/njila/user-service
+    newTag: latest
+  - name: njila/booking-service
+    newName: ghcr.io/tp-master1-gl/njila/booking-service
+    newTag: latest
+  - name: njila/payement-service
+    newName: ghcr.io/tp-master1-gl/njila/payement-service
+    newTag: latest
+  - name: njila/auth-service
+    newName: ghcr.io/tp-master1-gl/njila/auth-service
+    newTag: latest
+  - name: njila/fleet-service
+    newName: ghcr.io/tp-master1-gl/njila/fleet-service
+    newTag: latest
+  - name: njila/subscribe-service
+    newName: ghcr.io/tp-master1-gl/njila/subscribe-service
+    newTag: latest
+  - name: njila/notification-service
+    newName: ghcr.io/tp-master1-gl/njila/notification-service
+    newTag: latest
+  - name: njila/frontend
+    newName: ghcr.io/tp-master1-gl/njila/frontend
+    newTag: latest
+

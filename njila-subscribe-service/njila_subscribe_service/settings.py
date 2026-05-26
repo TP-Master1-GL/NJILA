@@ -68,6 +68,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
 ]
 
+APPEND_SLASH = False
+
 ROOT_URLCONF     = "njila_subscribe_service.urls"
 WSGI_APPLICATION = "njila_subscribe_service.wsgi.application"
 

@@ -34,7 +34,7 @@ spec:
           protocol: TCP
 
 ---
-# ── 3. Conf-service : accès depuis tous les services ──────
+# ── 3. Conf-service : accès ingress depuis tous les pods du namespace ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -48,14 +48,39 @@ spec:
     - Ingress
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: njila
+        - podSelector: {}
       ports:
         - port: 8080
 
 ---
-# ── 4. Registry-service : accès depuis tous les services ──
+# ── 4. Conf-service egress : accès sortant vers GitHub (git repo conf) ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-conf-service-egress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-conf-service
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # GitHub HTTPS pour le git repo de configuration
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+
+---
+# ── 5. Registry-service : accès ingress depuis tous les pods ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -69,14 +94,39 @@ spec:
     - Ingress
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: njila
+        - podSelector: {}
       ports:
         - port: 8761
 
 ---
-# ── 5. RabbitMQ : accès depuis les microservices ──────────
+# ── 6. Registry-service egress : vers conf-service uniquement ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-registry-service-egress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-registry-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-conf-service
+      ports:
+        - port: 8080
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# ── 7. RabbitMQ : accès depuis les microservices ──────────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -98,7 +148,7 @@ spec:
               tier: gateway
       ports:
         - port: 5672
-    # Management UI via Ingress
+    # Management UI via Ingress Controller
     - from:
         - namespaceSelector:
             matchLabels:
@@ -107,7 +157,7 @@ spec:
         - port: 15672
 
 ---
-# ── 6. Redis : accès depuis les microservices uniquement ──
+# ── 8. Redis : accès depuis les microservices et le gateway ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -131,7 +181,7 @@ spec:
         - port: 6379
 
 ---
-# ── 7. Bases PostgreSQL : accès depuis le microservice correspondant seulement ──
+# ── 9. Bases PostgreSQL : accès depuis le microservice correspondant seulement ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -266,7 +316,7 @@ spec:
         - port: 5432
 
 ---
-# ── 8. Microservices : accès depuis le proxy (API Gateway) uniquement ──
+# ── 10. Microservices : accès ingress depuis le proxy (API Gateway) uniquement ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -285,7 +335,7 @@ spec:
               app: njila-proxy-service
 
 ---
-# ── 9. Proxy-service : accès depuis l'Ingress Controller ──
+# ── 11. Proxy-service : accès ingress depuis l'Ingress Controller ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -306,7 +356,7 @@ spec:
         - port: 8888
 
 ---
-# ── 10. Frontend : accès depuis l'Ingress Controller ──────
+# ── 12. Frontend : accès depuis l'Ingress Controller ──────
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -327,7 +377,7 @@ spec:
         - port: 80
 
 ---
-# ── 11. Egress microservices : autoriser les appels sortants ──
+# ── 13. Egress microservices : autoriser les appels sortants ──
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -362,6 +412,60 @@ spec:
       ports:
         - port: 5672
     # Vers Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-redis
+      ports:
+        - port: 6379
+    # Vers les bases de données PostgreSQL (chaque service vers sa DB)
+    - to:
+        - podSelector:
+            matchLabels:
+              tier: database
+      ports:
+        - port: 5432
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# ── 14. Egress proxy-service : vers tous les microservices, conf/registry, Redis ──
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-proxy-egress
+  namespace: njila
+spec:
+  podSelector:
+    matchLabels:
+      app: njila-proxy-service
+  policyTypes:
+    - Egress
+  egress:
+    # Vers tous les microservices métiers (routing dynamique)
+    - to:
+        - podSelector:
+            matchLabels:
+              tier: microservice
+    # Vers conf-service
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-conf-service
+      ports:
+        - port: 8080
+    # Vers registry-service (Eureka – découverte de services)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: njila-registry-service
+      ports:
+        - port: 8761
+    # Vers Redis (NJANGA load balancer – historique des temps de réponse)
     - to:
         - podSelector:
             matchLabels:

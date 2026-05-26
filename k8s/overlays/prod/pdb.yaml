@@ -1,0 +1,104 @@
+# ============================================================
+# PodDisruptionBudgets – Production
+# Garantit qu'au minimum 1 pod est toujours disponible
+# pendant les mises à jour / nœud en maintenance
+# ============================================================
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-proxy-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-proxy-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-auth-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-auth-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-fleet-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-fleet-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-subscribe-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-subscribe-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-user-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-user-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-booking-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-booking-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-payement-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-payement-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-notification-service
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-notification-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-frontend
+  namespace: njila
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: njila-frontend
