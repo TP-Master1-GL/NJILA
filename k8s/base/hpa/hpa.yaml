@@ -1,6 +1,6 @@
 # ============================================================
 # HPA - Horizontal Pod Autoscaler
-# Pour les microservices métiers (comme dans le diagramme)
+# Pour les microservices métiers 
 # Pré-requis : metrics-server installé sur le cluster
 # kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 # ============================================================

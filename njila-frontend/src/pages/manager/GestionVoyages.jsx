@@ -1,12 +1,20 @@
 /**
  * GestionVoyages.jsx – Manager Local / Manager Global
  *
- * CORRECTION : les voyages sont désormais récupérés via le profil public
- * de l'agence (/api/agences/{id_agence}/profil/) et non plus via
- * /api/voyages/ qui retournait les voyages de TOUTES les agences.
+ * Source de données : profil public agence (/api/agences/{id_agence}/profil/)
  *
- * Manager Global → tous les voyages de son agence (bus de son agence)
- * Manager Local  → voyages dont la filiale de départ = sa filiale
+ * Champs voyage disponibles depuis le backend (AgenceProfilPublicView) :
+ *   id_voyage, origine, destination, filiale_depart, filiale_arrivee,
+ *   date_heure_depart, date_heure_arrivee, prix, type_voyage, status,
+ *   status_label, places_disponibles, places_total_reservees,
+ *   bus_immatriculation, bus_modele, bus_capacite
+ *
+ * ⚠️  Le backend N'expose PAS filiale_depart_id dans les voyages.
+ *     Le filtrage Manager Local s'effectue par comparaison de NOM de filiale
+ *     (filiale_depart === user.filialeNom).
+ *
+ * Manager Global → tous les voyages de son agence
+ * Manager Local  → voyages dont filiale_depart === sa filiale (par nom)
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -54,27 +62,55 @@ const fmtDate = (dt) =>
 const fmtPrix = (p) =>
   p != null ? Number(p).toLocaleString("fr-FR") + " FCFA" : "—";
 
-// ─── Normalise un voyage issu du profil agence vers la structure
-//     attendue par le reste du composant (même forme que _normaliserVoyage)
+// ─── Normalise un voyage du profil agence vers la structure interne ──────────
+//
+// Le backend expose (snake_case) :
+//   id_voyage, filiale_depart, filiale_arrivee, origine, destination,
+//   date_heure_depart, date_heure_arrivee, prix, type_voyage, status,
+//   places_disponibles, places_total_reservees, bus_immatriculation
+//
+// On mappe vers la structure utilisée par ce composant, en conservant _raw
+// (l'objet brut) pour les comparaisons qui nécessitent filiale_depart, etc.
+//
 const normaliserVoyageProfil = (v) => ({
+  // Identifiant interne du composant
   Id_voyage:              v.id_voyage,
-  date_heure_depart:      v.date_heure_depart || v.dateHeureDepart,
-  date_heure_arrive_prevue: v.date_heure_arrivee || v.dateHeureArrivee,
+
+  // Horaires
+  date_heure_depart:      v.date_heure_depart,
+  date_heure_arrive_prevue: v.date_heure_arrivee,   // backend → date_heure_arrivee
+
+  // Tarification
   prix:                   v.prix,
   type_voyage:            (v.type_voyage || "standard").toLowerCase(),
+
+  // Statut
   status:                 v.status,
+
+  // Places
   places_disponibles:     v.places_disponibles,
   places_total_reservees: v.places_total_reservees,
+
+  // Bus
   bus_immatriculation:    v.bus_immatriculation,
-  trajet_info:            `${v.filiale_depart} → ${v.filiale_arrivee}`,
+
+  // Trajet — conservé en forme "Départ → Arrivée" pour parseTrajet()
+  trajet_info:            `${v.filiale_depart || ""} → ${v.filiale_arrivee || ""}`,
+
+  // Villes (origine / destination = ville, filiale = nom agence)
   origine:                v.origine,
   destination:            v.destination,
+
+  // Noms des filiales (utilisés pour le filtrage Manager Local)
   filiale_depart:         v.filiale_depart,
   filiale_arrivee:        v.filiale_arrivee,
-  _raw:                   v,
+
+  // Données brutes complètes — accès direct si besoin
+  _raw: v,
 });
 
-// Extrait ville départ / arrivée depuis trajet_info "Dep → Arr" ou directement
+// Extrait ville départ / arrivée
+// Priorité : origine/destination (ville) > filiale_depart/arrivee (nom filiale)
 const parseTrajet = (v) => {
   if (v.origine && v.destination) {
     return { depart: v.origine, arrivee: v.destination };
@@ -243,9 +279,13 @@ export default function GestionVoyages() {
   const { user } = useAuthStore();
 
   const agenceId  = user?.agenceId;
-  const filialeId = user?.filialeId;
   const isManagerLocal  = user?.role === "MANAGER_LOCAL";
   const isManagerGlobal = user?.role === "MANAGER_GLOBAL";
+
+  // Nom de filiale du Manager Local (tel que retourné dans filiale_depart par le backend)
+  // Le store peut exposer filialeNom, filiale_nom, ou filialeName selon l'implémentation.
+  // On tente les trois pour maximiser la robustesse.
+  const filialeNomManager = user?.filialeNom || user?.filiale_nom || user?.filialeName || "";
 
   const [search,         setSearch]         = useState("");
   const [filtreDate,     setFiltreDate]     = useState("");
@@ -255,8 +295,9 @@ export default function GestionVoyages() {
   const [voyageModifier, setVoyageModifier] = useState(null);
   const [form,           setForm]           = useState(FORM_INIT);
 
-  // ── Source unique : profil agence ─────────────────────────────────────────
-  // Filtre optionnel par statut si sélectionné, sinon tous les voyages
+  // ── Chargement du profil agence ───────────────────────────────────────────
+  // Le filtre statut_voyage est passé au backend si sélectionné.
+  // Les autres filtres (date, recherche) sont appliqués côté client.
   const {
     data: profilAgence,
     isLoading,
@@ -274,37 +315,38 @@ export default function GestionVoyages() {
   });
 
   // ── Extraction et normalisation des voyages ───────────────────────────────
+  // profilAgence.voyages contient déjà les champs snake_case du backend
+  // (préservés par normaliserProfilAgence dans fleetService).
   const tousVoyagesBruts = profilAgence?.voyages ?? [];
-
-  // Normaliser vers la structure attendue par le composant
   const tousVoyages = tousVoyagesBruts.map(normaliserVoyageProfil);
 
-  // Filtrage par rôle :
-  // Manager Local → uniquement les voyages dont filiale_depart = sa filiale
-  const voyagesFiltresParRole = isManagerLocal && filialeId
-    ? tousVoyages.filter((v) => {
-        const raw = v._raw;
-        // On compare l'id de filiale si disponible (id_filiale dans le profil)
-        // sinon on compare le nom de filiale depuis le store
-        return (
-          raw.filiale_depart === user?.filialeNom ||
-          raw.filiale_depart_id === filialeId
-        );
-      })
-    : tousVoyages; // Manager Global : tous les voyages de l'agence
+  // ── Filtrage par rôle ─────────────────────────────────────────────────────
+  //
+  // Manager Global  : tous les voyages de l'agence (pas de filtre rôle)
+  // Manager Local   : uniquement les voyages dont filiale_depart === filialeNomManager
+  //
+  // Le backend expose filiale_depart = NOM de la filiale (ex : "Agence Centrale Douala").
+  // Le store user doit contenir filialeNom avec exactement la même valeur.
+  //
+  // Si filialeNomManager est vide (store mal configuré), on affiche tout
+  // plutôt que de bloquer le manager local avec une liste vide.
+  //
+  const voyagesFiltresParRole = isManagerLocal && filialeNomManager
+    ? tousVoyages.filter((v) =>
+        v.filiale_depart === filialeNomManager
+      )
+    : tousVoyages;
 
-  // ── Filtrage date côté client (le profil ne filtre pas par date) ──────────
+  // ── Filtrage par date (côté client) ───────────────────────────────────────
   const voyagesFiltresDate = filtreDate
     ? voyagesFiltresParRole.filter((v) => {
         if (!v.date_heure_depart) return false;
-        const dateVoyage = new Date(v.date_heure_depart)
-          .toISOString()
-          .split("T")[0];
+        const dateVoyage = new Date(v.date_heure_depart).toISOString().split("T")[0];
         return dateVoyage >= filtreDate;
       })
     : voyagesFiltresParRole;
 
-  // ── Recherche et filtre statut local ─────────────────────────────────────
+  // ── Recherche texte + filtre statut côté client ───────────────────────────
   const voyagesFiltres = voyagesFiltresDate.filter((v) => {
     const { depart, arrivee } = parseTrajet(v);
     const q = search.toLowerCase();
@@ -312,17 +354,17 @@ export default function GestionVoyages() {
       !search ||
       depart.toLowerCase().includes(q) ||
       arrivee.toLowerCase().includes(q) ||
-      (v.type_voyage || "").toLowerCase().includes(q) ||
+      (v.filiale_depart  || "").toLowerCase().includes(q) ||
+      (v.filiale_arrivee || "").toLowerCase().includes(q) ||
+      (v.type_voyage     || "").toLowerCase().includes(q) ||
       (v.bus_immatriculation || "").toLowerCase().includes(q);
     const matchStatut = !filtreStatut || v.status === filtreStatut;
     return matchSearch && matchStatut;
   });
 
-  // ── Bus disponibles : extraits du profil agence (déjà chargé) ───────────
-  // On filtre les bus de l'agence dont l'état est "disponible".
-  // Aucune requête supplémentaire nécessaire — le profil est déjà en cache.
-  // Le profil expose : { id, immatriculation, modele, capacite, etat, etat_label }
-  // On normalise vers la forme attendue par le formulaire (IdBus = id).
+  // ── Bus disponibles ───────────────────────────────────────────────────────
+  // Extraits du profil agence déjà en cache.
+  // Backend expose : { id, immatriculation, modele, capacite, etat, etat_label }
   const busDisponibles = (profilAgence?.bus ?? [])
     .filter((b) => b.etat === "disponible")
     .map((b) => ({
@@ -332,36 +374,41 @@ export default function GestionVoyages() {
       capacite:        b.capacite,
     }));
 
+  // ── Chauffeurs disponibles ─────────────────────────────────────────────────
   const { data: tousLesChauffeurs = [] } = useQuery({
     queryKey: ["chauffeurs-all"],
     queryFn: () => fleetService.getChauffeurs({}),
     enabled: isModalCreate,
     retry: 1,
   });
+  const chauffeursDisponibles = tousLesChauffeurs.filter(isDisponible);
 
-  // Trajets issus du profil agence pour la création
+  // ── Trajets pour la création de voyage ────────────────────────────────────
+  // Backend expose : { id_trajet, filiale_depart, ville_depart,
+  //                    filiale_arrivee, ville_arrivee, distance_km }
   const trajetsDisponibles = (profilAgence?.trajets ?? []).map((t) => ({
-    Id_trajet: t.id_trajet,
+    Id_trajet:          t.id_trajet,
     filiale_depart_nom: t.filiale_depart,
     filiale_arrive_nom: t.filiale_arrivee,
-    distance: t.distance_km,
+    ville_depart:       t.ville_depart,
+    ville_arrivee:      t.ville_arrivee,
+    distance:           t.distance_km,
   }));
 
-  // Si manager local, proposer uniquement les trajets au départ de sa filiale
-  const trajetsPourCreation = isManagerLocal && filialeId
+  // Manager Local : propose uniquement les trajets au départ de sa filiale
+  const trajetsPourCreation = isManagerLocal && filialeNomManager
     ? trajetsDisponibles.filter(
-        (t) => t.filiale_depart_nom === user?.filialeNom
+        (t) => t.filiale_depart_nom === filialeNomManager
       )
     : trajetsDisponibles;
 
-  const chauffeursDisponibles = tousLesChauffeurs.filter(isDisponible);
-
-  // ── Mutations ──────────────────────────────────────────────────────────────
+  // ── Invalidation cache ────────────────────────────────────────────────────
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["agence-profil-voyages", agenceId] });
     qc.invalidateQueries({ queryKey: ["chauffeurs-all"] });
   };
 
+  // ── Mutations ──────────────────────────────────────────────────────────────
   const { mutate: creerVoyage, isPending: pendingCreate } = useMutation({
     mutationFn: (payload) => fleetService.creerVoyage(payload),
     onSuccess: () => {
@@ -379,9 +426,9 @@ export default function GestionVoyages() {
       fleetService.changerStatutVoyage(Id_voyage, status, motif),
     onSuccess: (_, { status }) => {
       toast.success(
-        status === "annule"  ? "Voyage annulé."   :
-        status === "confirme"? "Voyage confirmé." :
-        status === "en_cours"? "Voyage démarré."  : "Statut mis à jour."
+        status === "annule"   ? "Voyage annulé."   :
+        status === "confirme" ? "Voyage confirmé." :
+        status === "en_cours" ? "Voyage démarré."  : "Statut mis à jour."
       );
       invalidateAll();
       setVoyageAnnuler(null);
@@ -423,7 +470,7 @@ export default function GestionVoyages() {
     modifierVoyage({
       Id_voyage: voyageModifier.Id_voyage,
       payload: {
-        date_heure_depart:        formData.date_heure_depart || undefined,
+        date_heure_depart:        formData.date_heure_depart        || undefined,
         date_heure_arrive_prevue: formData.date_heure_arrive_prevue || undefined,
         prix:    formData.prix ? parseInt(formData.prix, 10) : undefined,
         type_voyage:              formData.type_voyage,
@@ -436,13 +483,13 @@ export default function GestionVoyages() {
 
   // ── KPIs ───────────────────────────────────────────────────────────────────
   const kpis = [
-    { label: "Total",     value: voyagesFiltresParRole.length,                                          color: "text-slate-900",   bg: "bg-slate-50"   },
-    { label: "Planifiés", value: voyagesFiltresParRole.filter((v) => v.status === "programme").length,  color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "En cours",  value: voyagesFiltresParRole.filter((v) => v.status === "en_cours").length,   color: "text-[#135bec]",   bg: "bg-blue-50"    },
-    { label: "Annulés",   value: voyagesFiltresParRole.filter((v) => v.status === "annule").length,     color: "text-red-600",     bg: "bg-red-50"     },
+    { label: "Total",     value: voyagesFiltresParRole.length,                                           color: "text-slate-900",   bg: "bg-slate-50"   },
+    { label: "Planifiés", value: voyagesFiltresParRole.filter((v) => v.status === "programme").length,   color: "text-emerald-600", bg: "bg-emerald-50" },
+    { label: "En cours",  value: voyagesFiltresParRole.filter((v) => v.status === "en_cours").length,    color: "text-[#135bec]",   bg: "bg-blue-50"    },
+    { label: "Annulés",   value: voyagesFiltresParRole.filter((v) => v.status === "annule").length,      color: "text-red-600",     bg: "bg-red-50"     },
   ];
 
-  // ── PDF ────────────────────────────────────────────────────────────────────
+  // ── Export PDF ─────────────────────────────────────────────────────────────
   const handlePDF = () => {
     const rows = voyagesFiltres
       .map((v) => {
@@ -493,7 +540,7 @@ export default function GestionVoyages() {
           </h1>
           <p className="text-slate-400 text-sm mt-1">
             {isManagerLocal
-              ? `Voyages au départ de ${user?.filialeNom || "votre filiale"}`
+              ? `Voyages au départ de ${filialeNomManager || "votre filiale"}`
               : "Planning, tarification et suivi des départs de votre agence"}
           </p>
         </div>
@@ -519,12 +566,17 @@ export default function GestionVoyages() {
         </div>
       </div>
 
-      {/* ── Bandeau info périmètre ── */}
+      {/* ── Bandeau info périmètre Manager Local ── */}
       {isManagerLocal && (
         <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-center gap-2">
           <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
           Affichage restreint aux voyages au départ de la filiale{" "}
-          <strong>{user?.filialeNom || "votre filiale"}</strong>.
+          <strong>{filialeNomManager || "votre filiale"}</strong>.
+          {isManagerLocal && !filialeNomManager && (
+            <span className="ml-2 text-amber-600 font-semibold">
+              ⚠️ Nom de filiale non trouvé dans le profil utilisateur — tous les voyages sont affichés.
+            </span>
+          )}
         </div>
       )}
 
@@ -546,7 +598,7 @@ export default function GestionVoyages() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Ville, trajet, immatriculation…"
+              placeholder="Ville, filiale, immatriculation…"
               className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#135bec]"
             />
           </div>
@@ -578,7 +630,9 @@ export default function GestionVoyages() {
         </div>
       ) : voyagesFiltres.length === 0 ? (
         <div className="text-center py-20 text-slate-400 text-sm">
-          Aucun voyage trouvé pour ces critères.
+          {isManagerLocal && filialeNomManager
+            ? `Aucun voyage au départ de "${filialeNomManager}" pour ces critères.`
+            : "Aucun voyage trouvé pour ces critères."}
         </div>
       ) : (
         <div className="space-y-3">
@@ -601,13 +655,13 @@ export default function GestionVoyages() {
                 key={voyage.Id_voyage}
                 className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-md transition-shadow"
               >
-                {/* Barre statut */}
+                {/* Barre colorée selon statut */}
                 <div className={`h-1 w-full ${
                   statut === "programme" ? "bg-emerald-400" :
                   statut === "confirme"  ? "bg-blue-400"    :
                   statut === "en_cours"  ? "bg-indigo-500"  :
                   statut === "termine"   ? "bg-slate-300"   :
-                  statut === "annule"    ? "bg-red-400"     :
+                  statut === "annule"    ? "bg-red-400"      :
                   "bg-amber-400"
                 }`} />
 
@@ -631,7 +685,7 @@ export default function GestionVoyages() {
 
                     {/* Col 2 : Trajet */}
                     <div className="flex-1 min-w-[200px]">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-1.5">
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-slate-400" />
                           <span className="text-sm font-bold text-slate-900">{depart}</span>
@@ -642,6 +696,12 @@ export default function GestionVoyages() {
                           <span className="text-sm font-bold text-slate-900">{arrivee}</span>
                         </div>
                       </div>
+                      {/* Noms des filiales (sous les villes) */}
+                      {(voyage.filiale_depart || voyage.filiale_arrivee) && (
+                        <p className="text-xs text-slate-400 mb-1.5">
+                          {voyage.filiale_depart} → {voyage.filiale_arrivee}
+                        </p>
+                      )}
                       <div className="flex items-center gap-4 text-xs text-slate-500">
                         <div className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" />
@@ -763,6 +823,7 @@ export default function GestionVoyages() {
         }
       >
         <form onSubmit={handleCreate} className="space-y-5">
+          {/* Trajet & Horaires */}
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
               Trajet & Horaires
@@ -785,7 +846,10 @@ export default function GestionVoyages() {
                   {trajetsPourCreation.map((t) => (
                     <option key={t.Id_trajet} value={t.Id_trajet}>
                       {t.filiale_depart_nom} → {t.filiale_arrive_nom}
-                      {t.distance ? ` (${t.distance} km)` : ""}
+                      {t.ville_depart && t.ville_arrivee
+                        ? ` (${t.ville_depart} → ${t.ville_arrivee})`
+                        : ""}
+                      {t.distance ? ` · ${t.distance} km` : ""}
                     </option>
                   ))}
                 </select>
@@ -817,6 +881,7 @@ export default function GestionVoyages() {
             </div>
           </div>
 
+          {/* Affectation */}
           <div className="border-t border-slate-100 pt-4">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
               Affectation
@@ -868,6 +933,7 @@ export default function GestionVoyages() {
             </div>
           </div>
 
+          {/* Tarification */}
           <div className="border-t border-slate-100 pt-4">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
               Tarification

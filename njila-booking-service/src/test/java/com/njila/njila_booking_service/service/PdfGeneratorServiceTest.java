@@ -6,9 +6,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.LocalDate;
+
 import static org.assertj.core.api.Assertions.*;
 
 class PdfGeneratorServiceTest {
@@ -46,6 +48,7 @@ class PdfGeneratorServiceTest {
     @Test
     void genererBilletElectronique_retourneByteArrayNonVide() {
         byte[] pdf = pdfGeneratorService.genererBilletElectronique(buildTicket());
+
         assertThat(pdf).isNotNull();
         assertThat(pdf.length).isGreaterThan(0);
     }
@@ -53,7 +56,8 @@ class PdfGeneratorServiceTest {
     @Test
     void genererBilletElectronique_estUnVraiPdf() {
         byte[] pdf = pdfGeneratorService.genererBilletElectronique(buildTicket());
-        // PDF commence toujours par %PDF
+
+        // Un PDF commence toujours par l'en-tête %PDF
         String header = new String(pdf, 0, 4);
         assertThat(header).isEqualTo("%PDF");
     }
@@ -61,8 +65,8 @@ class PdfGeneratorServiceTest {
     @Test
     void genererBilletElectronique_creeLefichiersurDisque() {
         pdfGeneratorService.genererBilletElectronique(buildTicket());
-        Path fichier = tempDir.resolve(
-                "GEN-WEB-20260321-BYDE-000001.pdf");
+
+        Path fichier = tempDir.resolve("GEN-WEB-20260321-BYDE-000001.pdf");
         assertThat(fichier).exists();
         assertThat(fichier).isNotEmptyFile();
     }
@@ -70,25 +74,42 @@ class PdfGeneratorServiceTest {
     @Test
     void lirePdf_fichierExistant_retourneContenu() throws IOException {
         pdfGeneratorService.genererBilletElectronique(buildTicket());
-        byte[] lu = pdfGeneratorService.lirePdf(
-                "GEN-WEB-20260321-BYDE-000001");
+
+        byte[] lu = pdfGeneratorService.lirePdf("GEN-WEB-20260321-BYDE-000001");
+
         assertThat(lu).isNotNull();
         assertThat(lu.length).isGreaterThan(0);
     }
 
     @Test
     void lirePdf_fichierInexistant_leveException() {
-        assertThatThrownBy(() ->
-                pdfGeneratorService.lirePdf("TICKET-INEXISTANT"))
+        assertThatThrownBy(() -> pdfGeneratorService.lirePdf("TICKET-INEXISTANT"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("introuvable");
     }
 
     @Test
     void getCheminComplet_formatCorrect() {
-        String chemin = pdfGeneratorService
-                .getCheminComplet("GEN-WEB-20260321-BYDE-000001");
-        assertThat(chemin).endsWith(
-                "GEN-WEB-20260321-BYDE-000001.pdf");
+        String chemin = pdfGeneratorService.getCheminComplet("GEN-WEB-20260321-BYDE-000001");
+
+        assertThat(chemin).endsWith("GEN-WEB-20260321-BYDE-000001.pdf");
+    }
+
+    @Test
+    void genererBilletElectronique_avecLogoAgenceNull_neLevesPasException() {
+        TicketElectronique ticket = buildTicket();
+        ticket.setLogoAgence(null);
+
+        assertThatCode(() -> pdfGeneratorService.genererBilletElectronique(ticket))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void genererBilletElectronique_avecLogoAgenceVide_neLevesPasException() {
+        TicketElectronique ticket = buildTicket();
+        ticket.setLogoAgence("");
+
+        assertThatCode(() -> pdfGeneratorService.genererBilletElectronique(ticket))
+                .doesNotThrowAnyException();
     }
 }

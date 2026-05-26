@@ -11,7 +11,7 @@ class AgenceCreateTest(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.url    = "/api/subscribe/agences"
+        self.url    = "/api/agencies/agences"
         self.data   = {
             "agence_id":      "AGC-TEST-001",
             "nom":            "Test Voyages",

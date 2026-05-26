@@ -425,13 +425,21 @@ spec:
               value: "njila-user-service"
             - name: SERVICE_PORT
               value: "8082"
-            - name: DATABASE_URL
-              value: "postgres://njila:$(POSTGRES_PASSWORD)@njila-user-db:5432/njila_user_db"
-            - name: POSTGRES_PASSWORD
+            # JDBC URL pour Spring Boot (pas le format postgres:// de Django)
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://njila-user-db:5432/njila_user_db"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: POSTGRES_PASSWORD
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: "update"
             - name: NJILA_JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -449,12 +457,12 @@ spec:
               value: "false"
             - name: RABBITMQ_EXCHANGE
               value: "njila-user-exchange"
-            - name: RABBITMQ_USER
+            - name: SPRING_RABBITMQ_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-credentials
                   key: RABBITMQ_USER
-            - name: RABBITMQ_PASSWORD
+            - name: SPRING_RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-credentials
@@ -473,14 +481,14 @@ spec:
               cpu: "500m"
           livenessProbe:
             httpGet:
-              path: /health/
+              path: /actuator/health
               port: 8082
             initialDelaySeconds: 90
             periodSeconds: 30
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health/
+              path: /actuator/health
               port: 8082
             initialDelaySeconds: 60
             periodSeconds: 10
@@ -549,18 +557,26 @@ spec:
               value: "njila-booking-service"
             - name: SERVICE_PORT
               value: "8083"
-            - name: DATABASE_URL
-              value: "postgres://njila:$(POSTGRES_PASSWORD)@njila-booking-db:5432/njila_booking_db"
-            - name: POSTGRES_PASSWORD
+            # JDBC URL pour Spring Boot
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://njila-booking-db:5432/njila_booking_db"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: POSTGRES_PASSWORD
-            - name: SECRET_KEY
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: "update"
+            - name: NJILA_JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: jwt-secret
-                  key: SECRET_KEY
+                  key: NJILA_JWT_SECRET
             - name: EUREKA_INSTANCE_INSTANCEID
               value: "njila-booking-service:8083"
             - name: EUREKA_INSTANCE_APP
@@ -573,12 +589,12 @@ spec:
               value: "false"
             - name: RABBITMQ_EXCHANGE
               value: "njila-booking-exchange"
-            - name: RABBITMQ_USER
+            - name: SPRING_RABBITMQ_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-credentials
                   key: RABBITMQ_USER
-            - name: RABBITMQ_PASSWORD
+            - name: SPRING_RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-credentials
@@ -597,14 +613,14 @@ spec:
               cpu: "500m"
           livenessProbe:
             httpGet:
-              path: /health/
+              path: /actuator/health
               port: 8083
             initialDelaySeconds: 90
             periodSeconds: 30
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health/
+              path: /actuator/health
               port: 8083
             initialDelaySeconds: 60
             periodSeconds: 10

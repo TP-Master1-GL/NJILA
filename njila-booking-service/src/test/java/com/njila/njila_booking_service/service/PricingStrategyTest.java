@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -21,8 +22,7 @@ class PricingStrategyTest {
     private FideliteService fideliteService;
 
     private PrixPromoStrategy promo;
-
-    private Reservation reservation;
+    private Reservation       reservation;
 
     @BeforeEach
     void setUp() {
@@ -57,6 +57,12 @@ class PricingStrategyTest {
         assertThat(result).isEqualTo(0.0);
     }
 
+    @Test
+    void standard_nombrePlacesZero_retourneZero() {
+        double result = standard.calculerPrix(reservation, 5000.0, 0);
+        assertThat(result).isEqualTo(0.0);
+    }
+
     // ─── Groupe ───────────────────────────────────────────────────────────────
 
     @Test
@@ -72,26 +78,47 @@ class PricingStrategyTest {
         assertThat(resultGroupe).isEqualTo(resultStandard);
     }
 
+    @Test
+    void groupe_10Places_retournePrixTotal() {
+        double result = groupe.calculerPrix(reservation, 3000.0, 10);
+        assertThat(result).isEqualTo(30000.0);
+    }
+
     // ─── Promo — Voyage gratuit ───────────────────────────────────────────────
 
     @Test
     void promo_voyageGratuit_retourneZero() {
         when(fideliteService.estVoyageGratuit("user-1", "GEN")).thenReturn(true);
+
         double result = promo.calculerPrix(reservation, 5000.0, 1);
+
         assertThat(result).isEqualTo(0.0);
     }
 
     @Test
     void promo_pasVoyageGratuit_retournePrixNormal() {
         when(fideliteService.estVoyageGratuit("user-1", "GEN")).thenReturn(false);
+
         double result = promo.calculerPrix(reservation, 5000.0, 2);
+
         assertThat(result).isEqualTo(10000.0);
     }
 
     @Test
     void promo_appelFideliteService() {
         when(fideliteService.estVoyageGratuit("user-1", "GEN")).thenReturn(false);
+
         promo.calculerPrix(reservation, 5000.0, 1);
+
         verify(fideliteService).estVoyageGratuit("user-1", "GEN");
+    }
+
+    @Test
+    void promo_voyageGratuit_fideliteServiceAppelleUneSeuleFois() {
+        when(fideliteService.estVoyageGratuit("user-1", "GEN")).thenReturn(true);
+
+        promo.calculerPrix(reservation, 5000.0, 1);
+
+        verify(fideliteService, times(1)).estVoyageGratuit("user-1", "GEN");
     }
 }

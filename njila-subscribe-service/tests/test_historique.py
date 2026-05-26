@@ -21,7 +21,7 @@ class HistoriqueTest(TestCase):
 
     def test_historique_souscription_cree(self):
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/souscrire",
+            f"/api/agencies/agences/{self.agence.agence_id}/souscrire",
             {"plan": "MENSUEL", "id_transaction_paiement": "TXN-H01"},
             format="json",
         )
@@ -32,12 +32,12 @@ class HistoriqueTest(TestCase):
 
     def test_historique_suspension_tracee(self):
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/souscrire",
+            f"/api/agencies/agences/{self.agence.agence_id}/souscrire",
             {"plan": "MENSUEL", "id_transaction_paiement": "TXN-H02"},
             format="json",
         )
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/suspendre",
+            f"/api/agencies/agences/{self.agence.agence_id}/suspendre",
             {"motif": "Fraude détectée", "admin_id": "ADMIN-001"},
             format="json",
         )
@@ -50,12 +50,12 @@ class HistoriqueTest(TestCase):
 
     def test_historique_renouvellement_trace(self):
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/souscrire",
+            f"/api/agencies/agences/{self.agence.agence_id}/souscrire",
             {"plan": "MENSUEL", "id_transaction_paiement": "TXN-H03"},
             format="json",
         )
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/renouveler",
+            f"/api/agencies/agences/{self.agence.agence_id}/renouveler",
             {"plan": "ANNUEL", "id_transaction_paiement": "TXN-H04"},
             format="json",
         )
@@ -67,12 +67,12 @@ class HistoriqueTest(TestCase):
 
     def test_detail_agence_contient_historique(self):
         self.client.post(
-            f"/api/subscribe/agences/{self.agence.agence_id}/souscrire",
+            f"/api/agencies/agences/{self.agence.agence_id}/souscrire",
             {"plan": "MENSUEL", "id_transaction_paiement": "TXN-H05"},
             format="json",
         )
         response = self.client.get(
-            f"/api/subscribe/agences/{self.agence.agence_id}"
+            f"/api/agencies/agences/{self.agence.agence_id}"
         )
         historique = response.data["abonnement_actuel"]["historique"]
         self.assertGreater(len(historique), 0)

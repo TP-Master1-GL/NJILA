@@ -8,6 +8,14 @@
  * Manager Global  → tous les trajets et voyages de son agence
  * Manager Local   → trajets où sa filiale est départ ou arrivée
  *                   voyages dont la filiale de départ = sa filiale
+ *
+ * FIX : La comparaison par nom de filiale (filialeNom) est fragile.
+ * On résout désormais le nom de la filiale du Manager Local depuis :
+ *   1. la liste des filiales retournée par l'API (source fiable)
+ *   2. en fallback : user.filialeNom / user.filiale.nom
+ * Cela garantit que la comparaison avec filiale_depart / filiale_arrivee
+ * du profil agence fonctionne même si le store auth n'est pas parfaitement
+ * renseigné.
  */
 
 import { useState } from "react";
@@ -425,8 +433,6 @@ function FilialePersonnelBlock({ filiale, searchEmploye, onEdit }) {
 }
 
 // ─── TrajetCard ───────────────────────────────────────────────────────────────
-// Adapté au format du profil agence (id_trajet, filiale_depart, filiale_arrivee,
-// ville_depart, ville_arrivee, distance_km)
 function TrajetCard({ trajet, onDelete, isManagerGlobal }) {
   return (
     <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md transition-shadow">
@@ -456,7 +462,7 @@ function TrajetCard({ trajet, onDelete, isManagerGlobal }) {
   );
 }
 
-// ─── VoyageCard (pour le dashboard) ──────────────────────────────────────────
+// ─── VoyageCard ───────────────────────────────────────────────────────────────
 function VoyageCard({ voyage }) {
   const statut = voyage.status || "programme";
   const cfg    = STATUT_CONFIG[statut] || { label: statut, color: "text-slate-500", bg: "bg-slate-50" };
@@ -502,7 +508,7 @@ export default function ManagerDashboard() {
   const isManagerLocal  = user?.role === "MANAGER_LOCAL";
   const isManagerGlobal = user?.role === "MANAGER_GLOBAL";
 
-  const agenceId  = user?.agenceId || user?.agence?.id;
+  const agenceId  = user?.agenceId  || user?.agence?.id;
   const filialeId = user?.filialeId || user?.filiale?.id;
 
   const [activeTab, setActiveTab]               = useState("apercu");
@@ -535,26 +541,6 @@ export default function ManagerDashboard() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // ── Extraction des trajets depuis le profil ───────────────────────────────
-  const tousTrajets = profilAgence?.trajets ?? [];
-
-  // Manager Local → trajets où sa filiale est départ ou arrivée
-  const trajetsFiltresRole = isManagerLocal && (filialeId || user?.filialeNom)
-    ? tousTrajets.filter(
-        (t) =>
-          t.filiale_depart === user?.filialeNom ||
-          t.filiale_arrivee === user?.filialeNom
-      )
-    : tousTrajets;
-
-  // ── Extraction des voyages depuis le profil ───────────────────────────────
-  const tousVoyagesBruts = profilAgence?.voyages ?? [];
-
-  // Manager Local → voyages dont la filiale de départ = sa filiale
-  const voyagesFiltresRole = isManagerLocal && user?.filialeNom
-    ? tousVoyagesBruts.filter((v) => v.filiale_depart === user?.filialeNom)
-    : tousVoyagesBruts;
-
   // ── Filiales ──────────────────────────────────────────────────────────────
   const { data: filiales = [], isLoading: isLoadingFiliales } = useQuery({
     queryKey: ["filiales-dashboard", agenceId, isManagerLocal, filialeId],
@@ -565,13 +551,52 @@ export default function ManagerDashboard() {
           return f ? [f] : [];
         }
         const all = await filialeService.getFiliales({ agence: agenceId });
-        return all.filter(f => f.id_filiale === filialeId);
+        return all.filter(f => (f.id_filiale || f.id) === filialeId);
       }
       return filialeService.getFiliales({ agence: agenceId });
     },
     enabled: !!agenceId,
     staleTime: 2 * 60 * 1000,
   });
+
+  // ── Nom de filiale du Manager Local — même pattern que GestionVoyages ──────
+  //
+  // GestionVoyages.jsx utilise :
+  //   user?.filialeNom || user?.filiale_nom || user?.filialeName || ""
+  // On aligne exactement pour garantir la cohérence entre les deux pages.
+  //
+  const filialeNomManager = user?.filialeNom || user?.filiale_nom || user?.filialeName || "";
+
+  // ── Trajets — même lecture que GestionVoyages.jsx ─────────────────────────
+  //
+  // 1. On mappe profilAgence.trajets vers la structure interne (id_trajet → Id_trajet, etc.)
+  // 2. Manager Local : filtre par filiale_depart_nom === filialeNomManager
+  //    (même comparaison stricte que dans GestionVoyages)
+  // 3. Manager Global : tous les trajets
+  //
+  const tousTrajetsMappes = (profilAgence?.trajets ?? []).map((t) => ({
+    id_trajet:          t.id_trajet,
+    filiale_depart:     t.filiale_depart,
+    filiale_arrivee:    t.filiale_arrivee,
+    ville_depart:       t.ville_depart,
+    ville_arrivee:      t.ville_arrivee,
+    distance_km:        t.distance_km,
+  }));
+
+  const trajetsFiltresRole = isManagerLocal && filialeNomManager
+    ? tousTrajetsMappes.filter(
+        (t) =>
+          t.filiale_depart === filialeNomManager ||
+          t.filiale_arrivee === filialeNomManager
+      )
+    : tousTrajetsMappes;
+
+  // ── Voyages — lecture inchangée depuis le profil ──────────────────────────
+  const tousVoyagesBruts = profilAgence?.voyages ?? [];
+
+  const voyagesFiltresRole = isManagerLocal && filialeNomManager
+    ? tousVoyagesBruts.filter((v) => v.filiale_depart === filialeNomManager)
+    : tousVoyagesBruts;
 
   // ── Personnel Manager Local ───────────────────────────────────────────────
   const { data: guichetiers = [] } = useQuery({
@@ -719,6 +744,9 @@ export default function ManagerDashboard() {
     { id: "personnel", label: "Personnel", icon: Users      },
   ];
 
+  // ── Bandeau debug (dev uniquement, à retirer en prod) ─────────────────────
+  const isDev = import.meta.env?.DEV;
+
   return (
     <DashboardLayout>
       {/* ── Header ── */}
@@ -726,7 +754,7 @@ export default function ManagerDashboard() {
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
             {isManagerLocal
-              ? `Filiale ${filiales[0]?.nom || ""}`
+              ? `Filiale ${filiales[0]?.nom || filialeNomManager || ""}`
               : agenceDetail?.name || "Tableau de Bord Global"}
           </h1>
           <p className="text-slate-500 mt-1">
@@ -734,6 +762,12 @@ export default function ManagerDashboard() {
               ? `Gestion de votre filiale — ${filiales[0]?.ville || ""}`
               : "Gestion complète de l'agence et des filiales"}
           </p>
+          {/* Bandeau debug périmètre Manager Local */}
+          {isDev && isManagerLocal && filialeNomManager && (
+            <p className="text-[10px] text-purple-500 mt-1 font-mono">
+              [dev] filiale résolue : « {filialeNomManager} » — {trajetsFiltresRole.length} trajet(s) · {voyagesFiltresRole.length} voyage(s)
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -860,9 +894,9 @@ export default function ManagerDashboard() {
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-bold text-slate-900 text-sm">
                       Voyages récents
-                      {isManagerLocal && (
+                      {isManagerLocal && filialeNomManager && (
                         <span className="ml-2 text-xs font-normal text-slate-400">
-                          — Filiale {user?.filialeNom}
+                          — Filiale {filialeNomManager}
                         </span>
                       )}
                     </h3>
@@ -878,6 +912,18 @@ export default function ManagerDashboard() {
                       <VoyageCard key={v.id_voyage} voyage={v} />
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Message si Manager Local sans nom de filiale résolu */}
+              {isManagerLocal && !filialeNomManager && !isLoading && (
+                <div className="lg:col-span-3 px-4 py-6 bg-amber-50 border border-amber-100 rounded-xl text-center">
+                  <p className="text-sm text-amber-700 font-semibold">
+                    Impossible de déterminer votre filiale.
+                  </p>
+                  <p className="text-xs text-amber-500 mt-1">
+                    Vérifiez que votre compte est bien rattaché à une filiale, puis actualisez.
+                  </p>
                 </div>
               )}
             </div>
@@ -990,14 +1036,22 @@ export default function ManagerDashboard() {
             </div>
           )}
 
-          {/* ══════════ TRAJETS — depuis le profil agence ══════════ */}
+          {/* ══════════ TRAJETS ══════════ */}
           {activeTab === "trajets" && (
             <div className="space-y-6">
               {/* Bandeau info périmètre */}
-              {isManagerLocal && (
+              {isManagerLocal && filialeNomManager && (
                 <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-center gap-2">
                   <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                  Trajets impliquant la filiale <strong>{user?.filialeNom}</strong> uniquement.
+                  Trajets impliquant la filiale <strong>{filialeNomManager}</strong> uniquement.
+                </div>
+              )}
+
+              {/* Alerte si le nom n'est pas encore résolu */}
+              {isManagerLocal && !filialeNomManager && (
+                <div className="px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 flex items-center gap-2">
+                  <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                  Chargement de votre filiale en cours…
                 </div>
               )}
 
@@ -1018,10 +1072,27 @@ export default function ManagerDashboard() {
 
               <div className="mb-2 text-xs text-slate-400">
                 {trajetsFiltres.length} trajet(s) — source : profil agence
+                {isManagerLocal && filialeNomManager && (
+                  <span className="ml-1 text-slate-300">
+                    · filtrés pour « {filialeNomManager} »
+                    ({trajetsFiltresRole.length} au total sur {tousTrajetsMappes.length})
+                  </span>
+                )}
               </div>
 
               {trajetsFiltres.length === 0 ? (
-                <p className="text-center py-12 text-slate-400">Aucun trajet trouvé.</p>
+                <div className="text-center py-12">
+                  <p className="text-slate-400">
+                    {isManagerLocal && filialeNomManager
+                      ? `Aucun trajet trouvé pour la filiale « ${filialeNomManager} ».`
+                      : "Aucun trajet trouvé."}
+                  </p>
+                  {isManagerLocal && filialeNomManager && tousTrajetsMappes.length > 0 && (
+                    <p className="text-xs text-slate-400 mt-2">
+                      ({tousTrajetsMappes.length} trajet(s) existent pour l'agence mais aucun ne correspond à cette filiale)
+                    </p>
+                  )}
+                </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {trajetsFiltres.map(t => (
@@ -1043,14 +1114,21 @@ export default function ManagerDashboard() {
             </div>
           )}
 
-          {/* ══════════ VOYAGES — depuis le profil agence ══════════ */}
+          {/* ══════════ VOYAGES ══════════ */}
           {activeTab === "voyages" && (
             <div className="space-y-6">
               {/* Bandeau info périmètre */}
-              {isManagerLocal && (
+              {isManagerLocal && filialeNomManager && (
                 <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-center gap-2">
                   <Bus className="w-3.5 h-3.5 flex-shrink-0" />
-                  Voyages au départ de la filiale <strong>{user?.filialeNom}</strong> uniquement.
+                  Voyages au départ de la filiale <strong>{filialeNomManager}</strong> uniquement.
+                </div>
+              )}
+
+              {isManagerLocal && !filialeNomManager && (
+                <div className="px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 flex items-center gap-2">
+                  <Bus className="w-3.5 h-3.5 flex-shrink-0" />
+                  Chargement de votre filiale en cours…
                 </div>
               )}
 
@@ -1094,7 +1172,13 @@ export default function ManagerDashboard() {
               </div>
 
               {voyagesFiltres.length === 0 ? (
-                <p className="text-center py-12 text-slate-400">Aucun voyage trouvé.</p>
+                <div className="text-center py-12">
+                  <p className="text-slate-400">
+                    {isManagerLocal && filialeNomManager
+                      ? `Aucun voyage trouvé au départ de « ${filialeNomManager} ».`
+                      : "Aucun voyage trouvé."}
+                  </p>
+                </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {voyagesFiltres.map(v => (

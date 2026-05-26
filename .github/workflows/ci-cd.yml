@@ -1,7 +1,12 @@
 # ============================================================
 # CI/CD Pipeline – NJILA Project
-# Build → Test → Push Docker → Deploy via ArgoCD (GitOps)
-# Déclenché sur push vers main ou develop
+# Build → Test → Push Docker (GHCR) → Update K8s manifests → ArgoCD
+# ============================================================
+#
+# Secrets GitHub requis :
+#   ARGOCD_SERVER   : URL de votre serveur ArgoCD (ex: argocd.example.com)
+#   ARGOCD_PASSWORD : Mot de passe admin ArgoCD
+#   VITE_API_GATEWAY_URL : URL de l'API Gateway pour le frontend
 # ============================================================
 
 name: NJILA CI/CD Pipeline
@@ -182,7 +187,7 @@ jobs:
           kubectl kustomize k8s/base | grep "^kind:" | sort | uniq -c | sort -rn
 
   # ──────────────────────────────────────────────────────────
-  # JOB 6 : Build & Push Docker images (uniquement sur main)
+  # JOB 6 : Build & Push Docker images vers GHCR (uniquement sur main)
   # ──────────────────────────────────────────────────────────
   docker-build-push:
     name: Build & Push Docker Images
@@ -219,6 +224,8 @@ jobs:
             image: notification-service
           - service: njila-frontend
             image: frontend
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -254,14 +261,65 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ──────────────────────────────────────────────────────────
-  # JOB 7 : Deploy via ArgoCD (GitOps)
+  # JOB 7 : Mettre à jour les images dans les manifests K8s
+  # pour pointer vers les nouvelles images GHCR avec le SHA
+  # ──────────────────────────────────────────────────────────
+  update-k8s-images:
+    name: Update K8s Image Tags
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs:
+      - docker-build-push
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get commit SHA (short)
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update images in prod overlay
+        run: |
+          cd k8s/overlays/prod
+          REGISTRY="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}"
+          SHA="sha-${{ steps.sha.outputs.short }}"
+
+          # Utiliser kustomize edit set image pour chaque service
+          kustomize edit set image \
+            njila/conf-service=${REGISTRY}/conf-service:${SHA} \
+            njila/registry-service=${REGISTRY}/registry-service:${SHA} \
+            njila/proxy-service=${REGISTRY}/proxy-service:${SHA} \
+            njila/user-service=${REGISTRY}/user-service:${SHA} \
+            njila/booking-service=${REGISTRY}/booking-service:${SHA} \
+            njila/payement-service=${REGISTRY}/payement-service:${SHA} \
+            njila/auth-service=${REGISTRY}/auth-service:${SHA} \
+            njila/fleet-service=${REGISTRY}/fleet-service:${SHA} \
+            njila/subscribe-service=${REGISTRY}/subscribe-service:${SHA} \
+            njila/notification-service=${REGISTRY}/notification-service:${SHA} \
+            njila/frontend=${REGISTRY}/frontend:${SHA}
+
+      - name: Commit and push updated kustomization
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/overlays/prod/kustomization.yaml
+          git diff --staged --quiet || git commit -m "ci: update images to sha-${{ steps.sha.outputs.short }} [skip ci]"
+          git push
+
+  # ──────────────────────────────────────────────────────────
+  # JOB 8 : Deploy via ArgoCD (GitOps)
   # ──────────────────────────────────────────────────────────
   deploy-gitops:
     name: Deploy via ArgoCD (GitOps)
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs:
-      - docker-build-push
+      - update-k8s-images
     environment:
       name: production
       url: https://njila.local

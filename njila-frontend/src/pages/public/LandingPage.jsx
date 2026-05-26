@@ -77,16 +77,15 @@ export default function LandingPage() {
   const { user, isAuthenticated } = useAuthStore();
   const { logout } = useAuth();
 
-  // CORRECTION 3 : origine et destination vides = "toutes les villes"
+  // Origine et destination initialisées avec une ville par défaut (plus d'option "Toutes les villes")
   const [form, setForm] = useState({
-    origine: "",
-    destination: "",
+    origine: VILLES[0],       // "Douala"
+    destination: VILLES[1],   // "Yaoundé"
     date: "",
     nombrePlaces: 1,
   });
   const [navOpen, setNavOpen] = useState(false);
 
-  // CORRECTION 1 : charger TOUTES les agences sans slice
   const { data: agencesData, isLoading: agencesLoading } = useQuery({
     queryKey: ["agences-landing"],
     queryFn: () => agenceService.getAgences({ statut_global: "active" }),
@@ -198,7 +197,7 @@ export default function LandingPage() {
             <form onSubmit={handleSearch} className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 md:p-8">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
 
-                {/* CORRECTION 3 : Origine avec option vide "Toutes les villes" */}
+                {/* Origine — sélection obligatoire, pas d'option vide */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Origine</label>
                   <div className="relative">
@@ -207,14 +206,14 @@ export default function LandingPage() {
                       value={form.origine}
                       onChange={e => setForm(f => ({ ...f, origine: e.target.value }))}
                       className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl border-0 focus:ring-2 focus:ring-[#135bec] text-sm font-medium appearance-none"
+                      required
                     >
-                      <option value="">Toutes les villes</option>
-                      {VILLES.map(v => <option key={v}>{v}</option>)}
+                      {VILLES.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                 </div>
 
-                {/* CORRECTION 3 : Destination avec option vide "Toutes les villes" */}
+                {/* Destination — sélection obligatoire, pas d'option vide */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Destination</label>
                   <div className="relative">
@@ -223,9 +222,9 @@ export default function LandingPage() {
                       value={form.destination}
                       onChange={e => setForm(f => ({ ...f, destination: e.target.value }))}
                       className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl border-0 focus:ring-2 focus:ring-[#135bec] text-sm font-medium appearance-none"
+                      required
                     >
-                      <option value="">Toutes les villes</option>
-                      {VILLES.map(v => <option key={v}>{v}</option>)}
+                      {VILLES.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                 </div>
@@ -364,10 +363,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* AGENCES PARTENAIRES
-          CORRECTION 1 : toutes les agences (pas de slice)
-          CORRECTION 2 : logo réel affiché si disponible, sinon image mock
-      */}
+      {/* AGENCES PARTENAIRES */}
       <section id="agences" className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-end justify-between mb-12">
@@ -396,7 +392,6 @@ export default function LandingPage() {
 
           {!agencesLoading && agences.length > 0 && (
             <>
-              {/* Grille ≤ 3 agences, scroll horizontal si plus */}
               <div
                 className={agences.length <= 3 ? "grid grid-cols-1 md:grid-cols-3 gap-8" : "flex gap-6 overflow-x-auto pb-4 snap-x snap-mandatory"}
                 style={agences.length > 3 ? { scrollbarWidth: "none" } : {}}
@@ -404,7 +399,6 @@ export default function LandingPage() {
                 {agences.map((agence, index) => {
                   const badge       = getBadge(agence, index);
                   const fallbackImg = AGENCY_FALLBACKS[index % AGENCY_FALLBACKS.length];
-                  // CORRECTION 2 : logo réel = logo_url (Cloudinary) > logo > logo_image
                   const logoReel    = agence.logo_url || agence.logo || agence.logo_image || null;
 
                   return (
@@ -418,7 +412,6 @@ export default function LandingPage() {
                       aria-label={`Voir le profil de ${agence.name}`}
                     >
                       <div className="relative overflow-hidden aspect-video bg-gradient-to-br from-slate-100 to-blue-50">
-                        {/* CORRECTION 2 : logo réel affiché en priorité */}
                         {logoReel ? (
                           <img
                             src={logoReel}
@@ -430,7 +423,6 @@ export default function LandingPage() {
                             }}
                           />
                         ) : null}
-                        {/* Fallback : image mock */}
                         <img
                           src={fallbackImg}
                           alt={agence.name}
