@@ -14,63 +14,7 @@
 
 La plateforme repose sur une architecture de microservices découplés utilisant des technologies adaptées à chaque domaine d'activité (Spring Boot pour les workflows transactionnels lourds, Django REST pour la gestion rapide de modèles, Node.js pour l'événementiel asynchrone).
 
-```mermaid
-graph TD
-    %% Clients
-    Client[Navigateur Web / App Mobile] -->|HTTPS / Port 8888| Gateway[njila-proxy-service <br> Spring Cloud Gateway]
 
-    %% Infrastructure de Configuration & Découverte
-    Gateway -->|Enregistrement & Résolution| Discovery[njila-registry-service <br> Netflix Eureka]
-    ConfigServer[njila-conf-service <br> Spring Cloud Config Server] -->|Configuration Git| GitRepo[(Dépôt Config Git)]
-    
-    %% Gateway Middleware
-    Gateway -->|Rate Limiting & Métriques| RedisGateway[(Redis Cache/Session)]
-    
-    %% Routage vers Microservices
-    Gateway -->|Auth / Register| AuthService[njila-auth-service <br> Django REST]
-    Gateway -->|User Roles & Branches| UserService[njila-user-service <br> Spring Boot]
-    Gateway -->|Fleet & Annonces| FleetService[njila-fleet-service <br> Django REST]
-    Gateway -->|Subscriptions| SubService[njila-subscribe-service <br> Django REST]
-    Gateway -->|Bookings & PDF| BookingService[njila-booking-service <br> Spring Boot]
-    Gateway -->|Payments| PayService[njila-payement-service <br> Spring Boot]
-    Gateway -.->|WebSockets / Event| NotifService[njila-notification-service <br> Node.js Express]
-
-    %% Bases de Données Découplées
-    AuthService --> DB_Auth[(PostgreSQL Auth)]
-    UserService --> DB_User[(PostgreSQL User)]
-    FleetService --> DB_Fleet[(PostgreSQL Fleet)]
-    SubService --> DB_Sub[(PostgreSQL Sub)]
-    BookingService --> DB_Booking[(PostgreSQL Booking)]
-    PayService --> DB_Pay[(PostgreSQL Pay)]
-    NotifService --> DB_Notif[(PostgreSQL Notif)]
-
-    %% Broker Événementiel (Asynchronisme)
-    AuthService -->|RabbitMQ Events| RabbitMQ[Message Broker <br> RabbitMQ]
-    FleetService -->|RabbitMQ Events| RabbitMQ
-    BookingService -->|RabbitMQ Events| RabbitMQ
-    PayService -->|RabbitMQ Events| RabbitMQ
-    RabbitMQ -->|Consommation des événements| NotifService
-
-    %% Verrous distribués et Caches d'application
-    BookingService -->|Verrou anti-doublon SETNX| RedisApp[(Redis App Cache / Locks)]
-    UserService -->|Cache Profils| RedisApp
-
-    %% Notification Gateways
-    NotifService -->|SMS| Twilio[Twilio SMS]
-    NotifService -->|Push Notifications| FCM[Firebase Cloud Messaging]
-    NotifService -->|Emails| SMTP[Serveur SMTP]
-    
-    classDef infra fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef svc fill:#bbf,stroke:#333,stroke-width:1px;
-    classDef db fill:#fdd,stroke:#333,stroke-width:1px;
-    classDef broker fill:#dfd,stroke:#333,stroke-width:2px;
-    class Discovery,ConfigServer,Gateway infra;
-    class AuthService,UserService,FleetService,SubService,BookingService,PayService,NotifService svc;
-    class DB_Auth,DB_User,DB_Fleet,DB_Sub,DB_Booking,DB_Pay,DB_Notif,RedisGateway,RedisApp db;
-    class RabbitMQ broker;
-```
-
----
 
 ## 🛠️ Stack Technique
 
@@ -200,37 +144,7 @@ La synchronisation applique automatiquement les politiques de `prune` (suppressi
 
 Le fichier `.github/workflows/ci-cd.yml` implémente un workflow d'intégration et de déploiement continus moderne et robuste à 8 étapes :
 
-```mermaid
-flowchart TD
-    %% Déclenchement
-    Push[Push sur main / PR] --> Job1[Build & Test Java <br> Maven Verify]
-    Push --> Job2[Build & Test Python <br> PyTest / Cov]
-    Push --> Job3[Build & Test Node.js <br> ViTest]
-    Push --> Job4[Build Frontend <br> Vite Production Build]
-    Push --> Job5[Validation Manifestes K8s <br> Kubectl Kustomize]
 
-    %% Compilation & Push
-    Job1 --> NeedsCheck{Tous les tests OK ?}
-    Job2 --> NeedsCheck
-    Job3 --> NeedsCheck
-    Job4 --> NeedsCheck
-    Job5 --> NeedsCheck
-
-    NeedsCheck -->|Oui et branche main| Job6[Build & Push Docker Images <br> vers GHCR.io avec tags SHA]
-    
-    %% Mise à jour Kustomize
-    Job6 --> Job7[Mise à jour tags images K8s <br> dans overlays/prod/kustomization.yaml]
-    
-    %% GitOps Sync
-    Job7 --> Job8[Déploiement GitOps ArgoCD <br> Sync & Wait Rollout]
-    
-    classDef testJob fill:#d0f0fd,stroke:#333,stroke-width:1px;
-    classDef pushJob fill:#d0fdd0,stroke:#333,stroke-width:1px;
-    classDef gitopsJob fill:#fdd0d0,stroke:#333,stroke-width:1px;
-    class Job1,Job2,Job3,Job4,Job5 testJob;
-    class Job6,Job7 pushJob;
-    class Job8 gitopsJob;
-```
 
 1.  **Tests Java** : Compilation et exécution de tests unitaires/intégration (`./mvnw clean verify`) sous JDK 17 pour les 6 services Spring Boot.
 2.  **Tests Python** : Validation des microservices Django (`manage.py test`) sous Python 3.11.
