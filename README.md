@@ -6,7 +6,7 @@
 [![Django](https://img.shields.io/badge/Backend-Django%20%2F%20Spring%20Boot-green?logo=django&logoColor=white)](https://djangoproject.com)
 [![React](https://img.shields.io/badge/Frontend-React%20%2F%20Vite%20%2F%20Tailwind-61dafb?logo=react)](https://react.dev)
 
-> **NJILA** (signifiant *route* ou *chemin* en langues bantoues) est une plateforme d'entreprise hautement évolutive, sécurisée et modulaire sous forme de SaaS, conçue pour numériser l'écosystème du transport routier interurbain (notamment adapté au contexte camerounais). Elle permet la gestion complète des abonnements des agences de transport, le contrôle de leur flotte (bus, chauffeurs, trajets, voyages), la réservation de billets en temps réel avec verrouillage distribué, la gestion des paiements mobiles, et l'envoi de notifications multi-canaux (Push, Email, Firebase).
+> **NJILA**  est une plateforme d'entreprise hautement évolutive, sécurisée et modulaire sous forme de SaaS, conçue pour numériser l'écosystème du transport routier interurbain (notamment adapté au contexte camerounais). Elle permet la gestion complète des abonnements des agences de transport, le contrôle de leur flotte (bus, chauffeurs, trajets, voyages), la réservation de billets en temps réel avec verrouillage distribué, la gestion des paiements mobiles, et l'envoi de notifications multi-canaux (Push, Email, Firebase).
 
 ---
 
